@@ -1,8 +1,23 @@
 @import "tailwindcss";
 
+/* ── Eurostile Extended Bold
+   1. public/fonts/eurostile-extended-bold.woff2 파일을 추가하면 자동으로 적용됩니다.
+   2. 파일이 없을 경우 Exo 2 (Google Fonts) 폴백이 적용됩니다.
+   ──────────────────────────────────────────────── */
+@font-face {
+  font-family: 'EurostileExtended';
+  src: url('/fonts/eurostile-extended-bold.woff2') format('woff2'),
+       url('/fonts/eurostile-extended-bold.woff') format('woff'),
+       url('/fonts/eurostile-extended-bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #040d1f;
+  --foreground: #ffffff;
+  --font-eurostile: 'EurostileExtended', 'Exo 2', 'Rajdhani', sans-serif;
 }
 
 @theme inline {
@@ -10,17 +25,28 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display: var(--font-eurostile);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ── 일정한 바운스 애니메이션 ── */
+@keyframes bounce-arrow {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(12px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.animate-bounce-arrow {
+  animation: bounce-arrow 1s linear infinite;
 }
