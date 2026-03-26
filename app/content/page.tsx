@@ -30,6 +30,20 @@ export default async function ContentPage() {
 
   return (
     <main className="relative min-h-screen pt-24 px-12" style={{ background: '#040d1f' }}>
+
+      {/* Background */}
+      <div
+        className="absolute inset-x-0 top-0 pointer-events-none"
+        style={{
+          height: '100vh',
+          backgroundImage: 'url(/background.png)',
+          backgroundSize: '130%',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 40%, transparent 85%)',
+          maskImage: 'linear-gradient(to bottom, black 40%, transparent 85%)',
+        }}
+      />
       <div className="max-w-5xl mx-auto py-16">
         <h1 className="text-white text-5xl font-black tracking-tight uppercase mb-4">
           CONTENT

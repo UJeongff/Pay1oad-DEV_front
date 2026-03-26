@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuthContext } from '@/app/context/AuthContext'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -94,6 +95,7 @@ function ActionBtn({
 
 export default function RegisterPage() {
   const router = useRouter()
+  const { refetch } = useAuthContext()
 
   // form fields
   const [name, setName] = useState('')
@@ -200,6 +202,20 @@ export default function RegisterPage() {
         return
       }
       setEmailVerified(true)
+      // 자동 로그인
+      try {
+        const loginRes = await fetch(`${API_URL}/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, password }),
+        })
+        if (loginRes.ok) {
+          await refetch()
+          router.push('/')
+          return
+        }
+      } catch { /* 로그인 실패 시 로그인 페이지로 폴백 */ }
       setTimeout(() => router.push('/login'), 2000)
     } catch {
       setEmailMsg('서버에 연결할 수 없습니다.')
@@ -300,12 +316,11 @@ export default function RegisterPage() {
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage: 'url(/background.webp)',
+          backgroundImage: 'url(/login_background.jpg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
       />
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.62)' }} />
 
       {/* Content */}
       <div className="relative z-10 flex items-center justify-center min-h-screen pt-10 px-[8.5vw]">

@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuthContext } from '@/app/context/AuthContext'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -91,6 +92,7 @@ function ActionBtn({
 
 export default function CompleteProfilePage() {
   const router = useRouter()
+  const { refetch } = useAuthContext()
 
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
@@ -184,8 +186,8 @@ export default function CompleteProfilePage() {
         return
       }
 
+      await refetch()
       router.push('/')
-      router.refresh()
     } catch {
       setApiError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.')
     } finally {
@@ -200,12 +202,11 @@ export default function CompleteProfilePage() {
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage: 'url(/background.webp)',
+          backgroundImage: 'url(/login_background.jpg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
       />
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.62)' }} />
 
       {/* Content */}
       <div className="relative z-10 flex items-center justify-center min-h-screen pt-10 px-[8.5vw]">

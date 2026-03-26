@@ -1,10 +1,13 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import HistorySection from '@/app/components/HistorySection'
+import ContactCards from '@/app/components/ContactCards'
+import RulesSection from '@/app/components/RulesSection'
+import HomeFooter from '@/app/components/HomeFooter'
 
 export default function AboutPage() {
   return (
-    <main className="relative select-none">
+    <main className="relative select-none" style={{ background: 'linear-gradient(to bottom, #0F0F0F, #0B101E)' }}>
 
       {/* ── Hero Section ──────────────────────────────── */}
       <section className="relative flex items-center justify-center overflow-hidden" style={{ height: '75vh', minHeight: '480px' }}>
@@ -23,7 +26,7 @@ export default function AboutPage() {
         {/* Dark Overlay */}
         <div
           className="absolute inset-0"
-          style={{ background: 'rgba(4, 13, 31, 0.6)' }}
+          style={{ background: 'rgba(0, 0, 0, 0.55)' }}
         />
 
         {/* Center Content */}
@@ -59,12 +62,12 @@ export default function AboutPage() {
         {/* Bottom fade */}
         <div
           className="absolute bottom-0 left-0 right-0 h-40 pointer-events-none"
-          style={{ background: 'linear-gradient(to bottom, transparent, #040d1f)' }}
+          style={{ background: 'linear-gradient(to bottom, transparent, #0F0F0F)' }}
         />
       </section>
 
       {/* ── About Section ─────────────────────────────── */}
-      <section className="bg-[#040d1f] py-32 px-[5vw]">
+      <section className="py-32 px-[5vw]">
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-20 items-start">
 
           {/* Left: Title */}
@@ -112,9 +115,8 @@ export default function AboutPage() {
             </p>
 
             <div className="flex flex-wrap gap-3">
-              <Link
-                href="/login"
-                className="inline-flex items-center gap-2 border border-white/30 text-white/90 text-sm rounded-full px-6 py-2.5 hover:border-blue-500 hover:bg-blue-600/20 transition-all duration-200"
+              <span
+                className="inline-flex items-center gap-2 border border-white/30 text-white/90 text-sm rounded-full px-6 py-2.5 cursor-default hover:border-blue-500 hover:bg-blue-600/20 transition-all duration-200"
               >
                 함께 성장하러 가기
                 <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
@@ -126,7 +128,7 @@ export default function AboutPage() {
                     strokeLinejoin="round"
                   />
                 </svg>
-              </Link>
+              </span>
               <Link
                 href="/blog"
                 className="inline-flex items-center gap-2 border border-white/30 text-white/90 text-sm rounded-full px-6 py-2.5 hover:border-blue-500 hover:bg-blue-600/20 transition-all duration-200"
@@ -149,16 +151,27 @@ export default function AboutPage() {
       </section>
 
       {/* ── Our Goal Section ──────────────────────────── */}
-      <section className="bg-[#040d1f] pb-32 px-[5vw]">
-        <div className="max-w-4xl mx-auto">
+      <section className="relative pb-32 px-[5vw] overflow-hidden">
+        {/* Circular glow background */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: 'url(/aboutus_background.png)',
+            backgroundSize: '70%',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            maskImage: 'radial-gradient(ellipse 55% 55% at 50% 50%, black 30%, transparent 75%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 55% 55% at 50% 50%, black 30%, transparent 75%)',
+          }}
+        />
+        <div className="relative z-10 max-w-4xl mx-auto">
 
           {/* Title */}
-          <h2
-            className="text-center text-white font-bold mb-20"
-            style={{ fontSize: 'clamp(1.1rem, 1.8vw, 1.4rem)', letterSpacing: '0.25em' }}
-          >
-            [ OUR GOAL ]
-          </h2>
+          <div className="flex justify-center mb-20">
+            <span className="border border-white/30 text-white text-sm font-bold tracking-[0.35em] px-8 py-2.5 rounded-full">
+              OUR GOAL
+            </span>
+          </div>
 
           {/* Top row: 3 goals */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
@@ -248,6 +261,49 @@ export default function AboutPage() {
 
       {/* ── History Section ────────────────────────────── */}
       <HistorySection />
+
+      {/* ── Contact Section ─────────────────────────────── */}
+      <section className="pb-32 px-[5vw]">
+        <div className="max-w-3xl mx-auto">
+
+          {/* Title badge */}
+          <div className="flex justify-center mb-8">
+            <span className="border border-white/30 text-white text-sm font-bold tracking-[0.35em] px-8 py-2.5 rounded-full">
+              CONTACT
+            </span>
+          </div>
+
+          {/* Subtitle */}
+          <p className="text-center text-white/50 text-sm leading-relaxed mb-16" style={{ wordBreak: 'keep-all' }}>
+            Pay1oad에 대해 더 궁금한 점이 있거나,<br />
+            협업·행사 제안이 있다면 아래 채널로 언제든 연락해주세요.
+          </p>
+
+          {/* Cards */}
+          <ContactCards />
+        </div>
+      </section>
+
+      {/* ── Rules Section ───────────────────────────────── */}
+      <RulesSection />
+
+      {/* ── Tagline ─────────────────────────────────────── */}
+      <section className="py-24 px-[5vw]">
+        <div className="max-w-3xl mx-auto">
+          <p
+            className="text-white font-bold mb-3"
+            style={{ fontSize: 'clamp(1.1rem, 2vw, 1.5rem)' }}
+          >
+            Together, We Are Pay1oad.
+          </p>
+          <p className="text-white/55 text-sm leading-relaxed">
+            보안을 배우고, 실무를 경험하며, 함께 성장하는 공간 _____Pay1oad
+          </p>
+        </div>
+      </section>
+
+      {/* ── Footer ───────────────────────────────────────── */}
+      <HomeFooter />
 
     </main>
   )

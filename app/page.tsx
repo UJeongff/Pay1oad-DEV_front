@@ -3,6 +3,8 @@ import ScrollArrow from '@/app/components/ScrollArrow'
 import HomePosts from '@/app/components/HomePosts'
 import HomeFaq from '@/app/components/HomeFaq'
 import HomeFooter from '@/app/components/HomeFooter'
+import { Suspense } from 'react'
+import GoogleLinkedToast from '@/app/components/GoogleLinkedToast'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -36,27 +38,38 @@ const stats = [
 
 const fields = [
   'Web Hacking', 'Pwnable', 'Reverse Engineering', 'Cryptography',
-  'Forensics', 'Software Dev',
+  'Forensics', 'Development',
 ]
 
 export default async function Home() {
   const recruitment = await getActiveRecruitment()
   return (
     <main className="relative select-none">
+      <Suspense>
+        <GoogleLinkedToast />
+      </Suspense>
 
       {/* ── Hero Section ─────────────────────────────── */}
       <section className="relative min-h-screen overflow-hidden flex flex-col">
 
-        {/* Background */}
+        {/* Background image */}
         <div
           className="absolute inset-0"
           style={{
-            backgroundImage: 'url(/background.webp)',
-            backgroundSize: 'cover',
+            backgroundImage: 'url(/home_background.png)',
+            backgroundSize: '130%',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',
           }}
         />
+
+        {/* Edge gradient overlays — fade image into page background on all sides */}
+        <div className="absolute inset-0 pointer-events-none" style={{
+          background: `
+            linear-gradient(to right,  #040d1f 0%, transparent 18%, transparent 82%, #040d1f 100%),
+            linear-gradient(to bottom, #040d1f 0%, transparent 15%, transparent 80%, #040d1f 100%)
+          `,
+        }} />
 
         {/* Content */}
         <div className="relative z-10 flex flex-col min-h-screen px-[5vw] pt-28 pb-10">
@@ -115,7 +128,7 @@ export default async function Home() {
               <div className="mt-10">
                 <Link
                   href={recruitment.applyUrl ?? '/recruitment'}
-                  className="inline-flex items-center gap-3 border border-white/80 text-white rounded-full px-7 py-3.5 text-sm font-semibold tracking-wider hover:bg-blue-600 hover:border-blue-600 transition-all duration-200"
+                  className="inline-flex items-center gap-3 border border-white/80 text-white rounded-full px-7 py-3.5 text-sm font-semibold tracking-wider hover-brand transition-all duration-200"
                 >
                   {recruitment.title} 지원하러가기
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -141,13 +154,16 @@ export default async function Home() {
         <div
           className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none"
           style={{
-            background: 'linear-gradient(to bottom, transparent, #040d1f)',
+            background: 'linear-gradient(to bottom, transparent, #0F0F0F)',
           }}
         />
       </section>
 
+      {/* ── Gradient background wrapper (About + Stats) ── */}
+      <div style={{ background: 'linear-gradient(to bottom, #0F0F0F 0%, #0E1323 100%)' }}>
+
       {/* ── About Us Section ─────────────────────────── */}
-      <section className="bg-[#040d1f] py-28 px-[5vw]">
+      <section className="py-28 px-[5vw]">
         <div className="max-w-2xl mx-auto text-center">
 
           {/* Label */}
@@ -174,7 +190,7 @@ export default async function Home() {
       </section>
 
       {/* ── Stats & Fields Section ───────────────────── */}
-      <section className="bg-[#040d1f] pb-28 px-[5vw]">
+      <section className="pb-28 px-[5vw]">
         <div className="max-w-5xl mx-auto">
 
           {/* Stats cards */}
@@ -182,7 +198,7 @@ export default async function Home() {
             {stats.map((s) => (
               <div
                 key={s.label}
-                className="rounded-2xl border border-white/10 px-8 py-10 text-center transition-all duration-200 hover:border-blue-600 hover:bg-blue-600 cursor-default"
+                className="rounded-2xl border border-white/10 px-8 py-10 text-center transition-all duration-200 hover-brand cursor-default"
                 style={{ background: 'rgba(255,255,255,0.03)' }}
               >
                 <p
@@ -206,7 +222,7 @@ export default async function Home() {
               {fields.map((f) => (
                 <span
                   key={f}
-                  className="border border-white/15 text-white/75 text-sm rounded-xl py-2.5 text-center transition-all duration-200 hover:border-blue-600 hover:bg-blue-600 hover:text-white cursor-default"
+                  className="border border-white/15 text-white/75 text-sm rounded-xl py-2.5 text-center transition-all duration-200 hover-brand cursor-default"
                   style={{ background: 'rgba(255,255,255,0.03)' }}
                 >
                   {f}
@@ -225,6 +241,8 @@ export default async function Home() {
 
       {/* ── Footer ───────────────────────────────────── */}
       <HomeFooter />
+
+      </div>{/* ── end gradient wrapper ── */}
 
     </main>
   )

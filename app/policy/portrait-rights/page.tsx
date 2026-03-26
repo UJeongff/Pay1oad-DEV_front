@@ -11,13 +11,11 @@ export default function PortraitRightsPage() {
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage: 'url(/background.webp)',
+          backgroundImage: 'url(/login_background.jpg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
       />
-      {/* Dark overlay */}
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.72)' }} />
 
       {/* Content */}
       <div className="relative z-10 flex items-center justify-center min-h-screen pt-20 pb-16 px-[8.5vw]">
@@ -40,7 +38,7 @@ export default function PortraitRightsPage() {
             width={420}
             height={436}
             className="select-none pointer-events-none absolute"
-            style={{ opacity: 0.03, top: '-20px', right: '-40px' }}
+            style={{ opacity: 0.03, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
           />
 
           {/* Header */}

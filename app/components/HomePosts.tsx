@@ -49,7 +49,7 @@ export default function HomePosts() {
   }, [])
 
   return (
-    <section className="bg-[#040d1f] pt-20 pb-20 px-[5vw]">
+    <section className="pt-20 pb-20 px-[5vw]">
       <div className="max-w-5xl mx-auto">
 
         {/* Header */}

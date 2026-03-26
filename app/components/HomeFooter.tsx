@@ -61,7 +61,7 @@ export default function HomeFooter() {
     <footer
       className="px-[5vw] py-8"
       style={{
-        background: '#040d1f',
+        background: 'transparent',
         borderTop: '1px solid rgba(255,255,255,0.06)',
       }}
     >

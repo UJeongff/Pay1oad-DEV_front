@@ -76,6 +76,12 @@ export default function LoginPage() {
       }
 
       await refetch()
+
+      if (data?.data?.googleLinked) {
+        router.push('/?googleLinked=true')
+        return
+      }
+
       router.push('/')
     } catch {
       setError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.')
@@ -156,12 +162,11 @@ export default function LoginPage() {
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage: 'url(/background.webp)',
+          backgroundImage: 'url(/login_background.jpg)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
       />
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.62)' }} />
 
       {/* Content */}
       <div className="relative z-10 flex items-center justify-center min-h-screen pt-10 px-[8.5vw]">
@@ -177,7 +182,7 @@ export default function LoginPage() {
             borderRadius: '40px',
             border: '1px solid rgba(255,255,255,0.07)',
           }}
-        > 
+        >
           {/* Logo watermark */}
           <Image
             src="/logo.png"

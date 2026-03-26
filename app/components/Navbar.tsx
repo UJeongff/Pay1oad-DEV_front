@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/app/hooks/useAuth'
 import { useEffect, useState } from 'react'
+import NotificationBell from '@/app/components/NotificationBell'
 
 const navLinks = [
   { label: 'ABOUT US', href: '/about' },
@@ -49,7 +50,7 @@ export default function Navbar() {
 
       {/* Nav Links */}
       <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-9">
-        {navLinks.map((link) => (
+        {navLinks.filter((link) => link.href !== '/content' || !!user).map((link) => (
           <Link
             key={link.href}
             href={link.href}
@@ -65,26 +66,29 @@ export default function Navbar() {
       </div>
 
       {/* User */}
-      <div className="flex-shrink-0">
+      <div className="flex-shrink-0 flex items-center gap-2">
         {user ? (
-          <Link
-            href="/mypage"
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-          >
-            <span
-              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-              style={user.role === 'ADMIN' ? {
-                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                boxShadow: '0 0 6px rgba(245,158,11,0.8)',
-              } : {
-                background: 'linear-gradient(135deg, #4ade80, #16a34a)',
-                boxShadow: '0 0 6px rgba(74,222,128,0.8)',
-              }}
-            />
-            <span className="text-sm font-light tracking-widest text-white">
-              {user.nickname} {user.role === 'ADMIN' ? 'ADMIN' : 'MEMBER'}
-            </span>
-          </Link>
+          <>
+            <NotificationBell />
+            <Link
+              href="/mypage"
+              className="flex items-center gap-3 px-4 py-2 rounded-full border border-white/20 hover:border-white/40 hover:bg-white/5 transition-all"
+            >
+              <span
+                className="w-3 h-3 rounded-full flex-shrink-0"
+                style={user.role === 'ADMIN' ? {
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  boxShadow: '0 0 6px rgba(245,158,11,0.8)',
+                } : {
+                  background: 'linear-gradient(135deg, #4ade80, #16a34a)',
+                  boxShadow: '0 0 6px rgba(74,222,128,0.8)',
+                }}
+              />
+              <span className="text-sm font-semibold tracking-widest text-white">
+                {user.nickname} {user.role === 'ADMIN' ? 'ADMIN' : 'MEMBER'}
+              </span>
+            </Link>
+          </>
         ) : (
           <Link
             href="/login"

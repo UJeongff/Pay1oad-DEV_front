@@ -25,6 +25,21 @@ const AuthContext = createContext<AuthContextValue>({
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
+// 액세스 토큰 만료(15분) 전에 미리 갱신 — 10분 간격
+const REFRESH_INTERVAL_MS = 10 * 60 * 1000
+
+async function silentRefresh(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_URL}/v1/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
@@ -38,9 +53,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const json = await res.json()
       const raw = json?.data ?? json
+      console.log('[AuthContext] /v1/users/me raw:', raw)
       const rawRole: string = (Array.isArray(raw.roles) ? raw.roles[0] : raw.role)
         ?? (typeof window !== 'undefined' ? localStorage.getItem('user_role') : null)
         ?? ''
+      console.log('[AuthContext] rawRole:', rawRole)
       const normalizedRole: 'ADMIN' | 'MEMBER' = rawRole.toUpperCase().includes('ADMIN') ? 'ADMIN' : 'MEMBER'
       setUser({
         id: raw.userId ?? raw.id,
@@ -59,6 +76,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refetch()
   }, [refetch])
+
+  // 주기적으로 토큰을 미리 갱신해 로그인 상태 유지
+  useEffect(() => {
+    const id = setInterval(async () => {
+      // 로그인 상태일 때만 refresh 시도
+      if (!user) return
+      const ok = await silentRefresh()
+      if (!ok) {
+        // refresh 토큰도 만료된 경우 로그아웃 처리
+        setUser(null)
+      }
+    }, REFRESH_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [user])
 
   return (
     <AuthContext.Provider value={{ user, loading, refetch }}>

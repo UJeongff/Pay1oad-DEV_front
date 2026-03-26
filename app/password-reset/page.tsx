@@ -206,9 +206,8 @@ export default function PasswordResetPage() {
     <div className="relative min-h-screen overflow-hidden">
       <div
         className="absolute inset-0"
-        style={{ backgroundImage: 'url(/background.webp)', backgroundSize: 'cover', backgroundPosition: 'center' }}
+        style={{ backgroundImage: 'url(/login_background.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}
       />
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.62)' }} />
 
       <div className="relative z-10 flex items-center justify-center min-h-screen pt-10 px-[8.5vw]">
         <div

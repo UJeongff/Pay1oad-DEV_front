@@ -40,7 +40,7 @@ export async function fetchWithAuth(
 
   let res = await fetch(input, opts)
 
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 403) {
     const refreshed = await tryRefresh()
     if (refreshed) {
       res = await fetch(input, opts)

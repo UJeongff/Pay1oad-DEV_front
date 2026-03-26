@@ -9,7 +9,7 @@ const FAQ_ITEMS = [
   },
   {
     question: 'Q. Pay1oad는 어떤 활동을 하나요?',
-    answer: 'CTF(Capture The Flag) 대회 참가, 웹 해킹·리버싱·포렌식 등 분야별 스터디, 보안 프로젝트 개발, 외부 세미나 및 교내 발표 등을 진행합니다.',
+    answer: 'CTF(Capture The Flag) 대회 참가, 웹 해킹·리버싱·포렌식 등 분야별 스터디, 보안 프로젝트, 외부 세미나 및 교내 발표 등을 진행합니다.',
   },
   {
     question: 'Q. 관련 학과가 아닌 학생도 지원할 수 있나요?',
@@ -17,11 +17,11 @@ const FAQ_ITEMS = [
   },
   {
     question: 'Q. 개강 세미나가 무엇인가요?',
-    answer: '매 학기 초에 진행하는 신입 부원 대상 세미나로, 보안 기초 지식과 동아리 활동 방향을 소개합니다. 선배 부원들이 직접 강의를 진행합니다.',
+    answer: '1학기 동안의 동아리 활동에 관한 사항을 소개하는 자리로, 동아리 내 모든 부원은 필수적으로 참여해야 합니다.',
   },
   {
-    question: 'Q. Pay1oad는 어떤 동아리인가요?',
-    answer: 'Pay1oad는 가천대학교 No.1 정보보안 동아리입니다. 실력 있는 보안 전문가를 꿈꾸는 학생들이 함께 공부하고 성장하는 커뮤니티입니다.',
+    question: 'Q. 어떤 학생을 모집하나요?',
+    answer: '정보 보안에 관심이 많고, 동아리 활동에 열정을 가지고 활동할 수 있는 가천대학교 재학생 및 휴학생을 대상으로 모집합니다.',
   },
 ]
 
@@ -29,7 +29,7 @@ export default function HomeFaq() {
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
   return (
-    <section className="bg-[#040d1f] py-28 px-[5vw]">
+    <section className="py-28 px-[5vw]">
       <div className="max-w-2xl mx-auto">
 
         {/* Label */}
