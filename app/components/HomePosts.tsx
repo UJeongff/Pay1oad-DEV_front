@@ -1,16 +1,21 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 
 interface Post {
   id: number
   title: string
   category: 'KNOWLEDGE' | 'QNA' | 'ACTIVITIES'
-  author: string
-  createdAt: string
+  authorName: string
+  publishedAt: string
+  createdAt?: string
   summary?: string
   thumbnailUrl?: string
+  likeCount?: number
+  isFeatured?: boolean
+  featuredAt?: string | null
 }
 
 const CATEGORY_LABEL: Record<Post['category'], string> = {
@@ -19,18 +24,29 @@ const CATEGORY_LABEL: Record<Post['category'], string> = {
   ACTIVITIES: '활동',
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const CATEGORY_COLOR: Record<Post['category'], string> = {
+  ACTIVITIES: '#FF9193',
+  KNOWLEDGE:  '#74FF89',
+  QNA:        '#91CDFF',
+}
 
-const FALLBACK_IMAGES = [
-  '/blog/blog1.jpg',
-  '/blog/blog2.jpg',
-  '/blog/blog3.jpg',
-]
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const FALLBACK_IMAGE = '/logo_blur.png'
+
+function toFullUrl(url: string | null | undefined): string {
+  if (!url) return FALLBACK_IMAGE
+  if (url.startsWith('http') || url.startsWith('data:')) return url
+  return `${API_URL}${url}`
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
+}
 
 const PLACEHOLDER_POSTS: Post[] = [
-  { id: 1, title: '게시글 제목', category: 'ACTIVITIES', author: 'Pay1oad', createdAt: new Date().toISOString() },
-  { id: 2, title: '게시글 제목', category: 'KNOWLEDGE', author: 'Pay1oad', createdAt: new Date().toISOString() },
-  { id: 3, title: '게시글 제목', category: 'QNA',        author: 'Pay1oad', createdAt: new Date().toISOString() },
+  { id: 1, title: '게시글 제목', category: 'ACTIVITIES', authorName: 'Pay1oad', publishedAt: new Date().toISOString() },
+  { id: 2, title: '게시글 제목', category: 'KNOWLEDGE', authorName: 'Pay1oad', publishedAt: new Date().toISOString() },
+  { id: 3, title: '게시글 제목', category: 'QNA',        authorName: 'Pay1oad', publishedAt: new Date().toISOString() },
 ]
 
 export default function HomePosts() {
@@ -38,12 +54,23 @@ export default function HomePosts() {
   const [hoveredId, setHoveredId] = useState<number | null>(null)
 
   useEffect(() => {
-    fetch(`${API_URL}/v1/posts`, { credentials: 'include' })
+    fetch(`${API_URL}/v1/posts?page=0&size=20&sort=createdAt,desc`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        const raw = data?.data ?? data?.content ?? data
-        const list: Post[] = Array.isArray(raw) ? raw : []
-        if (list.length > 0) setPosts(list.slice(0, 3))
+        const list: Post[] = Array.isArray(data?.data?.content) ? data.data.content : []
+        if (list.length > 0) {
+          const sorted = [...list].sort((a, b) => {
+            const pinDiff = (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0)
+            if (pinDiff !== 0) return pinDiff
+            if (a.isFeatured && b.isFeatured) {
+              const aPin = a.featuredAt ? new Date(a.featuredAt).getTime() : 0
+              const bPin = b.featuredAt ? new Date(b.featuredAt).getTime() : 0
+              if (bPin !== aPin) return bPin - aPin
+            }
+            return new Date(b.createdAt ?? b.publishedAt).getTime() - new Date(a.createdAt ?? a.publishedAt).getTime()
+          })
+          setPosts(sorted.slice(0, 3))
+        }
       })
       .catch(() => {})
   }, [])
@@ -94,28 +121,49 @@ export default function HomePosts() {
                 onMouseLeave={() => setHoveredId(null)}
               >
                 {/* Thumbnail */}
-                <div
-                  className="w-full aspect-[16/10] flex-shrink-0"
-                  style={{
-                    background: `url(${post.thumbnailUrl ?? FALLBACK_IMAGES[posts.indexOf(post) % FALLBACK_IMAGES.length]}) center/cover no-repeat`,
-                  }}
-                />
+                {(() => {
+                  const thumb = toFullUrl(post.thumbnailUrl)
+                  const isFallback = thumb === FALLBACK_IMAGE
+                  return (
+                    <div
+                      className="w-full aspect-[16/10] flex-shrink-0 relative overflow-hidden"
+                      style={{ background: isFallback ? 'rgba(20,25,45,0.8)' : undefined }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={thumb}
+                        alt={post.title}
+                        style={{
+                          position: 'absolute', inset: 0, width: '100%', height: '100%',
+                          objectFit: isFallback ? 'contain' : 'cover',
+                          padding: isFallback ? '10%' : undefined,
+                          opacity: isFallback ? 0.5 : 1,
+                        }}
+                      />
+                      {post.isFeatured && (
+                        <div style={{ position: 'absolute', top: '10px', right: '10px', width: '26px', height: '26px', borderRadius: '6px', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Image src="/pin.svg" alt="pinned" width={14} height={14} />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* Body */}
                 <div className="p-5 flex flex-col gap-2">
-                  <span className="text-xs font-semibold tracking-wider uppercase" style={{ color: '#1C5AFF' }}>
+                  <span className="text-xs font-semibold tracking-wider uppercase" style={{ color: CATEGORY_COLOR[post.category] }}>
                     {CATEGORY_LABEL[post.category]}
                   </span>
                   <p className="text-white font-semibold text-base leading-snug line-clamp-2">
                     {post.title}
                   </p>
-                  {post.summary && (
+                  {post.summary && stripHtml(post.summary) && (
                     <p className="text-white/45 text-sm leading-relaxed line-clamp-3">
-                      {post.summary}
+                      {stripHtml(post.summary)}
                     </p>
                   )}
                   <p className="text-white/30 text-xs mt-auto pt-2" suppressHydrationWarning>
-                    {post.author} · {new Date(post.createdAt).toLocaleDateString('ko-KR')}
+                    {post.authorName} · {new Date(post.publishedAt).toLocaleDateString('ko-KR')}
                   </p>
                 </div>
               </Link>

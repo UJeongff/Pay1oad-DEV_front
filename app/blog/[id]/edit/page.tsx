@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
@@ -17,24 +17,61 @@ const CATEGORY_OPTIONS = [
 
 type Category = typeof CATEGORY_OPTIONS[number]['value']
 
+interface PostFile {
+  id: number
+  fileUrl: string
+  fileName: string
+  mimeType: string
+}
+
+interface PostDetail {
+  id: number
+  title: string
+  content: string
+  category: string
+  visibility: string
+  authorDisplay: string
+  authorName: string
+  authorId: number
+  publishedAt: string | null
+  createdAt: string
+  files: PostFile[]
+}
+
 function formatDate(d: Date) {
   return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
 }
 
-export default function BlogWritePage() {
+function dataURLtoBlob(dataURL: string): Blob {
+  const [header, data] = dataURL.split(',')
+  const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png'
+  const binary = atob(data)
+  const array = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
+  return new Blob([array], { type: mime })
+}
+
+export default function BlogEditPage() {
+  const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const { user } = useAuthContext()
+
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
+  const [forbidden, setForbidden] = useState(false)
 
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState<Category>('ACTIVITIES')
   const [categoryOpen, setCategoryOpen] = useState(false)
   const [visibility, setVisibility] = useState<'PUBLIC' | 'MEMBER'>('PUBLIC')
   const [visibilityOpen, setVisibilityOpen] = useState(false)
-  const [authorDisplay] = useState<'NICKNAME' | 'ANONYMOUS'>('NICKNAME')
-  const [content, setContent] = useState('')
-  const [attachedFiles, setAttachedFiles] = useState<File[]>([])
+  const [authorDisplay, setAuthorDisplay] = useState<'NICKNAME' | 'ANONYMOUS'>('NICKNAME')
+  const [existingFiles, setExistingFiles] = useState<PostFile[]>([])
+  const [deletedFileIds, setDeletedFileIds] = useState<number[]>([])
+  const [newFiles, setNewFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [originalAuthorId, setOriginalAuthorId] = useState<number | null>(null)
 
   const categoryRef = useRef<HTMLDivElement>(null)
   const visibilityRef = useRef<HTMLDivElement>(null)
@@ -52,25 +89,76 @@ export default function BlogWritePage() {
     return () => window.removeEventListener('mousedown', handler)
   }, [])
 
+  // 기존 게시글 데이터 로드
+  const loadPost = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/posts/${id}`)
+      if (res.status === 404) { setNotFound(true); return }
+      if (!res.ok) { setNotFound(true); return }
+      const json = await res.json()
+      const post: PostDetail = json.data
+
+      setOriginalAuthorId(post.authorId)
+      setTitle(post.title)
+      setCategory((post.category as Category) ?? 'ACTIVITIES')
+      setVisibility((post.visibility as 'PUBLIC' | 'MEMBER') ?? 'PUBLIC')
+      setAuthorDisplay((post.authorDisplay as 'NICKNAME' | 'ANONYMOUS') ?? 'NICKNAME')
+      setExistingFiles(post.files ?? [])
+
+      if (editorRef.current) {
+        editorRef.current.innerHTML = post.content ?? ''
+      }
+    } catch {
+      setNotFound(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    loadPost()
+  }, [loadPost])
+
+  // 권한 체크: 로드 후 본인 여부 확인
+  useEffect(() => {
+    if (!loading && originalAuthorId !== null && user !== null) {
+      if (user.id !== originalAuthorId && user.role !== 'ADMIN') {
+        setForbidden(true)
+      }
+    }
+  }, [loading, originalAuthorId, user])
+
+  // 에디터 콘텐츠를 상태에 초기화
+  useEffect(() => {
+    if (!loading && editorRef.current) {
+      // 이미 innerHTML이 loadPost에서 설정됨
+    }
+  }, [loading])
+
   const selectedLabel = CATEGORY_OPTIONS.find(o => o.value === category)?.label ?? category
 
   // 파일 첨부
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return
-    setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)])
+    setNewFiles(prev => [...prev, ...Array.from(e.target.files!)])
     e.target.value = ''
   }
 
-  const removeFile = (idx: number) => {
-    setAttachedFiles(prev => prev.filter((_, i) => i !== idx))
+  const removeNewFile = (idx: number) => {
+    setNewFiles(prev => prev.filter((_, i) => i !== idx))
   }
 
-  // contentEditable 에디터 — 이미지/파일 드롭/붙여넣기 처리
+  const removeExistingFile = (fileId: number) => {
+    setDeletedFileIds(prev => [...prev, fileId])
+    setExistingFiles(prev => prev.filter(f => f.id !== fileId))
+  }
+
+  // 이미지 base64 삽입
   const insertImageAsBase64 = (file: File) => {
     const reader = new FileReader()
     reader.onload = () => {
       document.execCommand('insertImage', false, reader.result as string)
-      if (editorRef.current) setContent(editorRef.current.innerHTML)
     }
     reader.readAsDataURL(file)
   }
@@ -82,7 +170,6 @@ export default function BlogWritePage() {
 
     e.preventDefault()
     const otherFiles: File[] = []
-
     fileItems.forEach(item => {
       const file = item.getAsFile()
       if (!file) return
@@ -92,49 +179,36 @@ export default function BlogWritePage() {
         otherFiles.push(file)
       }
     })
-
-    if (otherFiles.length > 0) {
-      setAttachedFiles(prev => [...prev, ...otherFiles])
-    }
+    if (otherFiles.length > 0) setNewFiles(prev => [...prev, ...otherFiles])
   }
 
   const handleEditorDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     const files = Array.from(e.dataTransfer.files)
     if (files.length === 0) return
-
     const imageFiles = files.filter(f => f.type.startsWith('image/'))
     const otherFiles = files.filter(f => !f.type.startsWith('image/'))
-
     imageFiles.forEach(file => insertImageAsBase64(file))
-    if (otherFiles.length > 0) setAttachedFiles(prev => [...prev, ...otherFiles])
+    if (otherFiles.length > 0) setNewFiles(prev => [...prev, ...otherFiles])
   }
 
-  const handleEditorInput = () => {
-    if (editorRef.current) setContent(editorRef.current.innerHTML)
-  }
-
-  // base64 data URL을 Blob으로 변환
-  function dataURLtoBlob(dataURL: string): Blob {
-    const [header, data] = dataURL.split(',')
-    const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png'
-    const binary = atob(data)
-    const array = new Uint8Array(binary.length)
-    for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
-    return new Blob([array], { type: mime })
-  }
-
-  // 제출 — 2단계: 게시글 생성 → 이미지 업로드 → content URL 교체
+  // 수정 제출
   const handleSubmit = async () => {
+    const rawContent = editorRef.current?.innerHTML ?? ''
     if (!title.trim()) { setError('제목을 입력해주세요.'); return }
-    const rawContent = editorRef.current?.innerHTML ?? content
     if (!rawContent.trim() && !editorRef.current?.textContent?.trim()) {
       setError('본문을 입력해주세요.'); return
     }
     setError(null)
     setSubmitting(true)
+
     try {
-      // 1. content에서 base64 이미지를 추출하고 placeholder로 교체
+      // 1. 삭제할 기존 파일 제거
+      for (const fileId of deletedFileIds) {
+        await fetchWithAuth(`${API_URL}/v1/posts/${id}/files/${fileId}`, { method: 'DELETE' })
+      }
+
+      // 2. content에서 base64 이미지를 추출하고 placeholder로 교체
       const parser = new DOMParser()
       const doc = parser.parseFromString(rawContent, 'text/html')
       const base64Imgs = Array.from(doc.querySelectorAll('img[src^="data:"]'))
@@ -148,31 +222,13 @@ export default function BlogWritePage() {
         img.setAttribute('src', `__IMG_PLACEHOLDER_${idx}__`)
       })
 
-      const placeholderContent = doc.body.innerHTML
+      let finalContent = doc.body.innerHTML
 
-      // 2. 게시글 생성
-      const res = await fetchWithAuth(`${API_URL}/v1/posts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: title.trim(),
-          category,
-          content: placeholderContent,
-          visibility,
-          authorDisplay,
-          publish: true,
-        }),
-      })
-      if (!res.ok) throw new Error('게시글 등록에 실패했습니다.')
-      const json = await res.json()
-      const postId: number = json.data.id
-
-      // 3. 에디터 이미지 업로드 및 URL 교체
-      let finalContent = placeholderContent
+      // 3. 새로운 에디터 이미지 업로드 및 URL 교체
       for (let i = 0; i < pendingFiles.length; i++) {
         const fd = new FormData()
         fd.append('file', pendingFiles[i])
-        const fileRes = await fetchWithAuth(`${API_URL}/v1/posts/${postId}/files`, {
+        const fileRes = await fetchWithAuth(`${API_URL}/v1/posts/${id}/files`, {
           method: 'POST',
           body: fd,
         })
@@ -184,32 +240,32 @@ export default function BlogWritePage() {
         }
       }
 
-      // 4. 첨부파일 업로드
-      for (const file of attachedFiles) {
+      // 4. 새 첨부파일 업로드
+      for (const file of newFiles) {
         const fd = new FormData()
         fd.append('file', file)
-        await fetchWithAuth(`${API_URL}/v1/posts/${postId}/files`, {
+        await fetchWithAuth(`${API_URL}/v1/posts/${id}/files`, {
           method: 'POST',
           body: fd,
         })
       }
 
-      // 5. 이미지가 있었으면 최종 content로 업데이트 (필수 필드 전체 포함)
-      if (pendingFiles.length > 0) {
-        await fetchWithAuth(`${API_URL}/v1/posts/${postId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: title.trim(),
-            content: finalContent,
-            category,
-            visibility,
-            authorDisplay,
-          }),
-        })
-      }
+      // 5. 게시글 수정
+      const res = await fetchWithAuth(`${API_URL}/v1/posts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          content: finalContent,
+          category,
+          visibility,
+          authorDisplay,
+        }),
+      })
 
-      router.push('/blog')
+      if (!res.ok) throw new Error('게시글 수정에 실패했습니다.')
+
+      router.push(`/blog/${id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '오류가 발생했습니다.')
     } finally {
@@ -231,6 +287,41 @@ export default function BlogWritePage() {
     flexShrink: 0,
     color: 'rgba(255,255,255,0.45)',
     fontSize: '13px',
+  }
+
+  // 로딩 상태
+  if (loading) {
+    return (
+      <main className="relative min-h-screen" style={{ background: '#040d1f' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '15px' }}>불러오는 중...</p>
+        </div>
+      </main>
+    )
+  }
+
+  // 404
+  if (notFound) {
+    return (
+      <main className="relative min-h-screen" style={{ background: '#040d1f' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '60vh', gap: '16px' }}>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '15px' }}>게시글을 찾을 수 없습니다.</p>
+          <Link href="/blog" style={{ color: '#1C5AFF', fontSize: '14px' }}>블로그로 돌아가기</Link>
+        </div>
+      </main>
+    )
+  }
+
+  // 권한 없음
+  if (forbidden) {
+    return (
+      <main className="relative min-h-screen" style={{ background: '#040d1f' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '60vh', gap: '16px' }}>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '15px' }}>수정 권한이 없습니다.</p>
+          <Link href={`/blog/${id}`} style={{ color: '#1C5AFF', fontSize: '14px' }}>게시글로 돌아가기</Link>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -266,15 +357,20 @@ export default function BlogWritePage() {
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
         >Blog</Link>
         <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <span style={{ color: '#fff' }}>게시글 작성하기</span>
+        <Link href={`/blog/${id}`} style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
+        >게시글</Link>
+        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
+        <span style={{ color: '#fff' }}>수정하기</span>
       </div>
 
-      {/* ── Write form ──────────────────────────────── */}
+      {/* ── Edit form ───────────────────────────────── */}
       <div className="relative max-w-4xl mx-auto px-[5vw] py-12">
 
         {/* Section label */}
         <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)', marginBottom: '10px' }}>
-          게시글 작성하기
+          게시글 수정하기
         </p>
 
         {/* Title input */}
@@ -445,19 +541,45 @@ export default function BlogWritePage() {
               첨부할 파일을 선택하세요
             </div>
 
-            {/* Attached file list */}
-            {attachedFiles.length > 0 && (
+            {/* Existing files */}
+            {existingFiles.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
-                {attachedFiles.map((file, idx) => (
+                {existingFiles.map(file => (
+                  <div key={file.id} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '6px 12px', borderRadius: '6px',
+                    background: 'rgba(255,255,255,0.05)', fontSize: '13px',
+                    color: 'rgba(255,255,255,0.7)',
+                  }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>기존</span>
+                      {file.fileName}
+                    </span>
+                    <button
+                      onClick={() => removeExistingFile(file.id)}
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: '16px', lineHeight: 1 }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* New files */}
+            {newFiles.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+                {newFiles.map((file, idx) => (
                   <div key={idx} style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '6px 12px', borderRadius: '6px',
                     background: 'rgba(255,255,255,0.05)', fontSize: '13px',
                     color: 'rgba(255,255,255,0.7)',
                   }}>
-                    <span>{file.name}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', color: '#74FF89' }}>신규</span>
+                      {file.name}
+                    </span>
                     <button
-                      onClick={() => removeFile(idx)}
+                      onClick={() => removeNewFile(idx)}
                       style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: '16px', lineHeight: 1 }}
                     >×</button>
                   </div>
@@ -483,7 +605,6 @@ export default function BlogWritePage() {
             ref={editorRef}
             contentEditable
             suppressContentEditableWarning
-            onInput={handleEditorInput}
             onPaste={handleEditorPaste}
             onDrop={handleEditorDrop}
             onDragOver={e => e.preventDefault()}
@@ -496,8 +617,8 @@ export default function BlogWritePage() {
               caretColor: '#1C5AFF',
             }}
           />
-          {/* Placeholder */}
-          {(!editorRef.current || !editorRef.current.textContent?.trim()) && (
+          {/* Placeholder — editorRef가 비어 있을 때만 표시 */}
+          {!loading && editorRef.current && !editorRef.current.textContent?.trim() && (
             <div
               style={{
                 position: 'absolute', top: '20px', left: '20px',
@@ -519,7 +640,7 @@ export default function BlogWritePage() {
         {/* ── Action buttons ──────────────────────────── */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px', marginBottom: '48px' }}>
           <Link
-            href="/blog"
+            href={`/blog/${id}`}
             style={{
               padding: '10px 24px', borderRadius: '8px',
               border: '1px solid rgba(255,255,255,0.2)', background: 'transparent',
@@ -550,7 +671,7 @@ export default function BlogWritePage() {
               opacity: submitting ? 0.6 : 1,
             }}
           >
-            {submitting ? '등록 중...' : '등록하기'}
+            {submitting ? '수정 중...' : '수정하기'}
           </button>
         </div>
       </div>

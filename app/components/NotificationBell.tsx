@@ -97,7 +97,7 @@ export default function NotificationBell() {
 
   useEffect(() => { setMounted(true) }, [])
 
-  useEffect(() => {
+  const fetchNotifications = () => {
     fetchWithAuth(`${API_URL}/v1/notifications`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -106,7 +106,11 @@ export default function NotificationBell() {
         if (Array.isArray(list)) setAll(list)
       })
       .catch(() => {})
-  }, [])
+  }
+
+  useEffect(() => { fetchNotifications() }, [])
+
+  useEffect(() => { if (open) fetchNotifications() }, [open])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

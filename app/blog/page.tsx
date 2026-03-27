@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import Image from 'next/image'
 import HomeFooter from '@/app/components/HomeFooter'
@@ -16,15 +17,22 @@ interface Post {
   likeCount: number
   commentCount: number
   isFeatured: boolean      // 고정 여부
+  featuredAt?: string | null // 고정된 시각
   publishedAt: string | null
   createdAt: string
-  thumbnail?: string
+  thumbnailUrl?: string | null
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 const PAGE_SIZE = 9
 
-const FALLBACK_IMAGES = ['/blog/blog1.jpg', '/blog/blog2.jpg', '/blog/blog3.jpg']
+const FALLBACK_IMAGE = '/logo_blur.png'
+
+function toFullUrl(url: string | null | undefined): string {
+  if (!url) return FALLBACK_IMAGE
+  if (url.startsWith('http') || url.startsWith('data:')) return url
+  return `${API_URL}${url}`
+}
 
 const CATEGORY_LABEL: Record<Post['category'], string> = {
   KNOWLEDGE: 'Knowledge',
@@ -33,9 +41,9 @@ const CATEGORY_LABEL: Record<Post['category'], string> = {
 }
 
 const CATEGORY_COLOR: Record<Post['category'], { border: string; text: string; bg: string }> = {
-  ACTIVITIES: { border: '#FF4D4D', text: '#FF4D4D', bg: 'rgba(255,77,77,0.08)' },
-  KNOWLEDGE:  { border: '#00C96F', text: '#00C96F', bg: 'rgba(0,201,111,0.08)' },
-  QNA:        { border: '#1C5AFF', text: '#1C5AFF', bg: 'rgba(28,90,255,0.08)' },
+  ACTIVITIES: { border: '#FF9193', text: '#FF9193', bg: 'rgba(255,145,147,0.08)' },
+  KNOWLEDGE:  { border: '#74FF89', text: '#74FF89', bg: 'rgba(116,255,137,0.08)' },
+  QNA:        { border: '#91CDFF', text: '#91CDFF', bg: 'rgba(145,205,255,0.08)' },
 }
 
 const SORT_OPTIONS = ['최신순', '인기순'] as const
@@ -53,10 +61,40 @@ function formatDate(dateStr: string) {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
 }
 
+function sortPosts(list: Post[], sortOption: SortOption): Post[] {
+  return [...list].sort((a, b) => {
+    // 1) 고정 여부 (고정 우선)
+    const pinDiff = (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0)
+    if (pinDiff !== 0) return pinDiff
+    // 2) 둘 다 고정된 경우 → 고정된 시각(featuredAt) 내림차순 (최근 pin이 앞)
+    if (a.isFeatured && b.isFeatured) {
+      const aPin = a.featuredAt ? new Date(a.featuredAt).getTime() : 0
+      const bPin = b.featuredAt ? new Date(b.featuredAt).getTime() : 0
+      if (bPin !== aPin) return bPin - aPin
+    }
+    // 3) 나머지는 선택한 정렬 기준
+    return sortOption === '인기순'
+      ? b.likeCount - a.likeCount
+      : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  })
+}
+
 export default function BlogPage() {
   const { user } = useAuthContext()
   const [posts, setPosts] = useState<Post[]>([])
   const [sort, setSort] = useState<SortOption>('최신순')
+
+  const handlePinToggle = (postId: number, newIsFeatured: boolean) => {
+    setPosts(prev => {
+      const now = new Date().toISOString()
+      const updated = prev.map(p =>
+        p.id === postId
+          ? { ...p, isFeatured: newIsFeatured, featuredAt: newIsFeatured ? now : p.featuredAt }
+          : p
+      )
+      return sortPosts(updated, sort)
+    })
+  }
   const [category, setCategory] = useState<Post['category'] | 'ALL'>('ALL')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -88,10 +126,7 @@ export default function BlogPage() {
         const pageData = json.data
         const list: Post[] = pageData?.content ?? []
 
-        // 클라이언트 정렬 (인기순 = likeCount 내림차순, 최신순 = createdAt 내림차순)
-        const sorted = sort === '인기순'
-          ? [...list].sort((a, b) => b.likeCount - a.likeCount)
-          : [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        const sorted = sortPosts(list, sort)
 
         setPosts(sorted)
         setTotalPages(Math.max(1, pageData?.totalPages ?? 1))
@@ -259,9 +294,10 @@ export default function BlogPage() {
                 <PostCard
                   key={post.id}
                   post={post}
-                  thumb={post.thumbnail ?? FALLBACK_IMAGES[idx % FALLBACK_IMAGES.length]}
+                  thumb={toFullUrl(post.thumbnailUrl)}
                   color={CATEGORY_COLOR[post.category]}
                   user={user}
+                  onPinToggle={handlePinToggle}
                 />
               ))}
             </div>
@@ -317,32 +353,51 @@ export default function BlogPage() {
 }
 
 function PostCard({
-  post, thumb, color, user,
+  post, thumb, color, user, onPinToggle,
 }: {
   post: Post
   thumb: string
   color: { border: string; text: string; bg: string }
   user: import('@/app/context/AuthContext').AuthUser | null
+  onPinToggle: (postId: number, newIsFeatured: boolean) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
   const menuRef = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   const isAdmin = user?.role === 'ADMIN'
   // authorName은 서버 정책으로 변환된 이름이므로 nickname으로 비교 (KNOWLEDGE/QNA 한정)
   const isOwner = user != null && post.authorName === user.nickname
   const menuItems = isAdmin
-    ? ['고정하기', '삭제하기']
+    ? [post.isFeatured ? '해제하기' : '고정하기', '삭제하기']
     : isOwner
     ? ['수정하기', '삭제하기']
     : null
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+      if (menuRef.current && !menuRef.current.contains(e.target as Node) &&
+          btnRef.current && !btnRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
     }
+    const onScroll = () => setMenuOpen(false)
     window.addEventListener('mousedown', handler)
-    return () => window.removeEventListener('mousedown', handler)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      window.removeEventListener('mousedown', handler)
+      window.removeEventListener('scroll', onScroll, true)
+    }
   }, [])
+
+  const handleMenuToggle = (e: React.MouseEvent) => {
+    e.preventDefault()
+    if (!btnRef.current) return
+    const rect = btnRef.current.getBoundingClientRect()
+    setMenuPos({ top: rect.top, left: rect.right + 6 })
+    setMenuOpen(v => !v)
+  }
 
   return (
     <Link
@@ -352,8 +407,9 @@ function PostCard({
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.08)' }}
     >
       {/* Thumbnail */}
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '16/10', overflow: 'hidden' }}>
-        <Image src={thumb} alt={post.title} fill style={{ objectFit: 'cover' }} sizes="(max-width: 1200px) 33vw, 380px" />
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '16/10', overflow: 'hidden', background: thumb === FALLBACK_IMAGE ? 'rgba(20,25,45,0.8)' : undefined }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={thumb} alt={post.title} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: thumb === FALLBACK_IMAGE ? 'contain' : 'cover', padding: thumb === FALLBACK_IMAGE ? '10%' : undefined, opacity: thumb === FALLBACK_IMAGE ? 0.5 : 1 }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 50%, rgba(10,15,30,0.6) 100%)' }} />
         {post.isFeatured && (
           <div style={{ position: 'absolute', top: '12px', right: '12px', width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -370,25 +426,39 @@ function PostCard({
             {post.title}
           </h3>
           {menuItems && (
-            <div ref={menuRef} style={{ position: 'relative', flexShrink: 0 }} onClick={e => e.preventDefault()}>
-              <button onClick={e => { e.preventDefault(); setMenuOpen(v => !v) }}
+            <div style={{ flexShrink: 0 }} onClick={e => e.preventDefault()}>
+              <button ref={btnRef} onClick={handleMenuToggle}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'rgba(255,255,255,0.5)', lineHeight: 1 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                   <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
                 </svg>
               </button>
-              {menuOpen && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 60, minWidth: '110px', padding: '6px', borderRadius: '8px', background: 'rgba(10,15,30,0.92)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {menuOpen && typeof window !== 'undefined' && createPortal(
+                <div ref={menuRef} style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999, minWidth: '110px', display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px', borderRadius: '8px', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}>
                   {menuItems.map(item => (
                     <button key={item}
-                      style={{ background: 'transparent', border: 'none', color: item === '삭제하기' ? 'rgba(255,100,100,0.9)' : 'rgba(255,255,255,0.8)', fontSize: '13px', padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '5px', width: '100%' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.1)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-                      onClick={e => { e.preventDefault(); setMenuOpen(false) }}>
+                      style={{ background: 'rgba(36,36,36,0.8)', border: 'none', color: item === '삭제하기' ? '#f87171' : 'rgba(255,255,255,0.85)', fontSize: '12px', fontWeight: 500, padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '6px', width: '100%' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
+                      onClick={async e => {
+                        e.preventDefault()
+                        setMenuOpen(false)
+                        if (item === '고정하기' || item === '해제하기') {
+                          try {
+                            const res = await fetchWithAuth(`${API_URL}/v1/admin/posts/${post.id}/pin`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ rank: 1 }),
+                            })
+                            if (res.ok) onPinToggle(post.id, !post.isFeatured)
+                          } catch {}
+                        }
+                      }}>
                       {item}
                     </button>
                   ))}
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           )}
