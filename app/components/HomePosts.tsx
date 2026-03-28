@@ -59,12 +59,14 @@ export default function HomePosts() {
       .then((data) => {
         const list: Post[] = Array.isArray(data?.data?.content) ? data.data.content : []
         if (list.length > 0) {
+          let pinTimes: Record<number, number> = {}
+          try { pinTimes = JSON.parse(localStorage.getItem('pinTimes') ?? '{}') } catch {}
           const sorted = [...list].sort((a, b) => {
             const pinDiff = (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0)
             if (pinDiff !== 0) return pinDiff
             if (a.isFeatured && b.isFeatured) {
-              const aPin = a.featuredAt ? new Date(a.featuredAt).getTime() : 0
-              const bPin = b.featuredAt ? new Date(b.featuredAt).getTime() : 0
+              const aPin = pinTimes[a.id] ?? (a.featuredAt ? new Date(a.featuredAt).getTime() : 0)
+              const bPin = pinTimes[b.id] ?? (b.featuredAt ? new Date(b.featuredAt).getTime() : 0)
               if (bPin !== aPin) return bPin - aPin
             }
             return new Date(b.createdAt ?? b.publishedAt).getTime() - new Date(a.createdAt ?? a.publishedAt).getTime()

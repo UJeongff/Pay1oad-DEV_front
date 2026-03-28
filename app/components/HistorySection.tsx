@@ -2,53 +2,84 @@
 
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'
 
+type HistoryItem = {
+  summary: string
+  detail: string
+}
+
 type YearData = {
-  선정: string[]
-  교육: string[]
-  발표: string[]
-  성과: string[]
+  선정: HistoryItem[]
+  교육: HistoryItem[]
+  발표: HistoryItem[]
+  성과: HistoryItem[]
 }
 
 const years = [2018, 2022, 2023, 2024, 2025]
 
 const historyData: Record<number, YearData> = {
   2018: {
-    선정: ['동아리 창립'],
-    교육: ['-'],
-    발표: ['-'],
-    성과: ['-'],
+    선정: [{ summary: '동아리 창립', detail: '동아리 창립' }],
+    교육: [{ summary: '-', detail: '-' }],
+    발표: [{ summary: '-', detail: '-' }],
+    성과: [{ summary: '-', detail: '-' }],
   },
   2022: {
-    선정: ['-'],
-    교육: ['BoB'],
-    발표: ['-'],
-    성과: ['-'],
+    선정: [{ summary: '-', detail: '-' }],
+    교육: [{ summary: 'BoB 수료', detail: 'BoB 수료' }],
+    발표: [{ summary: '-', detail: '-' }],
+    성과: [{ summary: '-', detail: '-' }],
   },
   2023: {
-    선정: ['KUSIC 지원 사업 동아리 선정, Dreamhack Education Plan 선정'],
-    교육: ['BoB 12기 수료: *기 김지성, *기 원신영','WhiteHat School 1기 수료', 'P4C 수료'],
-    발표: ['스마트보안학과 세미나: 7기 이동하'],
-    성과: ['Zero Pointer(이동하, 박우진, 전우진, 정지민) CVE 발급 (CVE-2023-50245)', '정보보호학회장상', '2023 하계/추계 정보보호학회'],
+    선정: [
+      { summary: 'KUSIC 지원 사업 선정', detail: 'KUSIC 지원 사업 동아리 선정' },
+      { summary: 'Dreamhack Education Plan 선정', detail: 'Dreamhack Education Plan 선정' },
+    ],
+    교육: [
+      { summary: 'BoB 수료', detail: 'BoB 12기 수료: *기 김지성, *기 원신영' },
+      { summary: 'WhiteHat School 수료', detail: 'WhiteHat School 1기 수료' },
+      { summary: 'P4C 수료', detail: 'P4C 수료' },
+    ],
+    발표: [
+      { summary: '스마트보안학과 세미나', detail: '스마트보안학과 세미나: 7기 이동하' },
+    ],
+    성과: [
+      { summary: 'CVE 발급', detail: 'Zero Pointer(이동하, 박우진, 전우진, 정지민) CVE 발급 (CVE-2023-50245)' },
+      { summary: '정보보호학회장상', detail: '정보보호학회장상' },
+      { summary: '정보보호학회 참가', detail: '2023 하계/추계 정보보호학회' },
+    ],
   },
   2024: {
-    선정: ['KUSIC 선정'],
-    교육: ['BoB 13기 수료: *기 고재훈, 2기 김대훈, *기 김용진, *기 박우진, *기 이지수', 'WhiteHat School 2기 수료', 'P4C 수료'],
-    발표: ['OB 특강', '2024 KUSIC 권역별 세미나', '제 1회 스보인의 날'],
-    성과: ['2024 동계 한국통신학회'],
+    선정: [
+      { summary: 'KUSIC 선정', detail: 'KUSIC 선정' },
+    ],
+    교육: [
+      { summary: 'BoB 수료', detail: 'BoB 13기 수료: *기 고재훈, 2기 김대훈, *기 김용진, *기 박우진, *기 이지수' },
+      { summary: 'WhiteHat School 수료', detail: 'WhiteHat School 2기 수료' },
+      { summary: 'P4C 수료', detail: 'P4C 수료' },
+    ],
+    발표: [
+      { summary: 'OB 특강', detail: 'OB 특강' },
+      { summary: 'KUSIC 권역별 세미나', detail: '2024 KUSIC 권역별 세미나' },
+      { summary: '제 1회 스보인의 날', detail: '제 1회 스보인의 날' },
+    ],
+    성과: [
+      { summary: '한국통신학회', detail: '2024 동계 한국통신학회' },
+    ],
   },
   2025: {
-    선정: ['-'],
-    교육: ['K-shield 주니어 기초과정 수료', 'KISA Academy 침해사고 대응훈련 수료', 'P4C 시스템 해킹 12기 수료'],
-    발표: ['-'],
-    성과: ['2025 핵테온 세종: 초급 국내 부문 최고 기록 12등'],
+    선정: [{ summary: '-', detail: '-' }],
+    교육: [
+      { summary: 'K-shield 주니어 수료', detail: 'K-shield 주니어 기초과정 수료' },
+      { summary: 'KISA Academy 수료', detail: 'KISA Academy 침해사고 대응훈련 수료' },
+      { summary: 'P4C 수료', detail: 'P4C 시스템 해킹 12기 수료' },
+    ],
+    발표: [{ summary: '-', detail: '-' }],
+    성과: [
+      { summary: '핵테온 세종 12위', detail: '2025 핵테온 세종: 초급 국내 부문 최고 기록 12등' },
+    ],
   },
 }
 
-// 바람개비(핀휠) 그라데이션: 4장 카드를 합쳤을 때 어두운 부분이 회전하며 맞닿도록
-// TL 선정: 어두운 부분 오른쪽 → to left
-// TR 교육: 어두운 부분 아래쪽 → to top
-// BL 발표: 어두운 부분 위쪽  → to bottom
-// BR 논문: 어두운 부분 왼쪽  → to right
 const cardStyles: { gradient: string; rounded: string }[] = [
   { gradient: 'linear-gradient(to left,   #010812 0%, #010812 25%, #1e3d9e 100%)', rounded: 'rounded-tl-2xl' },
   { gradient: 'linear-gradient(to top,    #010812 0%, #010812 25%, #1e3d9e 100%)', rounded: 'rounded-tr-2xl' },
@@ -154,7 +185,7 @@ export default function HistorySection() {
             })}
           </div>
 
-          {/* 수직 연결선: 연도 텍스트 아래에서 카드까지 */}
+          {/* 수직 연결선 */}
           <div
             className="absolute w-px pointer-events-none"
             style={{
@@ -178,29 +209,66 @@ export default function HistorySection() {
               transition: 'margin-left 0.3s ease',
             }}
           >
-            {cardTitles.map((title, i) => (
-              <div
-                key={title}
-                className={`p-5 w-56 ${cardStyles[i].rounded}`}
-                style={{ background: cardStyles[i].gradient }}
-              >
-                <h3 className="text-white font-bold text-sm tracking-wider mb-3 uppercase">
-                  {title}
-                </h3>
-                <ul className="space-y-1.5">
-                  {data[title].map((item, j) => (
-                    <li
-                      key={j}
-                      className="text-white/75 text-sm flex items-start gap-2"
-                      style={{ wordBreak: 'keep-all' }}
-                    >
-                      <span className="mt-[7px] w-1 h-1 rounded-full bg-white/50 flex-shrink-0" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            {cardTitles.map((title, i) => {
+              const isRightCol = i % 2 === 1  // 교육(1), 성과(3) → 우측에 tooltip
+              const isTopRow = i < 2           // 선정(0), 교육(1) → 아래 정렬
+              return (
+                <div key={title} className={`group relative ${isTopRow ? 'self-end' : 'self-start'}`}>
+                  {/* 카드 */}
+                  <div
+                    className={`p-5 w-56 ${cardStyles[i].rounded} cursor-default`}
+                    style={{ background: cardStyles[i].gradient }}
+                  >
+                    <h3 className="text-white font-bold text-sm tracking-wider mb-3 uppercase">
+                      {title}
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {data[title].map((item, j) => (
+                        <li
+                          key={j}
+                          className="text-white/75 text-sm flex items-start gap-2"
+                          style={{ wordBreak: 'keep-all' }}
+                        >
+                          <span className="mt-[7px] w-1 h-1 rounded-full bg-white/50 flex-shrink-0" />
+                          {item.summary}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Tooltip — 카드 바로 옆 빈 공간에 표시 */}
+                  {/* pl/pr로 gap을 내부에 흡수해 hover 영역이 끊기지 않게 함 */}
+                  <div
+                    className={`
+                      absolute top-0 z-20 w-56
+                      opacity-0 pointer-events-none
+                      group-hover:opacity-100 group-hover:pointer-events-auto
+                      transition-opacity duration-200
+                      ${isRightCol
+                        ? 'left-full pl-2'   // 우측 열: 카드 오른쪽에 붙음
+                        : 'right-full pr-2'  // 좌측 열: 카드 왼쪽에 붙음
+                      }
+                    `}
+                  >
+                    <div className="bg-[#0a1628] border border-white/10 rounded-xl p-4 shadow-2xl">
+                      <p className="text-white/40 text-xs font-medium mb-2">{selectedYear} · {title}</p>
+                      <ul className="space-y-2">
+                        {data[title].map((item, j) => (
+                          <li
+                            key={j}
+                            className="text-white/80 text-sm flex items-start gap-2"
+                            style={{ wordBreak: 'keep-all' }}
+                          >
+                            <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-[#1C5AFF]/70 flex-shrink-0" />
+                            {item.detail}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
 

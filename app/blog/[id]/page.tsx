@@ -37,6 +37,7 @@ interface PostDetail {
   authorName: string
   authorId: number
   likeCount: number
+  liked: boolean
   commentCount: number
   isFeatured: boolean
   publishedAt: string | null
@@ -119,6 +120,7 @@ export default function BlogDetailPage() {
         const data: PostDetail = json.data
         setPost(data)
         setLikeCount(data.likeCount)
+        setLiked(data.liked ?? false)
       } catch {
         setNotFound(true)
       } finally {

@@ -113,6 +113,18 @@ export default function NotificationBell() {
   useEffect(() => { if (open) fetchNotifications() }, [open])
 
   useEffect(() => {
+    const es = new EventSource(`${API_URL}/v1/notifications/stream`, { withCredentials: true })
+    es.addEventListener('notification', (e) => {
+      try {
+        const newNotif: Notification = JSON.parse(e.data)
+        setAll((prev) => [newNotif, ...prev])
+      } catch {}
+    })
+    es.onerror = () => { es.close() }
+    return () => { es.close() }
+  }, [])
+
+  useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
         bellRef.current && !bellRef.current.contains(e.target as Node) &&

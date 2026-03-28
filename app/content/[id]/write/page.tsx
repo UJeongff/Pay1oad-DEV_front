@@ -1,0 +1,382 @@
+'use client'
+
+import { useState, useRef, useEffect } from 'react'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import HomeFooter from '@/app/components/HomeFooter'
+import { useAuthContext } from '@/app/context/AuthContext'
+import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+
+function formatDate(d: Date) {
+  return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
+}
+
+function dataURLtoBlob(dataURL: string): Blob {
+  const [header, data] = dataURL.split(',')
+  const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png'
+  const binary = atob(data)
+  const array = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
+  return new Blob([array], { type: mime })
+}
+
+export default function ContentWritePage() {
+  const router = useRouter()
+  const params = useParams()
+  const searchParams = useSearchParams()
+  const { user } = useAuthContext()
+
+  const contentId = params.id as string
+  const isNotice = searchParams.get('notice') === 'true'
+
+  const [contentTitle, setContentTitle] = useState('')
+  const [title, setTitle] = useState('')
+  const [bodyHtml, setBodyHtml] = useState('')
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([])
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const editorRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const today = formatDate(new Date())
+
+  useEffect(() => {
+    fetchWithAuth(`${API_URL}/v1/contents/${contentId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(json => {
+        if (json) setContentTitle(json.data?.title ?? json.title ?? '')
+      })
+      .catch(() => {})
+  }, [contentId])
+
+  // ── 파일 첨부 ──────────────────────────────────────────────────────────────
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return
+    setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)])
+    e.target.value = ''
+  }
+
+  const removeFile = (idx: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  // ── 에디터 이미지 처리 ──────────────────────────────────────────────────────
+
+  const insertImageAsBase64 = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      document.execCommand('insertImage', false, reader.result as string)
+      if (editorRef.current) setBodyHtml(editorRef.current.innerHTML)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleEditorPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = Array.from(e.clipboardData.items)
+    const fileItems = items.filter(item => item.kind === 'file')
+    if (fileItems.length === 0) return
+    e.preventDefault()
+    const otherFiles: File[] = []
+    fileItems.forEach(item => {
+      const file = item.getAsFile()
+      if (!file) return
+      if (item.type.startsWith('image/')) insertImageAsBase64(file)
+      else otherFiles.push(file)
+    })
+    if (otherFiles.length > 0) setAttachedFiles(prev => [...prev, ...otherFiles])
+  }
+
+  const handleEditorDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const files = Array.from(e.dataTransfer.files)
+    files.filter(f => f.type.startsWith('image/')).forEach(f => insertImageAsBase64(f))
+    const others = files.filter(f => !f.type.startsWith('image/'))
+    if (others.length > 0) setAttachedFiles(prev => [...prev, ...others])
+  }
+
+  // ── 제출 ───────────────────────────────────────────────────────────────────
+
+  const handleSubmit = async () => {
+    if (!title.trim()) { setError('제목을 입력해주세요.'); return }
+    const rawContent = editorRef.current?.innerHTML ?? bodyHtml
+    if (!editorRef.current?.textContent?.trim()) { setError('본문을 입력해주세요.'); return }
+    setError(null)
+    setSubmitting(true)
+    try {
+      // base64 이미지 추출 및 placeholder 교체
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(rawContent, 'text/html')
+      const base64Imgs = Array.from(doc.querySelectorAll('img[src^="data:"]'))
+      const pendingFiles: File[] = []
+      base64Imgs.forEach((img, idx) => {
+        const src = img.getAttribute('src')!
+        const blob = dataURLtoBlob(src)
+        const ext = blob.type.split('/')[1] ?? 'png'
+        pendingFiles.push(new File([blob], `image_${idx}.${ext}`, { type: blob.type }))
+        img.setAttribute('src', `__IMG_PLACEHOLDER_${idx}__`)
+      })
+      const placeholderContent = doc.body.innerHTML
+
+      // 게시글 생성
+      const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          content: placeholderContent,
+          isNotice,
+        }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.message ?? '게시글 등록에 실패했습니다.')
+      }
+      const json = await res.json()
+      const postId: number = json.data?.id ?? json.id
+
+      // 에디터 이미지 업로드 및 URL 교체
+      let finalContent = placeholderContent
+      for (let i = 0; i < pendingFiles.length; i++) {
+        const fd = new FormData()
+        fd.append('file', pendingFiles[i])
+        const fileRes = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${postId}/files`, {
+          method: 'POST',
+          body: fd,
+        })
+        if (fileRes.ok) {
+          const fileJson = await fileRes.json()
+          const fileUrl: string = fileJson.data?.fileUrl ?? fileJson.fileUrl ?? ''
+          const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${API_URL}${fileUrl}`
+          finalContent = finalContent.replace(`__IMG_PLACEHOLDER_${i}__`, fullUrl)
+        }
+      }
+
+      // 첨부파일 업로드
+      for (const file of attachedFiles) {
+        const fd = new FormData()
+        fd.append('file', file)
+        await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${postId}/files`, {
+          method: 'POST',
+          body: fd,
+        })
+      }
+
+      // 이미지가 있으면 최종 content로 업데이트
+      if (pendingFiles.length > 0) {
+        await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${postId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: title.trim(), content: finalContent, isNotice }),
+        })
+      }
+
+      router.push(`/content/${contentId}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '오류가 발생했습니다.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const rowStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '10px 0',
+    fontSize: '14px',
+    color: 'rgba(255,255,255,0.7)',
+  }
+
+  const labelStyle: React.CSSProperties = {
+    width: '72px',
+    flexShrink: 0,
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: '13px',
+  }
+
+  return (
+    <main className="relative min-h-screen select-none" style={{ background: '#040d1f' }}>
+
+      {/* Background */}
+      <div
+        className="absolute inset-x-0 top-0 pointer-events-none"
+        style={{
+          height: '60vh',
+          backgroundImage: 'url(/background.png)',
+          backgroundSize: '130%',
+          backgroundPosition: 'center top',
+          backgroundRepeat: 'no-repeat',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 30%, transparent 80%)',
+          maskImage: 'linear-gradient(to bottom, black 30%, transparent 80%)',
+        }}
+      />
+
+      {/* ── Breadcrumb bar ──────────────────────────── */}
+      <div
+        style={{
+          width: '100%', height: '49px',
+          marginTop: '160px',
+          background: 'rgba(0, 65, 239, 0.4)',
+          borderRadius: '100px 100px 0 0',
+          display: 'flex', alignItems: 'center', padding: '0 80px',
+          gap: '6px', fontSize: '13px',
+        }}
+      >
+        <Link href="/content" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
+        >
+          Content
+        </Link>
+        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
+        <Link href={`/content/${contentId}`} style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
+        >
+          {contentTitle || '...'}
+        </Link>
+        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
+        <span style={{ color: '#fff' }}>{isNotice ? '공지 작성하기' : '게시글 작성하기'}</span>
+      </div>
+
+      {/* ── Write form ──────────────────────────────── */}
+      <div className="relative max-w-4xl mx-auto px-[5vw] py-12">
+
+        {/* Notice badge */}
+        {isNotice && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '12px', padding: '4px 12px', borderRadius: '100px', background: 'rgba(28,90,255,0.15)', border: '1px solid rgba(28,90,255,0.35)', color: '#91CDFF', fontSize: '12px', fontWeight: 600 }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            공지
+          </div>
+        )}
+
+        {/* Section label */}
+        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)', marginBottom: '10px' }}>
+          {isNotice ? '공지 작성하기' : '게시글 작성하기'}
+        </p>
+
+        {/* Title input */}
+        <input
+          type="text"
+          placeholder="제목"
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          style={{
+            width: '100%',
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            color: '#fff',
+            fontSize: '28px',
+            fontWeight: 700,
+            marginBottom: '28px',
+            caretColor: '#1C5AFF',
+          }}
+        />
+
+        {/* Meta rows */}
+        <div>
+          {/* Author */}
+          <div style={rowStyle}>
+            <span style={labelStyle}>작성자</span>
+            <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
+            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{user?.nickname ?? '—'}</span>
+          </div>
+
+          {/* Date */}
+          <div style={rowStyle}>
+            <span style={labelStyle}>작성일</span>
+            <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
+            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{today}</span>
+          </div>
+
+          {/* File attachment */}
+          <div style={{ ...rowStyle, alignItems: 'flex-start', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={labelStyle}>파일첨부</span>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: 0 }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                </svg>
+              </button>
+              <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileChange} />
+            </div>
+
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              style={{ width: '100%', padding: '14px 16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)', fontSize: '13px', cursor: 'pointer' }}
+            >
+              첨부할 파일을 선택하세요
+            </div>
+
+            {attachedFiles.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+                {attachedFiles.map((file, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
+                    <span>{file.name}</span>
+                    <button onClick={() => removeFile(idx)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: '16px', lineHeight: 1 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.12)', margin: '16px 0' }} />
+
+        {/* Content editor */}
+        <div style={{ marginTop: '20px', minHeight: '320px', padding: '20px 0', position: 'relative' }}>
+          <div
+            ref={editorRef}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={() => { if (editorRef.current) setBodyHtml(editorRef.current.innerHTML) }}
+            onPaste={handleEditorPaste}
+            onDrop={handleEditorDrop}
+            onDragOver={e => e.preventDefault()}
+            style={{ minHeight: '280px', outline: 'none', color: 'rgba(255,255,255,0.8)', fontSize: '15px', lineHeight: 1.75, caretColor: '#1C5AFF' }}
+          />
+          {(!editorRef.current || !editorRef.current.textContent?.trim()) && (
+            <div style={{ position: 'absolute', top: '20px', left: '20px', color: 'rgba(255,255,255,0.2)', fontSize: '15px', lineHeight: 1.75, pointerEvents: 'none', userSelect: 'none' }}>
+              <p>본문을 작성해 보세요.</p>
+              <p style={{ fontSize: '13px', marginTop: '4px' }}>*이미지는 드롭다운 / 복사 붙여넣기로 첨부할 수 있습니다.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Error */}
+        {error && <p style={{ color: '#FF6060', fontSize: '13px', marginTop: '12px' }}>{error}</p>}
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px', marginBottom: '48px' }}>
+          <Link
+            href={`/content/${contentId}`}
+            style={{ padding: '10px 24px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontWeight: 500, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', transition: 'border-color 0.15s, color 0.15s' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.5)'; (e.currentTarget as HTMLElement).style.color = '#fff' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.2)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.6)' }}
+          >
+            취소
+          </Link>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            style={{ padding: '10px 28px', borderRadius: '8px', border: '0.734px solid rgba(0, 65, 239, 0.6)', background: 'rgba(0, 65, 239, 0.4)', color: '#fff', fontSize: '14px', fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+          >
+            {submitting ? '등록 중...' : '등록하기'}
+          </button>
+        </div>
+      </div>
+
+      <HomeFooter />
+    </main>
+  )
+}

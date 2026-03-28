@@ -61,15 +61,29 @@ function formatDate(dateStr: string) {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
 }
 
+const PIN_TIMES_KEY = 'pinTimes'
+
+function getPinTimes(): Record<number, number> {
+  try { return JSON.parse(localStorage.getItem(PIN_TIMES_KEY) ?? '{}') } catch { return {} }
+}
+
+function setPinTime(postId: number, time: number | null) {
+  const stored = getPinTimes()
+  if (time === null) delete stored[postId]
+  else stored[postId] = time
+  localStorage.setItem(PIN_TIMES_KEY, JSON.stringify(stored))
+}
+
 function sortPosts(list: Post[], sortOption: SortOption): Post[] {
+  const pinTimes = getPinTimes()
   return [...list].sort((a, b) => {
     // 1) 고정 여부 (고정 우선)
     const pinDiff = (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0)
     if (pinDiff !== 0) return pinDiff
-    // 2) 둘 다 고정된 경우 → 고정된 시각(featuredAt) 내림차순 (최근 pin이 앞)
+    // 2) 둘 다 고정된 경우 → 핀한 시각 내림차순 (최근 pin이 앞)
     if (a.isFeatured && b.isFeatured) {
-      const aPin = a.featuredAt ? new Date(a.featuredAt).getTime() : 0
-      const bPin = b.featuredAt ? new Date(b.featuredAt).getTime() : 0
+      const aPin = pinTimes[a.id] ?? (a.featuredAt ? new Date(a.featuredAt).getTime() : 0)
+      const bPin = pinTimes[b.id] ?? (b.featuredAt ? new Date(b.featuredAt).getTime() : 0)
       if (bPin !== aPin) return bPin - aPin
     }
     // 3) 나머지는 선택한 정렬 기준
@@ -85,16 +99,21 @@ export default function BlogPage() {
   const [sort, setSort] = useState<SortOption>('최신순')
 
   const handlePinToggle = (postId: number, newIsFeatured: boolean) => {
+    const now = Date.now()
+    setPinTime(postId, newIsFeatured ? now : null)
     setPosts(prev => {
-      const now = new Date().toISOString()
       const updated = prev.map(p =>
-        p.id === postId
-          ? { ...p, isFeatured: newIsFeatured, featuredAt: newIsFeatured ? now : p.featuredAt }
-          : p
+        p.id === postId ? { ...p, isFeatured: newIsFeatured } : p
       )
       return sortPosts(updated, sort)
     })
   }
+
+  const handleDelete = (postId: number) => {
+    setPosts(prev => prev.filter(p => p.id !== postId))
+  }
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [category, setCategory] = useState<Post['category'] | 'ALL'>('ALL')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -104,10 +123,16 @@ export default function BlogPage() {
   const sortRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
 
-  // 카테고리/정렬 변경 시 첫 페이지로 리셋
-  useEffect(() => { setPage(1) }, [category, sort])
+  // 검색어 디바운스
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 400)
+    return () => clearTimeout(timer)
+  }, [search])
 
-  // 서버사이드 페이지네이션 + 카테고리 필터
+  // 카테고리/정렬/검색 변경 시 첫 페이지로 리셋
+  useEffect(() => { setPage(1) }, [category, sort, debouncedSearch])
+
+  // 서버사이드 페이지네이션 + 카테고리 필터 + 키워드 검색
   useEffect(() => {
     async function fetchPosts() {
       try {
@@ -116,6 +141,7 @@ export default function BlogPage() {
           size: String(PAGE_SIZE),
         })
         if (category !== 'ALL') params.set('category', category)
+        if (debouncedSearch.trim()) params.set('keyword', debouncedSearch.trim())
 
         const res = await fetchWithAuth(`${API_URL}/v1/posts?${params}`, { cache: 'no-store' })
         if (!res.ok) return
@@ -135,7 +161,7 @@ export default function BlogPage() {
       }
     }
     fetchPosts()
-  }, [page, category, sort])
+  }, [page, category, sort, debouncedSearch])
 
   // 드롭다운 외부 클릭 닫기
   useEffect(() => {
@@ -285,28 +311,30 @@ export default function BlogPage() {
 
       {/* ── Card Grid ───────────────────────────────── */}
       <section className="relative py-10" style={{ background: 'rgba(0, 65, 239, 0.05)' }}>
-        <div className="max-w-6xl mx-auto px-[5vw]">
-          {posts.length === 0 ? (
-            <p className="text-white/40 text-center py-20">게시글이 없습니다.</p>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
-              {posts.map((post, idx) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  thumb={toFullUrl(post.thumbnailUrl)}
-                  color={CATEGORY_COLOR[post.category]}
-                  user={user}
-                  onPinToggle={handlePinToggle}
-                />
-              ))}
+        <div className="max-w-6xl mx-auto px-[vw]">
+          {/* 검색 + 작성하기 */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '-5px', marginBottom: '30px' }}>
+            <div
+              className="flex items-center gap-2 px-4 py-2 rounded"
+              style={{
+                background: 'rgba(255,255,255,0.07)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                width: 'clamp(200px, 30vw, 320px)',
+              }}
+            >
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search title"
+                className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/30"
+              />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="11" cy="11" r="7" stroke="rgba(255,255,255,0.45)" strokeWidth="2" />
+                <path d="M16.5 16.5L21 21" stroke="rgba(255,255,255,0.45)" strokeWidth="2" strokeLinecap="round" />
+              </svg>
             </div>
-          )}
-
-          {/* ── Bottom bar ── */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '48px', marginBottom: '48px', gap: '20px' }}>
-            {/* 작성하기 */}
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
+            {user && (
               <Link
                 href="/blog/write"
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', borderRadius: '8px', background: 'transparent', border: '1px solid rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.8)', fontSize: '14px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
@@ -318,8 +346,28 @@ export default function BlogPage() {
                 </svg>
                 작성하기
               </Link>
+            )}
+          </div>
+          {posts.length === 0 ? (
+            <p className="text-white/40 text-center py-20">게시글이 없습니다.</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+              {posts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  thumb={toFullUrl(post.thumbnailUrl)}
+                  color={CATEGORY_COLOR[post.category]}
+                  user={user}
+                  onPinToggle={handlePinToggle}
+                  onDelete={handleDelete}
+                />
+              ))}
             </div>
+          )}
 
+          {/* ── Bottom bar ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '48px', marginBottom: '48px', gap: '20px' }}>
             {/* Pagination */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
@@ -353,13 +401,14 @@ export default function BlogPage() {
 }
 
 function PostCard({
-  post, thumb, color, user, onPinToggle,
+  post, thumb, color, user, onPinToggle, onDelete,
 }: {
   post: Post
   thumb: string
   color: { border: string; text: string; bg: string }
   user: import('@/app/context/AuthContext').AuthUser | null
   onPinToggle: (postId: number, newIsFeatured: boolean) => void
+  onDelete: (postId: number) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
@@ -370,7 +419,7 @@ function PostCard({
   // authorName은 서버 정책으로 변환된 이름이므로 nickname으로 비교 (KNOWLEDGE/QNA 한정)
   const isOwner = user != null && post.authorName === user.nickname
   const menuItems = isAdmin
-    ? [post.isFeatured ? '해제하기' : '고정하기', '삭제하기']
+    ? [post.isFeatured ? '해제하기' : '고정하기', '보관하기', '삭제하기']
     : isOwner
     ? ['수정하기', '삭제하기']
     : null
@@ -451,6 +500,33 @@ function PostCard({
                               body: JSON.stringify({ rank: 1 }),
                             })
                             if (res.ok) onPinToggle(post.id, !post.isFeatured)
+                          } catch {}
+                        } else if (item === '보관하기') {
+                          const postYear = new Date(post.publishedAt ?? post.createdAt).getFullYear()
+                          try {
+                            const yearsRes = await fetchWithAuth(`${API_URL}/v1/archive/years`, { cache: 'no-store' })
+                            const yearsJson = yearsRes.ok ? await yearsRes.json() : {}
+                            const availableYears: number[] = Array.isArray(yearsJson?.data) ? yearsJson.data : []
+                            if (!availableYears.includes(postYear)) {
+                              window.alert(`${postYear}년 아카이브 폴더가 없습니다.\nArchive 페이지에서 먼저 폴더를 생성해주세요.`)
+                              return
+                            }
+                            if (!window.confirm(`이 게시글을 ${postYear}년 아카이브로 보관하시겠습니까?`)) return
+                            const res = await fetchWithAuth(`${API_URL}/v1/admin/posts/${post.id}/archive`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ year: postYear }),
+                            })
+                            if (res.ok) onDelete(post.id)
+                          } catch {}
+                        } else if (item === '삭제하기') {
+                          if (!window.confirm('게시글을 삭제하시겠습니까?')) return
+                          try {
+                            const url = isAdmin
+                              ? `${API_URL}/v1/admin/posts/${post.id}`
+                              : `${API_URL}/v1/posts/${post.id}`
+                            const res = await fetchWithAuth(url, { method: 'DELETE' })
+                            if (res.ok) onDelete(post.id)
                           } catch {}
                         }
                       }}>
