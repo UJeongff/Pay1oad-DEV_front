@@ -93,11 +93,13 @@ export default function HistorySection() {
   const [selectedYear, setSelectedYear] = useState(2025)
   const [lineX, setLineX] = useState(0)
   const [cardMargin, setCardMargin] = useState(0)
+  const [cardHeight, setCardHeight] = useState(0)
   const [ready, setReady] = useState(false)
 
   const yearRefs = useRef<(HTMLButtonElement | null)[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const cardGridRef = useRef<HTMLDivElement>(null)
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([])
 
   const updateLayout = useCallback(() => {
     const idx = years.indexOf(selectedYear)
@@ -117,6 +119,16 @@ export default function HistorySection() {
     const desired = btnCenterX - cardWidth / 2
     const clamped = Math.max(0, Math.min(desired, containerWidth - cardWidth))
     setCardMargin(clamped)
+
+    cardRefs.current.forEach((card) => {
+      if (card) card.style.minHeight = ''
+    })
+
+    const heights = cardRefs.current
+      .map((card) => card?.offsetHeight ?? 0)
+      .filter((height) => height > 0)
+
+    setCardHeight(heights.length > 0 ? Math.max(...heights) : 0)
     setReady(true)
   }, [selectedYear])
 
@@ -216,8 +228,12 @@ export default function HistorySection() {
                 <div key={title} className={`group relative ${isTopRow ? 'self-end' : 'self-start'}`}>
                   {/* 카드 */}
                   <div
-                    className={`p-5 w-56 ${cardStyles[i].rounded} cursor-default`}
-                    style={{ background: cardStyles[i].gradient }}
+                    ref={(el) => { cardRefs.current[i] = el }}
+                    className={`p-5 w-56 h-full ${cardStyles[i].rounded} cursor-default`}
+                    style={{
+                      background: cardStyles[i].gradient,
+                      minHeight: cardHeight || undefined,
+                    }}
                   >
                     <h3 className="text-white font-bold text-sm tracking-wider mb-3 uppercase">
                       {title}

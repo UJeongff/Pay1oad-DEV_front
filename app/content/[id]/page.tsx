@@ -25,11 +25,12 @@ interface ContentDetail {
 }
 
 interface ContentMember {
-  id: number
+  userId: number
   name: string
+  nickname?: string
   studentId?: string
   department?: string
-  role?: 'LEADER' | 'MEMBER'
+  role?: 'team_leader' | 'team_member'
 }
 
 interface ContentPost {
@@ -60,6 +61,14 @@ interface LeaderSubmission {
   submittedAt: string
 }
 
+interface SubmissionFile {
+  id: number
+  originalName: string
+  fileUrl: string
+  mimeType: string
+  fileSize: number
+}
+
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
 function formatDate(dateStr: string) {
@@ -79,8 +88,9 @@ export default function StudyDetailPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [mySubmissionStatuses, setMySubmissionStatuses] = useState<Record<number, string | null>>({})
   const [leaderSubmissions, setLeaderSubmissions] = useState<LeaderSubmission[]>([])
+  const [selectedSub, setSelectedSub] = useState<LeaderSubmission | null>(null)
   const [postPage, setPostPage] = useState(1)
-  const [totalPostPages, setTotalPostPages] = useState(1)
+  const [reportPage, setReportPage] = useState(1)
   const [inviteCopied, setInviteCopied] = useState(false)
   const [inviteLoading, setInviteLoading] = useState(false)
 
@@ -92,10 +102,20 @@ export default function StudyDetailPage() {
   const memberBtnRef = useRef<HTMLButtonElement>(null)
   const memberPanelRef = useRef<HTMLDivElement>(null)
 
+  const [delegateTarget, setDelegateTarget] = useState<ContentMember | null>(null)
+  const [delegateLoading, setDelegateLoading] = useState(false)
+
   const isAdmin = user?.role === 'ADMIN'
   const isLeaderOrAdmin = content?.isLeader || isAdmin
-  const canViewFull = isAdmin || content?.isMember || content?.isLeader
-  const pagedPosts = posts.slice((postPage - 1) * POST_PAGE_SIZE, postPage * POST_PAGE_SIZE)
+  const canViewFull = isAdmin || content?.isMember || content?.isLeader || content?.visibility === 'MEMBER'
+  const isProject = content?.type === 'PROJECT'
+  const noticePosts = posts.filter(p => p.isNotice)
+  const docPosts = posts.filter(p => !p.isNotice)
+  const activePostList = isProject ? noticePosts : posts
+  const pagedPosts = activePostList.slice((postPage - 1) * POST_PAGE_SIZE, postPage * POST_PAGE_SIZE)
+  const computedPostPages = Math.max(1, Math.ceil(activePostList.length / POST_PAGE_SIZE))
+  const pagedReportPosts = docPosts.slice((reportPage - 1) * POST_PAGE_SIZE, reportPage * POST_PAGE_SIZE)
+  const totalReportPages = Math.max(1, Math.ceil(docPosts.length / POST_PAGE_SIZE))
 
   const handleMemberCountClick = async () => {
     if (!memberBtnRef.current) return
@@ -137,6 +157,35 @@ export default function StudyDetailPage() {
       window.removeEventListener('scroll', onScroll, true)
     }
   }, [])
+
+  const handleDelegateLeader = async (member: ContentMember) => {
+    if (delegateLoading) return
+    setDelegateLoading(true)
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/members/delegate`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newLeaderId: member.userId }),
+      })
+      if (!res.ok) return
+      setDelegateTarget(null)
+      setMembersOpen(false)
+      // 멤버 목록과 리더 상태 갱신
+      const [contentRes, membersRes] = await Promise.all([
+        fetchWithAuth(`${API_URL}/v1/contents/${contentId}`).then(r => r.ok ? r.json() : null),
+        fetchWithAuth(`${API_URL}/v1/contents/${contentId}/members`).then(r => r.ok ? r.json() : null),
+      ])
+      const list = membersRes?.data ?? []
+      setMembers(list)
+      if (contentRes) {
+        const data = contentRes.data ?? contentRes
+        setContent({ ...data, memberCount: list.length })
+      }
+    } catch {
+    } finally {
+      setDelegateLoading(false)
+    }
+  }
 
   const handleInviteLink = async () => {
     if (inviteLoading) return
@@ -184,7 +233,6 @@ export default function StudyDetailPage() {
       const sort = (arr: ContentPost[]) => arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       const combined = [...sort(notices), ...sort(docs)]
       setPosts(combined)
-      setTotalPostPages(Math.max(1, Math.ceil(combined.length / POST_PAGE_SIZE)))
     }).catch(() => {})
   }, [contentId])
 
@@ -368,7 +416,7 @@ export default function StudyDetailPage() {
                       ) : (
                         members.map((member, i) => (
                           <div
-                            key={member.id}
+                            key={member.userId}
                             style={{
                               display: 'flex', alignItems: 'center', gap: '10px',
                               padding: '10px 14px',
@@ -383,10 +431,10 @@ export default function StudyDetailPage() {
                             }}>
                               {member.name.charAt(0)}
                             </div>
-                            <div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{ color: '#fff', fontSize: '13px', fontWeight: 600, margin: 0 }}>
                                 {member.name}
-                                {member.role === 'LEADER' && (
+                                {member.role === 'team_leader' && (
                                   <span style={{ marginLeft: '6px', fontSize: '10px', color: '#91CDFF', fontWeight: 500 }}>팀장</span>
                                 )}
                               </p>
@@ -394,6 +442,27 @@ export default function StudyDetailPage() {
                                 {[member.studentId, member.department].filter(Boolean).join(' · ')}
                               </p>
                             </div>
+                            {isLeaderOrAdmin && member.role !== 'team_leader' && (
+                              <button
+                                onClick={() => setDelegateTarget(member)}
+                                title="팀장 권한 전달"
+                                style={{
+                                  background: 'transparent', border: 'none', cursor: 'pointer',
+                                  color: 'rgba(255,255,255,0.3)', padding: '2px', borderRadius: '4px',
+                                  display: 'flex', alignItems: 'center', transition: 'color 0.15s',
+                                  flexShrink: 0,
+                                }}
+                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#FFD166' }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.3)' }}
+                              >
+                                {/* 왕관 아이콘 */}
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M2 20h20M4 20l2-8 6 4 6-4 2 8"/>
+                                  <circle cx="12" cy="7" r="2"/>
+                                  <path d="M4 12l2-4M20 12l-2-4"/>
+                                </svg>
+                              </button>
+                            )}
                           </div>
                         ))
                       )}
@@ -508,7 +577,7 @@ export default function StudyDetailPage() {
                 <path d="M6 1L1 6L6 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-            {Array.from({ length: totalPostPages }, (_, i) => i + 1).map(n => (
+            {Array.from({ length: computedPostPages }, (_, i) => i + 1).map(n => (
               <button
                 key={n}
                 onClick={() => setPostPage(n)}
@@ -520,9 +589,9 @@ export default function StudyDetailPage() {
               </button>
             ))}
             <button
-              onClick={() => setPostPage(p => Math.min(totalPostPages, p + 1))}
-              disabled={postPage === totalPostPages}
-              style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: postPage === totalPostPages ? 'default' : 'pointer', color: postPage === totalPostPages ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.5)', borderRadius: '5px' }}
+              onClick={() => setPostPage(p => Math.min(computedPostPages, p + 1))}
+              disabled={postPage === computedPostPages}
+              style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: postPage === computedPostPages ? 'default' : 'pointer', color: postPage === computedPostPages ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.5)', borderRadius: '5px' }}
             >
               <svg width="6" height="11" viewBox="0 0 7 12" fill="none">
                 <path d="M1 1L6 6L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
@@ -546,24 +615,94 @@ export default function StudyDetailPage() {
                   공지 작성
                 </Link>
               )}
-              <Link
-                href={`/content/${contentId}/write`}
-                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
-                onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.45)'; el.style.color = '#fff' }}
-                onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.color = 'rgba(255,255,255,0.65)' }}
-              >
-                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                  <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-                글쓰기
-              </Link>
+              {!isProject && (
+                <Link
+                  href={`/content/${contentId}/write`}
+                  style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.45)'; el.style.color = '#fff' }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.color = 'rgba(255,255,255,0.65)' }}
+                >
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                    <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                  글쓰기
+                </Link>
+              )}
             </div>
           )}
         </div>
       </section>)}
 
-      {/* ── Assignments Section ─────────────────────────────── */}
-      {canViewFull && (<section className="max-w-5xl mx-auto px-[5vw]" style={{ paddingBottom: '80px' }}>
+      {/* ── Report Section (PROJECT only) ───────────────────── */}
+      {canViewFull && isProject && (<section className="max-w-5xl mx-auto px-[5vw]" style={{ marginBottom: '48px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+          <span style={{ width: '3px', height: '16px', background: '#1C5AFF', borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
+          <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>보고서</h2>
+        </div>
+
+        <div style={{ borderTop: '1px solid rgba(28, 90, 255, 0.5)' }}>
+          {docPosts.length === 0 ? (
+            <p style={{ textAlign: 'center', padding: '48px', color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>
+              보고서가 없습니다.
+            </p>
+          ) : (
+            pagedReportPosts.map(post => (
+              <PostRow key={`${post.kind}-${post.id}`} post={post} contentId={contentId} user={user} isLeaderOrAdmin={!!isLeaderOrAdmin} />
+            ))
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+            <button
+              onClick={() => setReportPage(p => Math.max(1, p - 1))}
+              disabled={reportPage === 1}
+              style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: reportPage === 1 ? 'default' : 'pointer', color: reportPage === 1 ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.5)', borderRadius: '5px' }}
+            >
+              <svg width="6" height="11" viewBox="0 0 7 12" fill="none">
+                <path d="M6 1L1 6L6 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            {Array.from({ length: totalReportPages }, (_, i) => i + 1).map(n => (
+              <button
+                key={n}
+                onClick={() => setReportPage(n)}
+                style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: n === reportPage ? 'rgba(255,255,255,0.1)' : 'transparent', border: 'none', cursor: 'pointer', color: n === reportPage ? '#fff' : 'rgba(255,255,255,0.4)', fontSize: '13px', fontWeight: n === reportPage ? 700 : 400, borderRadius: '5px', transition: 'background 0.15s, color 0.15s' }}
+                onMouseEnter={e => { if (n !== reportPage) (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.75)' }}
+                onMouseLeave={e => { if (n !== reportPage) (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.4)' }}
+              >
+                {n}
+              </button>
+            ))}
+            <button
+              onClick={() => setReportPage(p => Math.min(totalReportPages, p + 1))}
+              disabled={reportPage === totalReportPages}
+              style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: reportPage === totalReportPages ? 'default' : 'pointer', color: reportPage === totalReportPages ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.5)', borderRadius: '5px' }}
+            >
+              <svg width="6" height="11" viewBox="0 0 7 12" fill="none">
+                <path d="M1 1L6 6L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+
+          {user && (
+            <Link
+              href={`/content/${contentId}/write`}
+              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
+              onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.45)'; el.style.color = '#fff' }}
+              onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.color = 'rgba(255,255,255,0.65)' }}
+            >
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+              글쓰기
+            </Link>
+          )}
+        </div>
+      </section>)}
+
+      {/* ── Assignments Section (STUDY only) ────────────────── */}
+      {canViewFull && !isProject && (<section className="max-w-5xl mx-auto px-[5vw]" style={{ paddingBottom: '80px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
           <span style={{ width: '3px', height: '16px', background: '#1C5AFF', borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
           <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>과제</h2>
@@ -588,7 +727,7 @@ export default function StudyDetailPage() {
           {isLeaderOrAdmin ? (
             <>
               {leaderSubmissions.map(s => (
-                <LeaderSubmissionCard key={`${s.assignmentId}-${s.id}`} submission={s} contentId={contentId} />
+                <LeaderSubmissionCard key={`${s.assignmentId}-${s.id}`} submission={s} onSelect={() => setSelectedSub(s)} />
               ))}
               {leaderSubmissions.length === 0 && (
                 <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', padding: '24px 0' }}>제출된 과제가 없습니다.</p>
@@ -608,6 +747,69 @@ export default function StudyDetailPage() {
       </section>)}
 
       <HomeFooter />
+
+      {/* 팀장 권한 전달 확인 모달 */}
+      {delegateTarget && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={() => !delegateLoading && setDelegateTarget(null)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#0D1530', border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: '12px', padding: '28px 32px', width: '340px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFD166" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 20h20M4 20l2-8 6 4 6-4 2 8"/>
+                <circle cx="12" cy="7" r="2"/>
+                <path d="M4 12l2-4M20 12l-2-4"/>
+              </svg>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: '15px' }}>팀장 권한 전달</span>
+            </div>
+            <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '14px', lineHeight: 1.6, margin: '0 0 24px' }}>
+              <strong style={{ color: '#fff' }}>{delegateTarget.name}</strong>님에게 팀장 권한을 전달하시겠습니까?<br />
+              <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>전달 후 본인은 일반 팀원이 됩니다.</span>
+            </p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDelegateTarget(null)}
+                disabled={delegateLoading}
+                style={{ padding: '8px 20px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.6)', fontSize: '13px', cursor: 'pointer' }}
+              >
+                취소
+              </button>
+              <button
+                onClick={() => handleDelegateLeader(delegateTarget)}
+                disabled={delegateLoading}
+                style={{ padding: '8px 20px', borderRadius: '7px', border: '1px solid rgba(255,166,0,0.4)', background: 'rgba(255,166,0,0.15)', color: '#FFD166', fontSize: '13px', fontWeight: 600, cursor: delegateLoading ? 'not-allowed' : 'pointer', opacity: delegateLoading ? 0.6 : 1 }}
+              >
+                {delegateLoading ? '처리 중...' : '전달하기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedSub && (
+        <SubmissionDetailModal
+          submission={selectedSub}
+          contentId={contentId}
+          onClose={() => setSelectedSub(null)}
+          onGraded={(submissionId, status) => {
+            setLeaderSubmissions(prev =>
+              prev.map(s => s.id === submissionId ? { ...s, status } : s)
+            )
+            setSelectedSub(prev => prev && prev.id === submissionId ? { ...prev, status } : prev)
+          }}
+        />
+      )}
     </main>
   )
 }
@@ -796,12 +998,12 @@ function MemberAssignmentCard({ assignment, myStatus, contentId }: { assignment:
 
 // ─── LeaderSubmissionCard ─────────────────────────────────────────────────────
 
-function LeaderSubmissionCard({ submission, contentId }: { submission: LeaderSubmission; contentId: string }) {
+function LeaderSubmissionCard({ submission, onSelect }: { submission: LeaderSubmission; onSelect: () => void }) {
   const s = STATUS_STYLE[submission.status] ?? STATUS_STYLE.PENDING
   return (
-    <Link
-      href={`/content/${contentId}/assignments/${submission.assignmentId}`}
-      style={{ width: '190px', padding: '18px 20px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '6px', transition: 'border-color 0.15s, transform 0.15s', flexShrink: 0 }}
+    <div
+      onClick={onSelect}
+      style={{ width: '190px', padding: '18px 20px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '6px', transition: 'border-color 0.15s, transform 0.15s', flexShrink: 0 }}
       onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.transform = 'translateY(-2px)' }}
       onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.08)'; el.style.transform = 'translateY(0)' }}
     >
@@ -813,6 +1015,265 @@ function LeaderSubmissionCard({ submission, contentId }: { submission: LeaderSub
           {s.label}
         </span>
       </div>
-    </Link>
+    </div>
+  )
+}
+
+// ─── SubmissionDetailModal ────────────────────────────────────────────────────
+
+interface SubmissionFull {
+  id: number
+  assignmentId: number
+  submitterName: string
+  body: string | null
+  status: string
+  feedback: string | null
+  submittedAt: string
+  files: SubmissionFile[]
+}
+
+function SubmissionDetailModal({
+  submission,
+  contentId,
+  onClose,
+  onGraded,
+}: {
+  submission: LeaderSubmission
+  contentId: string
+  onClose: () => void
+  onGraded: (submissionId: number, status: string) => void
+}) {
+  const [full, setFull] = useState<SubmissionFull | null>(null)
+  const [loadingFull, setLoadingFull] = useState(true)
+  const [showGrade, setShowGrade] = useState(false)
+  const [gradeStatus, setGradeStatus] = useState<'O' | 'LATE' | 'X'>('O')
+  const [gradeFeedback, setGradeFeedback] = useState('')
+  const [grading, setGrading] = useState(false)
+  const [gradeError, setGradeError] = useState<string | null>(null)
+
+  // 스크롤 잠금
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
+
+  // ESC 닫기
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  // 상세 데이터 페치
+  useEffect(() => {
+    fetchWithAuth(`${API_URL}/v1/contents/${contentId}/assignments/${submission.assignmentId}/submissions/${submission.id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(json => {
+        const d = json?.data ?? json
+        if (d) {
+          setFull(d)
+          if (d.feedback) setGradeFeedback(d.feedback)
+          if (d.status && d.status !== 'PENDING') setGradeStatus(d.status as 'O' | 'LATE' | 'X')
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingFull(false))
+  }, [contentId, submission.assignmentId, submission.id])
+
+  const handleGrade = async () => {
+    setGradeError(null)
+    setGrading(true)
+    try {
+      const res = await fetchWithAuth(
+        `${API_URL}/v1/contents/${contentId}/assignments/${submission.assignmentId}/submissions/${submission.id}/grade`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: gradeStatus, feedback: gradeFeedback }),
+        }
+      )
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d?.message ?? '평가 저장 실패')
+      }
+      setFull(prev => prev ? { ...prev, status: gradeStatus, feedback: gradeFeedback } : prev)
+      setShowGrade(false)
+      onGraded(submission.id, gradeStatus)
+    } catch (err) {
+      setGradeError(err instanceof Error ? err.message : '오류 발생')
+    } finally {
+      setGrading(false)
+    }
+  }
+
+  const displayStatus = full?.status ?? submission.status
+  const st = STATUS_STYLE[displayStatus] ?? STATUS_STYLE.PENDING
+
+  return createPortal(
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', padding: '24px' }}
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div
+        style={{ width: '100%', maxWidth: '640px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', borderRadius: '16px', background: '#0E1427', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 80px rgba(0,0,0,0.7)', overflow: 'hidden' }}
+        onMouseDown={e => e.stopPropagation()}
+      >
+        {/* ── 헤더 ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '24px 28px 0', gap: '16px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.04em' }}>{submission.assignmentTitle}</span>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#fff', lineHeight: 1.3 }}>
+              {submission.submitterName}
+            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
+                제출일 | {formatDate(submission.submittedAt)}
+              </span>
+              <span style={{ fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '100px', background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>
+                {st.label}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', padding: '4px', lineHeight: 1, flexShrink: 0, fontSize: '20px' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.8)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.4)' }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.07)', margin: '20px 0 0', flexShrink: 0 }} />
+
+        {/* ── 스크롤 바디 ── */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 28px' }}>
+          {loadingFull ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+              <div style={{ width: '28px', height: '28px', border: '2px solid rgba(255,255,255,0.12)', borderTopColor: '#1C5AFF', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+              {/* 제출 내용 */}
+              <div>
+                <p style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>제출 내용</p>
+                {full?.body ? (
+                  <p style={{ margin: 0, fontSize: '14px', color: 'rgba(255,255,255,0.82)', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word', padding: '16px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    {full.body}
+                  </p>
+                ) : (
+                  <p style={{ margin: 0, fontSize: '13px', color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>내용 없음</p>
+                )}
+              </div>
+
+              {/* 첨부 파일 */}
+              {full && full.files.length > 0 && (
+                <div>
+                  <p style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>첨부 파일</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {full.files.map(f => (
+                      <a
+                        key={f.id}
+                        href={f.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', textDecoration: 'none', transition: 'border-color 0.12s' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.18)' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                          </svg>
+                          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.originalName}</span>
+                        </div>
+                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', flexShrink: 0, marginLeft: '8px' }}>
+                          {f.fileSize < 1024 ? `${f.fileSize}B` : f.fileSize < 1048576 ? `${(f.fileSize / 1024).toFixed(1)}KB` : `${(f.fileSize / 1048576).toFixed(1)}MB`}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 기존 피드백 */}
+              {full?.feedback && !showGrade && (
+                <div>
+                  <p style={{ margin: '0 0 10px', fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>피드백</p>
+                  <p style={{ margin: 0, fontSize: '14px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.7, whiteSpace: 'pre-wrap', padding: '16px', borderRadius: '10px', background: 'rgba(28,90,255,0.06)', border: '1px solid rgba(28,90,255,0.18)' }}>
+                    {full.feedback}
+                  </p>
+                </div>
+              )}
+
+              {/* 평가 패널 */}
+              {!showGrade ? (
+                <button
+                  onClick={() => setShowGrade(true)}
+                  style={{ alignSelf: 'flex-start', padding: '8px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'border-color 0.12s, background 0.12s' }}
+                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.35)'; el.style.background = 'rgba(255,255,255,0.05)' }}
+                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.15)'; el.style.background = 'transparent' }}
+                >
+                  평가하기
+                </button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>평가</p>
+
+                  {/* 상태 선택 */}
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {(['O', 'LATE', 'X'] as const).map(v => {
+                      const vs = STATUS_STYLE[v]
+                      const active = gradeStatus === v
+                      return (
+                        <button
+                          key={v}
+                          onClick={() => setGradeStatus(v)}
+                          style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${active ? vs.border : 'rgba(255,255,255,0.1)'}`, background: active ? vs.bg : 'transparent', color: active ? vs.color : 'rgba(255,255,255,0.45)', fontSize: '13px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.12s' }}
+                        >
+                          {v}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* 피드백 텍스트 */}
+                  <textarea
+                    value={gradeFeedback}
+                    onChange={e => setGradeFeedback(e.target.value)}
+                    rows={3}
+                    placeholder="피드백을 입력하세요 (선택)"
+                    style={{ resize: 'none', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '10px 12px', color: '#fff', fontSize: '13px', outline: 'none', lineHeight: 1.6 }}
+                  />
+
+                  {gradeError && <p style={{ margin: 0, fontSize: '12px', color: '#f87171' }}>{gradeError}</p>}
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => { setShowGrade(false); setGradeError(null) }}
+                      style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.5)', fontSize: '13px', cursor: 'pointer' }}
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleGrade}
+                      disabled={grading}
+                      style={{ flex: 2, padding: '9px', borderRadius: '8px', border: 'none', background: '#1C5AFF', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer', opacity: grading ? 0.6 : 1, transition: 'opacity 0.12s' }}
+                    >
+                      {grading ? '저장 중...' : '저장'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>,
+    document.body
   )
 }

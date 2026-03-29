@@ -1,67 +1,38 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import Image from 'next/image'
 import HomeFooter from '@/app/components/HomeFooter'
+import { useAuthContext } from '@/app/context/AuthContext'
+import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface CtfEvent {
   id: number
-  title: string
-  image: string
+  name: string
+  imageUrl: string | null
+  startAt: string
+  endAt: string
+  ctfdUrl: string
+  isPublished: boolean
+  isClickable: boolean
+  description: string | null
   status: 'ongoing' | 'upcoming' | 'ended'
-  startDate: string
-  endDate: string
-  participants: number
-  link?: string
+  participantCount: number
+  joined: boolean
 }
 
-const CTF_EVENTS: CtfEvent[] = [
-  {
-    id: 1,
-    title: '2025 S-개발자 3기 교육생 모집',
-    image: '/ctf1.jpg',
-    status: 'ongoing',
-    startDate: '2026.03.02',
-    endDate: '2026.03.22',
-    participants: 16,
-  },
-  {
-    id: 2,
-    title: 'KNIGHTS 나이츠 모집공고',
-    image: '/ctf2.jpg',
-    status: 'ongoing',
-    startDate: '2026.03.02',
-    endDate: '2026.03.19',
-    participants: 16,
-  },
-  {
-    id: 3,
-    title: 'ENKI REDTEAM CTF\n2026 엔키파이어드랫 채용 연계형 해킹대회',
-    image: '/ctf3.jpg',
-    status: 'upcoming',
-    startDate: '2026.03.02',
-    endDate: '2026.03.22',
-    participants: 14,
-  },
-  {
-    id: 4,
-    title: '2025 S-개발자 3기 교육생 모집',
-    image: '/ctf1.jpg',
-    status: 'ended',
-    startDate: '2026.02.01',
-    endDate: '2026.02.28',
-    participants: 21,
-  },
-  {
-    id: 5,
-    title: 'KNIGHTS 나이츠 모집공고',
-    image: '/ctf2.jpg',
-    status: 'ended',
-    startDate: '2026.01.15',
-    endDate: '2026.02.10',
-    participants: 9,
-  },
-]
+interface CtfEventCreateForm {
+  name: string
+  imageUrl: string
+  startAt: string
+  endAt: string
+  ctfdUrl: string
+  description: string
+  isPublished: boolean
+  isClickable: boolean
+}
 
 const STATUS_LABEL: Record<CtfEvent['status'], string> = {
   ongoing: '진행중',
@@ -69,23 +40,10 @@ const STATUS_LABEL: Record<CtfEvent['status'], string> = {
   ended: '종료',
 }
 
-// 진행중: #0041EF 70%, 진행예정: #949494 70%
 const STATUS_STYLE: Record<CtfEvent['status'], React.CSSProperties> = {
-  ongoing: {
-    background: 'rgba(0, 65, 239, 0.7)',
-    color: '#ffffff',
-    border: 'none',
-  },
-  upcoming: {
-    background: 'rgba(148, 148, 148, 0.7)',
-    color: '#ffffff',
-    border: 'none',
-  },
-  ended: {
-    background: 'rgba(60, 60, 60, 0.7)',
-    color: '#aaaaaa',
-    border: 'none',
-  },
+  ongoing: { background: 'rgba(0, 65, 239, 0.7)', color: '#ffffff', border: 'none' },
+  upcoming: { background: 'rgba(148, 148, 148, 0.7)', color: '#ffffff', border: 'none' },
+  ended: { background: 'rgba(60, 60, 60, 0.7)', color: '#aaaaaa', border: 'none' },
 }
 
 function CalendarIcon() {
@@ -108,7 +66,41 @@ function PersonIcon() {
   )
 }
 
-function CtfCard({ event }: { event: CtfEvent }) {
+function formatDate(iso: string) {
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}.${m}.${day}`
+}
+
+function CtfCard({
+  event,
+  onJoin,
+  isLoggedIn,
+}: {
+  event: CtfEvent
+  onJoin: (id: number) => Promise<void>
+  isLoggedIn: boolean
+}) {
+  const [joining, setJoining] = useState(false)
+
+  const handleJoin = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!isLoggedIn) {
+      alert('참가하기는 로그인 후 이용 가능합니다.')
+      return
+    }
+    setJoining(true)
+    try {
+      await onJoin(event.id)
+    } finally {
+      setJoining(false)
+    }
+  }
+
+  const imgSrc = event.imageUrl && event.imageUrl.trim() !== '' ? event.imageUrl : '/ctf1.jpg'
+
   return (
     <div
       className="flex-shrink-0 w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] rounded-xl overflow-hidden flex flex-col"
@@ -121,11 +113,12 @@ function CtfCard({ event }: { event: CtfEvent }) {
       {/* Image */}
       <div className="relative w-full" style={{ aspectRatio: '2/3' }}>
         <Image
-          src={event.image}
-          alt={event.title}
+          src={imgSrc}
+          alt={event.name}
           fill
           className="object-cover"
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          unoptimized={imgSrc.startsWith('http')}
         />
         {/* Status badge */}
         <span
@@ -142,7 +135,7 @@ function CtfCard({ event }: { event: CtfEvent }) {
           className="text-white text-sm font-semibold leading-snug"
           style={{ wordBreak: 'keep-all', whiteSpace: 'pre-line' }}
         >
-          {event.title}
+          {event.name}
         </h3>
 
         <div className="flex flex-col gap-3 mt-auto">
@@ -155,39 +148,68 @@ function CtfCard({ event }: { event: CtfEvent }) {
               <CalendarIcon />
               <span>End Date</span>
             </div>
-            <span className="text-white/70 text-xs pl-[18px]">{event.startDate}</span>
-            <span className="text-white/70 text-xs pl-[18px]">{event.endDate}</span>
+            <span className="text-white/70 text-xs pl-[18px]">{formatDate(event.startAt)}</span>
+            <span className="text-white/70 text-xs pl-[18px]">{formatDate(event.endAt)}</span>
           </div>
 
           <div className="flex items-center justify-between gap-2 pt-1">
             <div className="flex items-center gap-1 text-xs text-white/50 whitespace-nowrap">
               <PersonIcon />
               <span>참여인원</span>
-              <span className="font-semibold" style={{ color: '#4d7cff' }}>{event.participants}명</span>
+              <span className="font-semibold" style={{ color: '#4d7cff' }}>{event.participantCount}명</span>
             </div>
 
-            <button
-              className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap shrink-0"
-              style={{
-                color: '#ffffff',
-                background: 'transparent',
-                border: '1px solid rgba(255,255,255,0.35)',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)'
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = 'transparent'
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'
-              }}
-              onClick={() => event.link && window.open(event.link, '_blank')}
-            >
-              자세히 알아보기
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                <path d="M7.5 4L13 10L7.5 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* 참가하기 버튼 */}
+              {event.status !== 'ended' && (
+                <button
+                  onClick={handleJoin}
+                  disabled={joining}
+                  className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap"
+                  style={
+                    event.joined
+                      ? { color: '#4d7cff', background: 'rgba(77,124,255,0.15)', border: '1px solid rgba(77,124,255,0.5)' }
+                      : { color: '#ffffff', background: 'transparent', border: '1px solid rgba(255,255,255,0.35)' }
+                  }
+                  onMouseEnter={e => {
+                    if (!event.joined) {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)'
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!event.joined) {
+                      e.currentTarget.style.background = 'transparent'
+                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'
+                    }
+                  }}
+                >
+                  {joining ? '...' : event.joined ? '참가중' : '참가하기'}
+                </button>
+              )}
+
+              {/* 자세히 알아보기 */}
+              {event.isClickable && event.ctfdUrl && (
+                <button
+                  className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap"
+                  style={{ color: '#ffffff', background: 'transparent', border: '1px solid rgba(255,255,255,0.35)' }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'
+                  }}
+                  onClick={() => window.open(event.ctfdUrl, '_blank')}
+                >
+                  바로가기
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                    <path d="M7.5 4L13 10L7.5 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -195,36 +217,271 @@ function CtfCard({ event }: { event: CtfEvent }) {
   )
 }
 
+// 관리자 CTF 생성 모달
+function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [form, setForm] = useState<CtfEventCreateForm>({
+    name: '',
+    imageUrl: '',
+    startAt: '',
+    endAt: '',
+    ctfdUrl: '',
+    description: '',
+    isPublished: true,
+    isClickable: true,
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target
+    setForm(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
+    }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+
+    try {
+      const body = {
+        name: form.name,
+        imageUrl: form.imageUrl || null,
+        startAt: form.startAt ? new Date(form.startAt).toISOString().slice(0, 19) : null,
+        endAt: form.endAt ? new Date(form.endAt).toISOString().slice(0, 19) : null,
+        ctfdUrl: form.ctfdUrl,
+        description: form.description || null,
+        isPublished: form.isPublished,
+        isClickable: form.isClickable,
+      }
+
+      const res = await fetchWithAuth(`${API_URL}/v1/admin/ctf/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data?.message ?? '생성 실패')
+      }
+
+      onCreated()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '생성 중 오류 발생')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl p-6 flex flex-col gap-5"
+        style={{ background: '#0d1b35', border: '1px solid rgba(255,255,255,0.1)' }}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-white font-bold text-lg">CTF 이벤트 추가</h2>
+          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors text-xl leading-none">✕</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-white/60 text-xs font-medium">대회명 *</label>
+            <input
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              required
+              placeholder="예) 2026 Pay1oad CTF"
+              className="rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-blue-500"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-white/60 text-xs font-medium">이미지 URL</label>
+            <input
+              name="imageUrl"
+              value={form.imageUrl}
+              onChange={handleChange}
+              placeholder="https://example.com/image.jpg"
+              className="rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-blue-500"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-white/60 text-xs font-medium">시작일시 *</label>
+              <input
+                name="startAt"
+                type="datetime-local"
+                value={form.startAt}
+                onChange={handleChange}
+                required
+                className="rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', colorScheme: 'dark' }}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-white/60 text-xs font-medium">종료일시 *</label>
+              <input
+                name="endAt"
+                type="datetime-local"
+                value={form.endAt}
+                onChange={handleChange}
+                required
+                className="rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', colorScheme: 'dark' }}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-white/60 text-xs font-medium">CTFd URL *</label>
+            <input
+              name="ctfdUrl"
+              value={form.ctfdUrl}
+              onChange={handleChange}
+              required
+              placeholder="https://ctfd.pay1oad.com"
+              className="rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-blue-500"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-white/60 text-xs font-medium">설명</label>
+            <textarea
+              name="description"
+              value={form.description}
+              onChange={handleChange}
+              rows={3}
+              placeholder="대회 설명을 입력하세요"
+              className="rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 outline-none resize-none focus:border-blue-500"
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
+            />
+          </div>
+
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 text-white/60 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                name="isPublished"
+                checked={form.isPublished}
+                onChange={handleChange}
+                className="accent-blue-500"
+              />
+              공개
+            </label>
+            <label className="flex items-center gap-2 text-white/60 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                name="isClickable"
+                checked={form.isClickable}
+                onChange={handleChange}
+                className="accent-blue-500"
+              />
+              링크 활성화
+            </label>
+          </div>
+
+          {error && <p className="text-red-400 text-xs">{error}</p>}
+
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-lg text-sm text-white/60 transition-colors"
+              style={{ border: '1px solid rgba(255,255,255,0.12)' }}
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-50"
+              style={{ background: '#1C5AFF' }}
+            >
+              {loading ? '생성 중...' : '생성'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function CTFPage() {
+  const { user } = useAuthContext()
+  const [events, setEvents] = useState<CtfEvent[]>([])
+  const [loading, setLoading] = useState(true)
   const [index, setIndex] = useState(0)
-  const total = CTF_EVENTS.length
-  const perPage = 3
-  const maxIndex = Math.max(0, total - perPage)
+  const [showCreateModal, setShowCreateModal] = useState(false)
   const wheelAccum = useRef(0)
+
+  const perPage = 3
+  const total = events.length
+  const maxIndex = Math.max(0, total - perPage)
+
+  const fetchEvents = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/v1/ctf/events`, { credentials: 'include' })
+      if (!res.ok) throw new Error()
+      const json = await res.json()
+      setEvents(json.data ?? [])
+    } catch {
+      setEvents([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchEvents()
+  }, [fetchEvents])
 
   const prev = useCallback(() => setIndex(i => Math.max(0, i - 1)), [])
   const next = useCallback(() => setIndex(i => Math.min(maxIndex, i + 1)), [maxIndex])
 
-  const visible = CTF_EVENTS.slice(index, index + perPage)
+  const visible = events.slice(index, index + perPage)
 
-  // 트랙패드/마우스휠 스크롤로 캐러셀 이동
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    // 수평 스크롤만 처리
     if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return
     wheelAccum.current += e.deltaX
-    if (wheelAccum.current > 80) {
-      wheelAccum.current = 0
-      next()
-    } else if (wheelAccum.current < -80) {
-      wheelAccum.current = 0
-      prev()
-    }
+    if (wheelAccum.current > 80) { wheelAccum.current = 0; next() }
+    else if (wheelAccum.current < -80) { wheelAccum.current = 0; prev() }
   }, [next, prev])
+
+  const handleJoin = useCallback(async (eventId: number) => {
+    const res = await fetchWithAuth(`${API_URL}/v1/ctf/events/${eventId}/join`, { method: 'POST' })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      alert(data?.message ?? '오류가 발생했습니다.')
+      return
+    }
+    const json = await res.json()
+    const { joined, participantCount } = json.data
+
+    setEvents(prev =>
+      prev.map(e => e.id === eventId ? { ...e, joined, participantCount } : e)
+    )
+  }, [])
+
+  const isAdmin = user?.role === 'ADMIN'
 
   return (
     <main className="relative min-h-screen select-none" style={{ background: '#040d1f' }}>
 
-      {/* Background image — main 레벨에서 상단 고정 */}
+      {/* Background */}
       <div
         className="absolute inset-x-0 top-0 pointer-events-none"
         style={{
@@ -238,11 +495,8 @@ export default function CTFPage() {
         }}
       />
 
-      {/* ── Hero ──────────────────────────────────────── */}
+      {/* Hero */}
       <section className="relative flex flex-col items-center justify-center text-center pt-46 pb-25 px-6">
-
-
-        {/* Asterisk + Title */}
         <div className="relative z-10 flex flex-col items-start mb-5">
           <svg width="28" height="28" viewBox="0 0 20 20" fill="none" className="mb-2 ml-1">
             <path
@@ -264,28 +518,23 @@ export default function CTFPage() {
           </h1>
         </div>
 
-        <p
-          className="relative z-10 text-white/75 font-medium mb-3"
-          style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.05rem)' }}
-        >
+        <p className="relative z-10 text-white/75 font-medium mb-3" style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.05rem)' }}>
           동아리내의 대회 소식들을 공유하는 페이지입니다.
         </p>
-        <p
-          className="relative z-10 text-white/40 text-sm leading-relaxed"
-        >
+        <p className="relative z-10 text-white/40 text-sm leading-relaxed">
           다양한 보안 및 개발 대회 소식을 실시간으로 공유하고 함께 도전하는 공간입니다.<br />
           팀원을 모집하거나 기출 문제를 나누며 함께 성장해 보세요!
         </p>
       </section>
 
-      {/* ── Events Carousel ───────────────────────────── */}
+      {/* Events Carousel */}
       <section className="pb-32">
         <div className="max-w-5xl mx-auto px-[5vw]">
 
-          {/* Dot indicators */}
-          {maxIndex > 0 && (
-            <div className="flex justify-center gap-2 mb-8">
-              {Array.from({ length: maxIndex + 1 }).map((_, i) => (
+          {/* 상단: 도트 인디케이터 + 관리자 추가 버튼 */}
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex gap-2">
+              {maxIndex > 0 && Array.from({ length: maxIndex + 1 }).map((_, i) => (
                 <button
                   key={i}
                   onClick={() => setIndex(i)}
@@ -298,14 +547,26 @@ export default function CTFPage() {
                 />
               ))}
             </div>
-          )}
 
+            {isAdmin && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center gap-2 text-xs font-medium px-4 py-2 rounded-full transition-all"
+                style={{ background: 'rgba(28,90,255,0.2)', border: '1px solid rgba(28,90,255,0.5)', color: '#4d7cff' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(28,90,255,0.35)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(28,90,255,0.2)' }}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                CTF 추가
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Cards + side arrows */}
         <div className="relative max-w-5xl mx-auto px-[5vw]" onWheel={handleWheel}>
-
-          {/* Left arrow — 카드 영역 좌측에 겹침 */}
           <button
             onClick={prev}
             disabled={index === 0}
@@ -323,7 +584,6 @@ export default function CTFPage() {
             </svg>
           </button>
 
-          {/* Right arrow — 카드 영역 우측에 겹침 */}
           <button
             onClick={next}
             disabled={index >= maxIndex}
@@ -341,17 +601,39 @@ export default function CTFPage() {
             </svg>
           </button>
 
-          {/* Cards */}
-          <div className="flex gap-6">
-            {visible.map(event => (
-              <CtfCard key={event.id} event={event} />
-            ))}
-          </div>
+          {loading ? (
+            <div className="flex justify-center py-20">
+              <div className="w-8 h-8 border-2 border-white/20 border-t-blue-500 rounded-full animate-spin" />
+            </div>
+          ) : events.length === 0 ? (
+            <div className="flex flex-col items-center py-20 gap-3">
+              <p className="text-white/30 text-sm">등록된 CTF 이벤트가 없습니다.</p>
+            </div>
+          ) : (
+            <div className="flex gap-6">
+              {visible.map(event => (
+                <CtfCard
+                  key={event.id}
+                  event={event}
+                  onJoin={handleJoin}
+                  isLoggedIn={!!user}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
-      {/* ── Footer ────────────────────────────────────── */}
+      {/* Footer */}
       <HomeFooter />
+
+      {/* 관리자 생성 모달 */}
+      {showCreateModal && (
+        <CreateCtfModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={fetchEvents}
+        />
+      )}
     </main>
   )
 }

@@ -13,6 +13,17 @@ function formatDate(d: Date) {
   return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
 }
 
+function toIsoDate(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+interface NoticeMember {
+  userId: number
+  name: string
+  nickname?: string
+  role?: string
+}
+
 function dataURLtoBlob(dataURL: string): Blob {
   const [header, data] = dataURL.split(',')
   const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png'
@@ -38,6 +49,14 @@ export default function ContentWritePage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // 공지 전용 상태
+  const defaultStart = toIsoDate(new Date())
+  const defaultEnd = toIsoDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
+  const [startAt, setStartAt] = useState(defaultStart)
+  const [endAt, setEndAt] = useState(defaultEnd)
+  const [members, setMembers] = useState<NoticeMember[]>([])
+  const [selectedRecipients, setSelectedRecipients] = useState<number[]>([]) // 빈 배열 = 전체
+
   const editorRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const today = formatDate(new Date())
@@ -50,6 +69,24 @@ export default function ContentWritePage() {
       })
       .catch(() => {})
   }, [contentId])
+
+  // 공지 작성 시 멤버 목록 로드
+  useEffect(() => {
+    if (!isNotice) return
+    fetchWithAuth(`${API_URL}/v1/contents/${contentId}/members`)
+      .then(r => r.ok ? r.json() : null)
+      .then(json => {
+        const list: NoticeMember[] = json?.data ?? []
+        setMembers(list.filter(m => m.role !== 'team_leader'))
+      })
+      .catch(() => {})
+  }, [contentId, isNotice])
+
+  const toggleRecipient = (userId: number) => {
+    setSelectedRecipients(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    )
+  }
 
   // ── 파일 첨부 ──────────────────────────────────────────────────────────────
 
@@ -103,9 +140,34 @@ export default function ContentWritePage() {
     if (!title.trim()) { setError('제목을 입력해주세요.'); return }
     const rawContent = editorRef.current?.innerHTML ?? bodyHtml
     if (!editorRef.current?.textContent?.trim()) { setError('본문을 입력해주세요.'); return }
+    if (isNotice && !startAt) { setError('시작 날짜를 선택해주세요.'); return }
+    if (isNotice && !endAt) { setError('종료 날짜를 선택해주세요.'); return }
+    if (isNotice && endAt < startAt) { setError('종료 날짜는 시작 날짜 이후여야 합니다.'); return }
     setError(null)
     setSubmitting(true)
     try {
+      if (isNotice) {
+        // ── 공지 전용 API ──────────────────────────────────────
+        const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/notices`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: title.trim(),
+            content: rawContent,
+            startAt,
+            endAt,
+            recipientIds: selectedRecipients.length > 0 ? selectedRecipients : null,
+          }),
+        })
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}))
+          throw new Error(json?.message ?? '공지 등록에 실패했습니다.')
+        }
+        router.push(`/content/${contentId}`)
+        return
+      }
+
+      // ── 일반 게시글 ────────────────────────────────────────
       // base64 이미지 추출 및 placeholder 교체
       const parser = new DOMParser()
       const doc = parser.parseFromString(rawContent, 'text/html')
@@ -120,14 +182,13 @@ export default function ContentWritePage() {
       })
       const placeholderContent = doc.body.innerHTML
 
-      // 게시글 생성
       const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: title.trim(),
           content: placeholderContent,
-          isNotice,
+          isNotice: false,
         }),
       })
       if (!res.ok) {
@@ -137,7 +198,6 @@ export default function ContentWritePage() {
       const json = await res.json()
       const postId: number = json.data?.id ?? json.id
 
-      // 에디터 이미지 업로드 및 URL 교체
       let finalContent = placeholderContent
       for (let i = 0; i < pendingFiles.length; i++) {
         const fd = new FormData()
@@ -154,7 +214,6 @@ export default function ContentWritePage() {
         }
       }
 
-      // 첨부파일 업로드
       for (const file of attachedFiles) {
         const fd = new FormData()
         fd.append('file', file)
@@ -164,12 +223,11 @@ export default function ContentWritePage() {
         })
       }
 
-      // 이미지가 있으면 최종 content로 업데이트
       if (pendingFiles.length > 0) {
         await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${postId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), content: finalContent, isNotice }),
+          body: JSON.stringify({ title: title.trim(), content: finalContent, isNotice: false }),
         })
       }
 
@@ -294,6 +352,86 @@ export default function ContentWritePage() {
             <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
             <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{today}</span>
           </div>
+
+          {/* 공지 전용: 날짜 선택 */}
+          {isNotice && (
+            <>
+              <div style={rowStyle}>
+                <span style={labelStyle}>시작 날짜</span>
+                <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
+                <input
+                  type="date"
+                  value={startAt}
+                  onChange={e => setStartAt(e.target.value)}
+                  style={{
+                    background: 'transparent', border: 'none', outline: 'none',
+                    color: 'rgba(255,255,255,0.7)', fontSize: '14px',
+                    colorScheme: 'dark', cursor: 'pointer',
+                  }}
+                />
+              </div>
+              <div style={rowStyle}>
+                <span style={labelStyle}>종료 날짜</span>
+                <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
+                <input
+                  type="date"
+                  value={endAt}
+                  onChange={e => setEndAt(e.target.value)}
+                  min={startAt}
+                  style={{
+                    background: 'transparent', border: 'none', outline: 'none',
+                    color: 'rgba(255,255,255,0.7)', fontSize: '14px',
+                    colorScheme: 'dark', cursor: 'pointer',
+                  }}
+                />
+              </div>
+
+              {/* 수신자 선택 */}
+              <div style={{ ...rowStyle, alignItems: 'flex-start', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={labelStyle}>알림 수신</span>
+                  <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
+                    {selectedRecipients.length === 0
+                      ? '전체 팀원'
+                      : `${selectedRecipients.length}명 선택됨`}
+                  </span>
+                  {selectedRecipients.length > 0 && (
+                    <button
+                      onClick={() => setSelectedRecipients([])}
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.35)', fontSize: '12px', padding: 0 }}
+                    >
+                      전체 해제
+                    </button>
+                  )}
+                </div>
+                {members.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', paddingLeft: '0' }}>
+                    {members.map(m => {
+                      const selected = selectedRecipients.includes(m.userId)
+                      return (
+                        <button
+                          key={m.userId}
+                          onClick={() => toggleRecipient(m.userId)}
+                          style={{
+                            padding: '4px 12px', borderRadius: '100px', fontSize: '12px', cursor: 'pointer',
+                            border: `1px solid ${selected ? 'rgba(28,90,255,0.6)' : 'rgba(255,255,255,0.15)'}`,
+                            background: selected ? 'rgba(28,90,255,0.2)' : 'transparent',
+                            color: selected ? '#91CDFF' : 'rgba(255,255,255,0.5)',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {m.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>
+                  선택하지 않으면 전체 팀원에게 알림이 전송됩니다.
+                </p>
+              </div>
+            </>
+          )}
 
           {/* File attachment */}
           <div style={{ ...rowStyle, alignItems: 'flex-start', flexDirection: 'column', gap: '10px' }}>

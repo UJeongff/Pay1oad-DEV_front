@@ -159,25 +159,15 @@ export default function BlogDetailPage() {
     }
   }
 
-  const fetchMentionSuggestions = useCallback((query: string) => {
+  const fetchMentionSuggestions = useCallback(async (query: string) => {
     if (!query) { setMentionSuggestions([]); return }
-    // 현재 게시글의 댓글 작성자들 중에서 필터링
-    const seen = new Set<number>()
-    const pool: { id: number; nickname: string }[] = []
-    const collect = (list: Comment[]) => {
-      for (const c of list) {
-        if (c.authorId != null && c.authorName && !seen.has(c.authorId)) {
-          seen.add(c.authorId)
-          pool.push({ id: c.authorId, nickname: c.authorName })
-        }
-        if (c.replies) collect(c.replies)
-      }
-    }
-    collect(comments)
-    const q = query.toLowerCase()
-    const filtered = pool.filter(u => u.nickname.toLowerCase().startsWith(q)).slice(0, 8)
-    setMentionSuggestions(filtered)
-  }, [comments])
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/users/mention?q=${encodeURIComponent(query)}`)
+      if (!res.ok) return
+      const json = await res.json()
+      setMentionSuggestions(json.data ?? [])
+    } catch {}
+  }, [])
 
   const handleCommentInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
