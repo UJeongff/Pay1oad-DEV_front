@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
@@ -70,66 +72,248 @@ const PersonIcon = (
   </svg>
 )
 
-function ContentCard({ content, slot }: { content: Content; slot: typeof SLOTS[number] }) {
+// ── Admin 3-dot menu for ContentCard ──────────────────────────────────────────
+
+function ContentCardMenu({
+  content,
+  onDeleted,
+  onArchived,
+}: {
+  content: Content
+  onDeleted: (id: number) => void
+  onArchived: (id: number) => void
+}) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) setOpen(false)
+    }
+    const onScroll = () => setOpen(false)
+    window.addEventListener('mousedown', handler)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      window.removeEventListener('mousedown', handler)
+      window.removeEventListener('scroll', onScroll, true)
+    }
+  }, [])
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!btnRef.current) return
+    const rect = btnRef.current.getBoundingClientRect()
+    setPos({ top: rect.bottom + 4, left: rect.right - 120 })
+    setOpen(v => !v)
+  }
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setOpen(false)
+    router.push(`/content/${content.id}/edit`)
+  }
+
+  const handleArchive = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    setOpen(false)
+    if (!window.confirm(`"${content.title}"을(를) 보관하시겠습니까?\n아카이브의 ${new Date(content.createdAt).getFullYear()}년 폴더에 저장됩니다.`)) return
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/contents/${content.id}/archive`, { method: 'POST' })
+      if (res.ok) {
+        onArchived(content.id)
+      } else {
+        const json = await res.json().catch(() => ({}))
+        alert(json?.message ?? '보관에 실패했습니다.')
+      }
+    } catch {
+      alert('보관 중 오류가 발생했습니다.')
+    }
+  }
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    setOpen(false)
+    if (!window.confirm(`"${content.title}"을(를) 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/contents/${content.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        onDeleted(content.id)
+      } else {
+        const json = await res.json().catch(() => ({}))
+        alert(json?.message ?? '삭제에 실패했습니다.')
+      }
+    } catch {
+      alert('삭제 중 오류가 발생했습니다.')
+    }
+  }
+
+  const itemStyle: React.CSSProperties = {
+    background: 'rgba(36,36,36,0.8)',
+    border: 'none',
+    fontSize: '12px',
+    fontWeight: 500,
+    padding: '7px 12px',
+    textAlign: 'left',
+    cursor: 'pointer',
+    borderRadius: '6px',
+    width: '100%',
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={handleToggle}
+        title="메뉴"
+        style={{
+          position: 'absolute', top: '10px', right: '10px',
+          background: 'rgba(0,0,0,0.25)', border: 'none', borderRadius: '6px',
+          cursor: 'pointer', padding: '5px 6px', color: 'rgba(255,255,255,0.7)',
+          display: 'flex', alignItems: 'center', zIndex: 1,
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.5)' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.25)' }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+        </svg>
+      </button>
+      {open && typeof window !== 'undefined' && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999,
+            minWidth: '120px', display: 'flex', flexDirection: 'column', gap: '4px',
+            padding: '6px', borderRadius: '8px',
+            background: 'rgba(8,12,28,0.97)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          }}
+        >
+          <button
+            style={{ ...itemStyle, color: 'rgba(255,255,255,0.82)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
+            onClick={handleEdit}
+          >
+            수정하기
+          </button>
+          <button
+            style={{ ...itemStyle, color: '#91CDFF' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
+            onClick={handleArchive}
+          >
+            보관하기
+          </button>
+          <button
+            style={{ ...itemStyle, color: '#f87171' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
+            onClick={handleDelete}
+          >
+            삭제하기
+          </button>
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
+
+// ── ContentCard ───────────────────────────────────────────────────────────────
+
+function ContentCard({
+  content,
+  slot,
+  isAdmin,
+  onDeleted,
+  onArchived,
+}: {
+  content: Content
+  slot: typeof SLOTS[number]
+  isAdmin: boolean
+  onDeleted: (id: number) => void
+  onArchived: (id: number) => void
+}) {
   const vs = VS[slot.variant]
   const isBlue = slot.variant === 'blue'
 
   return (
-    <Link
-      href={`/content/${content.id}`}
+    <div
       style={{
         ...gridPos(slot),
-        display: 'flex', flexDirection: 'column',
-        borderRadius: '16px',
-        padding: isBlue ? '24px' : '20px',
-        background: vs.bg,
-        textDecoration: 'none',
-        overflow: 'hidden',
-        transition: 'transform 0.2s, box-shadow 0.2s',
-        cursor: 'pointer',
-      }}
-      onMouseEnter={e => {
-        const el = e.currentTarget as HTMLElement
-        el.style.transform = 'translateY(-3px)'
-        el.style.boxShadow = '0 16px 48px rgba(0,0,0,0.35)'
-      }}
-      onMouseLeave={e => {
-        const el = e.currentTarget as HTMLElement
-        el.style.transform = 'translateY(0)'
-        el.style.boxShadow = 'none'
+        position: 'relative',
       }}
     >
-      <h3 style={{
-        color: vs.title,
-        fontSize: isBlue ? '1.4rem' : '1.2rem',
-        fontWeight: 900,
-        letterSpacing: '0.02em',
-        textTransform: 'uppercase',
-        lineHeight: 1.15,
-        fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif",
-        flex: isBlue ? 1 : undefined,
-        marginBottom: isBlue ? 0 : 'auto',
-        paddingBottom: isBlue ? 0 : '12px',
-      }}>
-        {content.title}
-      </h3>
+      <Link
+        href={`/content/${content.id}`}
+        style={{
+          display: 'flex', flexDirection: 'column',
+          height: '100%',
+          borderRadius: '16px',
+          padding: isBlue ? '24px' : '20px',
+          background: vs.bg,
+          textDecoration: 'none',
+          overflow: 'hidden',
+          transition: 'transform 0.2s, box-shadow 0.2s',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={e => {
+          const el = e.currentTarget as HTMLElement
+          el.style.transform = 'translateY(-3px)'
+          el.style.boxShadow = '0 16px 48px rgba(0,0,0,0.35)'
+        }}
+        onMouseLeave={e => {
+          const el = e.currentTarget as HTMLElement
+          el.style.transform = 'translateY(0)'
+          el.style.boxShadow = 'none'
+        }}
+      >
+        <h3 style={{
+          color: vs.title,
+          fontSize: isBlue ? '1.4rem' : '1.2rem',
+          fontWeight: 900,
+          letterSpacing: '0.02em',
+          textTransform: 'uppercase',
+          lineHeight: 1.15,
+          fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif",
+          flex: isBlue ? 1 : undefined,
+          marginBottom: isBlue ? 0 : 'auto',
+          paddingBottom: isBlue ? 0 : '12px',
+          paddingRight: isAdmin ? '28px' : 0,
+        }}>
+          {content.title}
+        </h3>
 
-      <div>
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: content.description ? '10px' : 0 }}>
-          <Badge label={content.type === 'STUDY' ? 'Study' : 'Project'} vs={vs} />
-          <Badge label={content.visibility === 'MEMBER' ? 'All Member' : 'Only Team'} icon={PersonIcon} vs={vs} />
+        <div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: content.description ? '10px' : 0 }}>
+            <Badge label={content.type === 'STUDY' ? 'Study' : 'Project'} vs={vs} />
+            <Badge label={content.visibility === 'MEMBER' ? 'All Member' : 'Only Team'} icon={PersonIcon} vs={vs} />
+          </div>
+          {content.description && (
+            <p style={{
+              color: vs.text, fontSize: '12px', lineHeight: 1.65,
+              display: '-webkit-box', WebkitLineClamp: slot.span === 2 ? 6 : 3,
+              WebkitBoxOrient: 'vertical' as const, overflow: 'hidden',
+            }}>
+              {content.description}
+            </p>
+          )}
         </div>
-        {content.description && (
-          <p style={{
-            color: vs.text, fontSize: '12px', lineHeight: 1.65,
-            display: '-webkit-box', WebkitLineClamp: slot.span === 2 ? 6 : 3,
-            WebkitBoxOrient: 'vertical' as const, overflow: 'hidden',
-          }}>
-            {content.description}
-          </p>
-        )}
-      </div>
-    </Link>
+      </Link>
+      {isAdmin && (
+        <ContentCardMenu content={content} onDeleted={onDeleted} onArchived={onArchived} />
+      )}
+    </div>
   )
 }
 
@@ -184,6 +368,8 @@ export default function ContentPage() {
         const data = await res.json()
         const list = data.data ?? data.content ?? data
         const arr: Content[] = Array.isArray(list) ? list : []
+        // 오래된순 정렬 (createdAt 오름차순)
+        arr.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
         setAllContents(arr)
       } catch {
         setAllContents([])
@@ -191,6 +377,14 @@ export default function ContentPage() {
     }
     load()
   }, [])
+
+  const handleDeleted = (id: number) => {
+    setAllContents(prev => prev.filter(c => c.id !== id))
+  }
+
+  const handleArchived = (id: number) => {
+    setAllContents(prev => prev.filter(c => c.id !== id))
+  }
 
   const isAdmin = user?.role === 'ADMIN'
   const visibleContents = allContents.filter(c =>
@@ -285,14 +479,16 @@ export default function ContentPage() {
             </Link>
           </div>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gridAutoRows: '220px',
-            gap: '16px',
-          }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-[220px]">
             {pageContents.map((content, i) => (
-              <ContentCard key={content.id} content={content} slot={SLOTS[i]} />
+              <ContentCard
+                key={content.id}
+                content={content}
+                slot={SLOTS[i]}
+                isAdmin={isAdmin}
+                onDeleted={handleDeleted}
+                onArchived={handleArchived}
+              />
             ))}
             {createSlot && <PlaceholderCard slot={createSlot} />}
           </div>

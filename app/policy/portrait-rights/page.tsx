@@ -21,7 +21,7 @@ export default function PortraitRightsPage() {
       <div className="relative z-10 flex items-center justify-center min-h-screen pt-20 pb-16 px-[8.5vw]">
 
         <div
-          className="w-full flex flex-col py-12 px-12 relative overflow-hidden"
+          className="w-full flex flex-col py-12 px-6 sm:px-10 lg:px-12 relative overflow-hidden"
           style={{
             maxWidth: '860px',
             background: 'rgba(0,0,0,0.50)',

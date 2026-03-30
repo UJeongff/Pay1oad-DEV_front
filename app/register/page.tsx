@@ -347,7 +347,7 @@ export default function RegisterPage() {
             style={{ opacity: 0.03, top: '-10px', left: '314px' }}
           />
 
-          <div style={{ width: 'min(860px, 100%)', padding: '0 24px', minHeight: '480px', display: 'flex', flexDirection: 'column', justifyContent: signupDone ? 'center' : 'flex-start' }}>
+          <div className="w-full px-4 sm:px-6 flex flex-col" style={{ maxWidth: '860px', minHeight: '480px', justifyContent: signupDone ? 'center' : 'flex-start' }}>
 
             {signupDone ? (
               /* ── 이메일 인증 화면 ── */
@@ -425,7 +425,7 @@ export default function RegisterPage() {
             <h1 className="text-white text-3xl font-bold mb-8">Sign up</h1>
 
             <form onSubmit={handleSubmit} noValidate>
-              <div className="grid grid-cols-2 gap-x-10 gap-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">
 
                 {/* ── Left column ── */}
                 <div className="flex flex-col gap-4">

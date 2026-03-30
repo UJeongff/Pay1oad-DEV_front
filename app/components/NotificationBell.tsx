@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
 interface Notification {
@@ -42,15 +43,27 @@ function formatDate(iso: string) {
   return `${y}.${m}.${day}`
 }
 
-function NotificationItem({ n, isRead, onRead }: { n: Notification; isRead: boolean; onRead: () => void }) {
+function NotificationItem({ n, isRead, onRead, onClose }: { n: Notification; isRead: boolean; onRead: () => void; onClose: () => void }) {
+  const router = useRouter()
+
+  const handleClick = () => {
+    if (!isRead) onRead()
+    if (n.type === 'NOTICE_CREATED' && n.contentId && n.referenceId) {
+      onClose()
+      router.push(`/content/${n.contentId}/notices/${n.referenceId}`)
+    }
+  }
+
+  const isClickable = !isRead || (n.type === 'NOTICE_CREATED' && !!n.contentId && !!n.referenceId)
+
   return (
     <div
       className="flex overflow-hidden flex-shrink-0"
-      onClick={() => { if (!isRead) onRead() }}
+      onClick={handleClick}
       style={{
         borderRadius: '8px',
         background: isRead ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 145, 147, 0.12)',
-        cursor: isRead ? 'default' : 'pointer',
+        cursor: isClickable ? 'pointer' : 'default',
         backdropFilter: 'blur(7.05px)',
         WebkitBackdropFilter: 'blur(7.05px)',
         transition: 'background 0.3s ease',
@@ -295,6 +308,7 @@ export default function NotificationBell() {
                     n={current}
                     isRead={current.isRead || readIds.has(current.id)}
                     onRead={() => markAsRead(current.id)}
+                    onClose={() => setOpen(false)}
                   />
                 </div>
               )}

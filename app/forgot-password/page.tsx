@@ -18,7 +18,7 @@ export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false)
 
   const baseInput: React.CSSProperties = {
-    width: '384px',
+    width: '100%',
     height: '42px',
     padding: '0 16px',
     background: 'rgba(255,255,255,0.07)',
@@ -81,7 +81,7 @@ export default function ForgotPasswordPage() {
             style={{ opacity: 0.03, top: '-10px', left: '306px' }}
           />
 
-          <div style={{ width: '384px' }}>
+          <div className="w-full max-w-sm px-4 sm:px-0">
             {sent ? (
               /* 전송 완료 안내 */
               <div className="flex flex-col items-center gap-6 py-4">
@@ -141,7 +141,7 @@ export default function ForgotPasswordPage() {
                     type="submit"
                     disabled={loading}
                     style={{
-                      width: '384px',
+                      width: '100%',
                       height: '42px',
                       background: '#0041EF',
                       borderRadius: '3.56px',

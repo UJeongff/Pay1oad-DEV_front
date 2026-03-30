@@ -516,11 +516,11 @@ export default function MypagePage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <main className="relative min-h-screen pt-24 px-12" style={{ background: '#040d1f' }}>
+    <main className="relative min-h-screen pt-24 px-4 sm:px-8 lg:px-12" style={{ background: '#040d1f' }}>
       <div className="max-w-5xl mx-auto py-16">
 
         {/* Profile header */}
-        <div className="flex items-center justify-between mb-12">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-12">
           <div className="flex items-center gap-6">
             <div
               className="w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-black flex-shrink-0"

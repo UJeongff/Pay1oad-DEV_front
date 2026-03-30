@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
@@ -8,6 +8,7 @@ import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const NOTICE_MAX_CHARS = 200
 
 function formatDate(d: Date) {
   return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
@@ -45,8 +46,12 @@ export default function ContentWritePage() {
   const [contentTitle, setContentTitle] = useState('')
   const [title, setTitle] = useState('')
   const [bodyHtml, setBodyHtml] = useState('')
+  const [noticeText, setNoticeText] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [savedPostId, setSavedPostId] = useState<number | null>(null)
+  const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // 공지 전용 상태
@@ -88,7 +93,11 @@ export default function ContentWritePage() {
     )
   }
 
-  // ── 파일 첨부 ──────────────────────────────────────────────────────────────
+  const selectAllRecipients = () => {
+    setSelectedRecipients(members.map(m => m.userId))
+  }
+
+  // ── 파일 첨부 (게시글 전용) ────────────────────────────────────────────────
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return
@@ -100,7 +109,7 @@ export default function ContentWritePage() {
     setAttachedFiles(prev => prev.filter((_, i) => i !== idx))
   }
 
-  // ── 에디터 이미지 처리 ──────────────────────────────────────────────────────
+  // ── 에디터 이미지 처리 (게시글 전용) ──────────────────────────────────────
 
   const insertImageAsBase64 = (file: File) => {
     const reader = new FileReader()
@@ -134,26 +143,74 @@ export default function ContentWritePage() {
     if (others.length > 0) setAttachedFiles(prev => [...prev, ...others])
   }
 
+  // ── 임시 저장 (게시글 전용) ────────────────────────────────────────────────
+
+  const handleSaveDraft = useCallback(async () => {
+    if (!title.trim() || saving) return
+    const rawContent = editorRef.current?.innerHTML ?? bodyHtml
+    setSaving(true)
+    try {
+      if (savedPostId) {
+        // 기존 임시저장 업데이트
+        await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${savedPostId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: title.trim(), content: rawContent, isNotice: false }),
+        })
+      } else {
+        // 새 임시저장
+        const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: title.trim(), content: rawContent, isNotice: false, isDraft: true }),
+        })
+        if (res.ok) {
+          const json = await res.json()
+          setSavedPostId(json.data?.id ?? json.id ?? null)
+        }
+      }
+      setLastSaved(new Date())
+    } catch {
+    } finally {
+      setSaving(false)
+    }
+  }, [title, bodyHtml, saving, savedPostId, contentId])
+
+  // 30초마다 자동 저장 (게시글 전용, 제목이 있을 때)
+  useEffect(() => {
+    if (isNotice) return
+    const interval = setInterval(() => {
+      if (title.trim() && (editorRef.current?.textContent?.trim())) {
+        handleSaveDraft()
+      }
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [isNotice, title, handleSaveDraft])
+
   // ── 제출 ───────────────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
     if (!title.trim()) { setError('제목을 입력해주세요.'); return }
-    const rawContent = editorRef.current?.innerHTML ?? bodyHtml
-    if (!editorRef.current?.textContent?.trim()) { setError('본문을 입력해주세요.'); return }
-    if (isNotice && !startAt) { setError('시작 날짜를 선택해주세요.'); return }
-    if (isNotice && !endAt) { setError('종료 날짜를 선택해주세요.'); return }
-    if (isNotice && endAt < startAt) { setError('종료 날짜는 시작 날짜 이후여야 합니다.'); return }
+    if (isNotice) {
+      if (!noticeText.trim()) { setError('본문을 입력해주세요.'); return }
+      if (noticeText.length > NOTICE_MAX_CHARS) { setError(`글자 수 제한(${NOTICE_MAX_CHARS}자)을 초과했습니다.`); return }
+      if (!startAt) { setError('시작 날짜를 선택해주세요.'); return }
+      if (!endAt) { setError('종료 날짜를 선택해주세요.'); return }
+      if (endAt < startAt) { setError('종료 날짜는 시작 날짜 이후여야 합니다.'); return }
+    } else {
+      if (!editorRef.current?.textContent?.trim()) { setError('본문을 입력해주세요.'); return }
+    }
     setError(null)
     setSubmitting(true)
     try {
       if (isNotice) {
-        // ── 공지 전용 API ──────────────────────────────────────
+        // ── 공지 전용 API ──────────────────────────
         const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/notices`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             title: title.trim(),
-            content: rawContent,
+            content: noticeText,
             startAt,
             endAt,
             recipientIds: selectedRecipients.length > 0 ? selectedRecipients : null,
@@ -167,8 +224,8 @@ export default function ContentWritePage() {
         return
       }
 
-      // ── 일반 게시글 ────────────────────────────────────────
-      // base64 이미지 추출 및 placeholder 교체
+      // ── 일반 게시글 ────────────────────────────
+      const rawContent = editorRef.current?.innerHTML ?? bodyHtml
       const parser = new DOMParser()
       const doc = parser.parseFromString(rawContent, 'text/html')
       const base64Imgs = Array.from(doc.querySelectorAll('img[src^="data:"]'))
@@ -182,21 +239,27 @@ export default function ContentWritePage() {
       })
       const placeholderContent = doc.body.innerHTML
 
-      const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: title.trim(),
-          content: placeholderContent,
-          isNotice: false,
-        }),
-      })
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}))
-        throw new Error(json?.message ?? '게시글 등록에 실패했습니다.')
+      let postId = savedPostId
+      if (postId) {
+        // 임시저장된 글 업데이트
+        await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${postId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: title.trim(), content: placeholderContent, isNotice: false }),
+        })
+      } else {
+        const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: title.trim(), content: placeholderContent, isNotice: false }),
+        })
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}))
+          throw new Error(json?.message ?? '게시글 등록에 실패했습니다.')
+        }
+        const json = await res.json()
+        postId = json.data?.id ?? json.id
       }
-      const json = await res.json()
-      const postId: number = json.data?.id ?? json.id
 
       let finalContent = placeholderContent
       for (let i = 0; i < pendingFiles.length; i++) {
@@ -274,14 +337,8 @@ export default function ContentWritePage() {
 
       {/* ── Breadcrumb bar ──────────────────────────── */}
       <div
-        style={{
-          width: '100%', height: '49px',
-          marginTop: '160px',
-          background: 'rgba(0, 65, 239, 0.4)',
-          borderRadius: '100px 100px 0 0',
-          display: 'flex', alignItems: 'center', padding: '0 80px',
-          gap: '6px', fontSize: '13px',
-        }}
+        className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 gap-1.5 text-[13px] mt-40 rounded-t-[100px]"
+        style={{ background: 'rgba(0, 65, 239, 0.4)' }}
       >
         <Link href="/content" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
@@ -343,7 +400,7 @@ export default function ContentWritePage() {
           <div style={rowStyle}>
             <span style={labelStyle}>작성자</span>
             <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
-            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{user?.nickname ?? '—'}</span>
+            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{user?.name ?? user?.nickname ?? '—'}</span>
           </div>
 
           {/* Date */}
@@ -353,7 +410,7 @@ export default function ContentWritePage() {
             <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{today}</span>
           </div>
 
-          {/* 공지 전용: 날짜 선택 */}
+          {/* 공지 전용: 날짜 + 수신자 */}
           {isNotice && (
             <>
               <div style={rowStyle}>
@@ -395,6 +452,15 @@ export default function ContentWritePage() {
                       ? '전체 팀원'
                       : `${selectedRecipients.length}명 선택됨`}
                   </span>
+                  {/* 전체 선택 */}
+                  {members.length > 0 && selectedRecipients.length < members.length && (
+                    <button
+                      onClick={selectAllRecipients}
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#91CDFF', fontSize: '12px', padding: 0 }}
+                    >
+                      전체 선택
+                    </button>
+                  )}
                   {selectedRecipients.length > 0 && (
                     <button
                       onClick={() => setSelectedRecipients([])}
@@ -405,7 +471,7 @@ export default function ContentWritePage() {
                   )}
                 </div>
                 {members.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', paddingLeft: '0' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                     {members.map(m => {
                       const selected = selectedRecipients.includes(m.userId)
                       return (
@@ -433,63 +499,109 @@ export default function ContentWritePage() {
             </>
           )}
 
-          {/* File attachment */}
-          <div style={{ ...rowStyle, alignItems: 'flex-start', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={labelStyle}>파일첨부</span>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: 0 }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-                </svg>
-              </button>
-              <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileChange} />
-            </div>
-
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              style={{ width: '100%', padding: '14px 16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)', fontSize: '13px', cursor: 'pointer' }}
-            >
-              첨부할 파일을 선택하세요
-            </div>
-
-            {attachedFiles.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
-                {attachedFiles.map((file, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
-                    <span>{file.name}</span>
-                    <button onClick={() => removeFile(idx)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: '16px', lineHeight: 1 }}>×</button>
-                  </div>
-                ))}
+          {/* 파일 첨부 (게시글 전용) */}
+          {!isNotice && (
+            <div style={{ ...rowStyle, alignItems: 'flex-start', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={labelStyle}>파일첨부</span>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: 0 }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                  </svg>
+                </button>
+                <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileChange} />
               </div>
-            )}
-          </div>
+
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{ width: '100%', padding: '14px 16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)', fontSize: '13px', cursor: 'pointer' }}
+              >
+                첨부할 파일을 선택하세요
+              </div>
+
+              {attachedFiles.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
+                  {attachedFiles.map((file, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
+                      <span>{file.name}</span>
+                      <button onClick={() => removeFile(idx)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: '16px', lineHeight: 1 }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Divider */}
         <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.12)', margin: '16px 0' }} />
 
         {/* Content editor */}
-        <div style={{ marginTop: '20px', minHeight: '320px', padding: '20px 0', position: 'relative' }}>
-          <div
-            ref={editorRef}
-            contentEditable
-            suppressContentEditableWarning
-            onInput={() => { if (editorRef.current) setBodyHtml(editorRef.current.innerHTML) }}
-            onPaste={handleEditorPaste}
-            onDrop={handleEditorDrop}
-            onDragOver={e => e.preventDefault()}
-            style={{ minHeight: '280px', outline: 'none', color: 'rgba(255,255,255,0.8)', fontSize: '15px', lineHeight: 1.75, caretColor: '#1C5AFF' }}
-          />
-          {(!editorRef.current || !editorRef.current.textContent?.trim()) && (
-            <div style={{ position: 'absolute', top: '20px', left: '20px', color: 'rgba(255,255,255,0.2)', fontSize: '15px', lineHeight: 1.75, pointerEvents: 'none', userSelect: 'none' }}>
-              <p>본문을 작성해 보세요.</p>
-              <p style={{ fontSize: '13px', marginTop: '4px' }}>*이미지는 드롭다운 / 복사 붙여넣기로 첨부할 수 있습니다.</p>
+        {isNotice ? (
+          /* 공지: 순수 텍스트만 */
+          <div style={{ marginTop: '20px', minHeight: '320px', padding: '20px 0', position: 'relative' }}>
+            <textarea
+              value={noticeText}
+              onChange={e => {
+                if (e.target.value.length <= NOTICE_MAX_CHARS) setNoticeText(e.target.value)
+              }}
+              placeholder="본문을 작성해 보세요."
+              style={{
+                width: '100%',
+                minHeight: '280px',
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                resize: 'none',
+                color: 'rgba(255,255,255,0.8)',
+                fontSize: '15px',
+                lineHeight: 1.75,
+                caretColor: '#1C5AFF',
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <span style={{
+                fontSize: '12px',
+                color: noticeText.length > NOTICE_MAX_CHARS * 0.9
+                  ? (noticeText.length >= NOTICE_MAX_CHARS ? '#f87171' : '#FFD700')
+                  : 'rgba(255,255,255,0.25)',
+              }}>
+                {noticeText.length} / {NOTICE_MAX_CHARS}
+              </span>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          /* 게시글: 리치 에디터 (이미지 지원) */
+          <div style={{ marginTop: '20px', minHeight: '320px', padding: '20px 0', position: 'relative' }}>
+            <div
+              ref={editorRef}
+              contentEditable
+              suppressContentEditableWarning
+              onInput={() => { if (editorRef.current) setBodyHtml(editorRef.current.innerHTML) }}
+              onPaste={handleEditorPaste}
+              onDrop={handleEditorDrop}
+              onDragOver={e => e.preventDefault()}
+              style={{ minHeight: '280px', outline: 'none', color: 'rgba(255,255,255,0.8)', fontSize: '15px', lineHeight: 1.75, caretColor: '#1C5AFF' }}
+            />
+            {(!editorRef.current || !editorRef.current.textContent?.trim()) && (
+              <div style={{ position: 'absolute', top: '20px', left: '0', color: 'rgba(255,255,255,0.2)', fontSize: '15px', lineHeight: 1.75, pointerEvents: 'none', userSelect: 'none' }}>
+                <p>본문을 작성해 보세요.</p>
+                <p style={{ fontSize: '13px', marginTop: '4px' }}>*이미지는 드롭다운 / 복사 붙여넣기로 첨부할 수 있습니다.</p>
+              </div>
+            )}
+            {/* 자동 저장 상태 */}
+            {lastSaved && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)' }}>
+                  마지막 임시 저장: {formatDate(lastSaved)} {lastSaved.getHours().toString().padStart(2,'0')}:{lastSaved.getMinutes().toString().padStart(2,'0')}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Error */}
         {error && <p style={{ color: '#FF6060', fontSize: '13px', marginTop: '12px' }}>{error}</p>}
@@ -504,6 +616,18 @@ export default function ContentWritePage() {
           >
             취소
           </Link>
+          {/* 임시 저장 버튼 (게시글 전용) */}
+          {!isNotice && (
+            <button
+              onClick={handleSaveDraft}
+              disabled={saving || !title.trim()}
+              style={{ padding: '10px 24px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(255,255,255,0.55)', fontSize: '14px', fontWeight: 500, cursor: (saving || !title.trim()) ? 'not-allowed' : 'pointer', opacity: (saving || !title.trim()) ? 0.5 : 1, transition: 'all 0.15s' }}
+              onMouseEnter={e => { if (!saving && title.trim()) { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.35)'; (e.currentTarget as HTMLElement).style.color = '#fff' } }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.55)' }}
+            >
+              {saving ? '저장 중...' : '임시 저장'}
+            </button>
+          )}
           <button
             onClick={handleSubmit}
             disabled={submitting}

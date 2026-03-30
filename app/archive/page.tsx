@@ -8,12 +8,13 @@ import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
-function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit }: {
+function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit, showMenu = false }: {
   year: number
   onNavigate: () => void
   menuOpen: boolean
   onMenuToggle: () => void
   onEdit: () => void
+  showMenu?: boolean
 }) {
   const gradFillId = `fg-fill-${year}`
   const gradStrokeId = `fg-stroke-${year}`
@@ -44,18 +45,20 @@ function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit }: {
 
       <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: '20px 20px 24px' }}>
         <div className="relative flex justify-end" style={{ paddingTop: '25px' }}>
-          <button
-            onClick={e => { e.stopPropagation(); onMenuToggle() }}
-            style={{ width: '16px', height: '16px' }}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <circle cx="11.8917" cy="4.42536" r="1.75886" fill="white"/>
-              <circle cx="11.8917" cy="12.1112" r="1.75886" fill="white"/>
-              <circle cx="11.8917" cy="19.7969" r="1.75886" fill="white"/>
-            </svg>
-          </button>
+          {showMenu && (
+            <button
+              onClick={e => { e.stopPropagation(); onMenuToggle() }}
+              style={{ width: '16px', height: '16px' }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="11.8917" cy="4.42536" r="1.75886" fill="white"/>
+                <circle cx="11.8917" cy="12.1112" r="1.75886" fill="white"/>
+                <circle cx="11.8917" cy="19.7969" r="1.75886" fill="white"/>
+              </svg>
+            </button>
+          )}
 
-          {menuOpen && (
+          {showMenu && menuOpen && (
             <div
               className="absolute right-0 top-6 z-50 flex flex-col gap-1 p-1.5 rounded-lg min-w-[120px]"
               style={{
@@ -272,7 +275,7 @@ export default function ArchivePage() {
 
   const loadYears = useCallback(async () => {
     try {
-      const res = await fetchWithAuth(`${API_URL}/v1/archive/years`, { cache: 'no-store' })
+      const res = await fetch(`${API_URL}/v1/archive/years`, { cache: 'no-store', credentials: 'include' })
       if (!res.ok) {
         setYears([])
         return
@@ -419,15 +422,8 @@ export default function ArchivePage() {
       </section>
 
       <div
-        style={{
-          width: '100%',
-          height: '49px',
-          background: 'rgba(0, 65, 239, 0.4)',
-          borderRadius: '100px 100px 0 0',
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 0 0 80px',
-        }}
+        className="w-full h-[49px] flex items-center pl-5 sm:pl-10 lg:pl-20 rounded-t-[100px]"
+        style={{ background: 'rgba(0, 65, 239, 0.4)' }}
       >
         <span className="text-white text-sm font-medium tracking-widest">Archive</span>
       </div>
@@ -458,6 +454,7 @@ export default function ArchivePage() {
                       menuOpen={openMenuYear === year}
                       onMenuToggle={() => setOpenMenuYear(openMenuYear === year ? null : year)}
                       onEdit={() => handleEditStart(year)}
+                      showMenu={isAdmin}
                     />
                   )}
                 </div>

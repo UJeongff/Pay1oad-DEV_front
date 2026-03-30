@@ -261,7 +261,7 @@ export default function AssignmentDetailPage() {
         </div>
 
         {/* Assignment info card */}
-        <div style={{ borderRadius: '16px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', padding: '36px 40px', marginBottom: '28px' }}>
+        <div className="rounded-2xl mb-7 p-6 sm:p-8 lg:p-10" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
           {editMode ? (
             /* ── Edit mode ── */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

@@ -304,15 +304,8 @@ export default function BlogDetailPage() {
       />
 
       {/* ── Breadcrumb bar ──────────────────────────── */}
-      <div
-        style={{
-          width: '100%', height: '49px',
-          marginTop: '160px',
-          background: 'rgba(0, 65, 239, 0.4)',
-          borderRadius: '100px 100px 0 0',
-          display: 'flex', alignItems: 'center', padding: '0 80px',
-          gap: '6px', fontSize: '13px',
-        }}
+      <div className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 gap-1.5 text-[13px] mt-40 rounded-t-[100px]"
+        style={{ background: 'rgba(0, 65, 239, 0.4)' }}
       >
         <Link
           href="/blog"
@@ -356,7 +349,7 @@ export default function BlogDetailPage() {
           </h1>
 
           {/* Meta */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-8">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.45)', fontSize: '13px' }}>
               <span>작성자</span>
               <span style={{ width: '1px', height: '10px', background: 'rgba(255,255,255,0.2)' }} />

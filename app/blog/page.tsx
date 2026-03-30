@@ -249,13 +249,8 @@ export default function BlogPage() {
       </section>
 
       {/* ── Section Header ──────────────────────────── */}
-      <div
-        style={{
-          width: '100%', height: '49px',
-          background: 'rgba(0, 65, 239, 0.4)',
-          borderRadius: '100px 100px 0 0',
-          display: 'flex', alignItems: 'center', padding: '0 80px',
-        }}
+      <div className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 rounded-t-[100px]"
+        style={{ background: 'rgba(0, 65, 239, 0.4)' }}
       >
         <span className="text-white text-sm font-medium tracking-widest flex-1">Blog</span>
         <div className="flex items-center gap-3">
@@ -313,7 +308,7 @@ export default function BlogPage() {
       <section className="relative py-10" style={{ background: 'rgba(0, 65, 239, 0.05)' }}>
         <div className="max-w-6xl mx-auto px-[vw]">
           {/* 검색 + 작성하기 */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', marginTop: '-5px', marginBottom: '30px' }}>
+          <div className="flex flex-wrap items-center justify-end gap-2.5 mt-[-5px] mb-[30px]">
             <div
               className="flex items-center gap-2 px-4 py-2 rounded"
               style={{
@@ -351,7 +346,7 @@ export default function BlogPage() {
           {posts.length === 0 ? (
             <p className="text-white/40 text-center py-20">게시글이 없습니다.</p>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {posts.map((post) => (
                 <PostCard
                   key={post.id}

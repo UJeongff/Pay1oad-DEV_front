@@ -25,7 +25,7 @@ function PasswordResetForm() {
   const [success, setSuccess] = useState(false)
 
   const baseInput: React.CSSProperties = {
-    width: '384px',
+    width: '100%',
     height: '42px',
     padding: '0 40px 0 16px',
     background: 'rgba(255,255,255,0.07)',
@@ -104,7 +104,7 @@ function PasswordResetForm() {
       <Link
         href="/login"
         style={{
-          width: '384px',
+          width: '100%',
           height: '42px',
           background: '#0041EF',
           borderRadius: '3.56px',
@@ -181,7 +181,7 @@ function PasswordResetForm() {
           type="submit"
           disabled={loading}
           style={{
-            width: '384px',
+            width: '100%',
             height: '42px',
             background: '#0041EF',
             borderRadius: '3.56px',
@@ -231,7 +231,7 @@ export default function PasswordResetPage() {
             style={{ opacity: 0.03, top: '-10px', left: '306px' }}
           />
 
-          <div style={{ width: '384px' }}>
+          <div className="w-full max-w-sm px-4 sm:px-0">
             <Suspense fallback={<div className="text-white/40 text-sm text-center">불러오는 중...</div>}>
               <PasswordResetForm />
             </Suspense>

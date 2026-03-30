@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
@@ -25,19 +26,16 @@ interface CtfEvent {
 
 interface CtfEventCreateForm {
   name: string
-  imageUrl: string
   startAt: string
   endAt: string
   ctfdUrl: string
   description: string
-  isPublished: boolean
-  isClickable: boolean
 }
 
 const STATUS_LABEL: Record<CtfEvent['status'], string> = {
   ongoing: '진행중',
   upcoming: '진행예정',
-  ended: '종료',
+  ended: '진행 완료',
 }
 
 const STATUS_STYLE: Record<CtfEvent['status'], React.CSSProperties> = {
@@ -78,17 +76,19 @@ function CtfCard({
   event,
   onJoin,
   isLoggedIn,
+  onLoginRedirect,
 }: {
   event: CtfEvent
   onJoin: (id: number) => Promise<void>
   isLoggedIn: boolean
+  onLoginRedirect: () => void
 }) {
   const [joining, setJoining] = useState(false)
 
   const handleJoin = async (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!isLoggedIn) {
-      alert('참가하기는 로그인 후 이용 가능합니다.')
+      onLoginRedirect()
       return
     }
     setJoining(true)
@@ -153,32 +153,39 @@ function CtfCard({
           </div>
 
           <div className="flex items-center justify-between gap-2 pt-1">
-            <div className="flex items-center gap-1 text-xs text-white/50 whitespace-nowrap">
-              <PersonIcon />
-              <span>참여인원</span>
-              <span className="font-semibold" style={{ color: '#4d7cff' }}>{event.participantCount}명</span>
-            </div>
+            {/* 참여인원: upcoming일 때 숨김 */}
+            {event.status !== 'upcoming' ? (
+              <div className="flex items-center gap-1 text-xs text-white/50 whitespace-nowrap">
+                <PersonIcon />
+                <span>참여인원</span>
+                <span className="font-semibold" style={{ color: '#4d7cff' }}>{event.participantCount}명</span>
+              </div>
+            ) : (
+              <div />
+            )}
 
             <div className="flex items-center gap-2 shrink-0">
-              {/* 참가하기 버튼 */}
+              {/* 참가하기 버튼: ongoing만 활성화 */}
               {event.status !== 'ended' && (
                 <button
-                  onClick={handleJoin}
-                  disabled={joining}
+                  onClick={event.status === 'ongoing' ? handleJoin : undefined}
+                  disabled={joining || event.status !== 'ongoing'}
                   className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap"
                   style={
-                    event.joined
-                      ? { color: '#4d7cff', background: 'rgba(77,124,255,0.15)', border: '1px solid rgba(77,124,255,0.5)' }
-                      : { color: '#ffffff', background: 'transparent', border: '1px solid rgba(255,255,255,0.35)' }
+                    event.status !== 'ongoing'
+                      ? { color: 'rgba(255,255,255,0.3)', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', cursor: 'not-allowed' }
+                      : event.joined
+                        ? { color: '#4d7cff', background: 'rgba(77,124,255,0.15)', border: '1px solid rgba(77,124,255,0.5)' }
+                        : { color: '#ffffff', background: 'transparent', border: '1px solid rgba(255,255,255,0.35)' }
                   }
                   onMouseEnter={e => {
-                    if (!event.joined) {
+                    if (event.status === 'ongoing' && !event.joined) {
                       e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
                       e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)'
                     }
                   }}
                   onMouseLeave={e => {
-                    if (!event.joined) {
+                    if (event.status === 'ongoing' && !event.joined) {
                       e.currentTarget.style.background = 'transparent'
                       e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'
                     }
@@ -188,8 +195,8 @@ function CtfCard({
                 </button>
               )}
 
-              {/* 자세히 알아보기 */}
-              {event.isClickable && event.ctfdUrl && (
+              {/* 바로가기 */}
+              {event.ctfdUrl && (
                 <button
                   className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap"
                   style={{ color: '#ffffff', background: 'transparent', border: '1px solid rgba(255,255,255,0.35)' }}
@@ -221,23 +228,22 @@ function CtfCard({
 function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [form, setForm] = useState<CtfEventCreateForm>({
     name: '',
-    imageUrl: '',
     startAt: '',
     endAt: '',
     ctfdUrl: '',
     description: '',
-    isPublished: true,
-    isClickable: true,
   })
+  const [imageFile, setImageFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target
-    setForm(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
-    }))
+    const { name, value } = e.target
+    setForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImageFile(e.target.files?.[0] ?? null)
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -246,15 +252,30 @@ function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated
     setLoading(true)
 
     try {
+      let imageUrl: string | null = null
+
+      if (imageFile) {
+        const formData = new FormData()
+        formData.append('file', imageFile)
+        const uploadRes = await fetchWithAuth(`${API_URL}/v1/admin/ctf/images`, {
+          method: 'POST',
+          body: formData,
+        })
+        if (!uploadRes.ok) {
+          const data = await uploadRes.json().catch(() => ({}))
+          throw new Error(data?.message ?? '이미지 업로드 실패')
+        }
+        const uploadJson = await uploadRes.json()
+        imageUrl = uploadJson.data
+      }
+
       const body = {
         name: form.name,
-        imageUrl: form.imageUrl || null,
+        imageUrl,
         startAt: form.startAt ? new Date(form.startAt).toISOString().slice(0, 19) : null,
         endAt: form.endAt ? new Date(form.endAt).toISOString().slice(0, 19) : null,
         ctfdUrl: form.ctfdUrl,
         description: form.description || null,
-        isPublished: form.isPublished,
-        isClickable: form.isClickable,
       }
 
       const res = await fetchWithAuth(`${API_URL}/v1/admin/ctf/events`, {
@@ -307,15 +328,22 @@ function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-white/60 text-xs font-medium">이미지 URL</label>
-            <input
-              name="imageUrl"
-              value={form.imageUrl}
-              onChange={handleChange}
-              placeholder="https://example.com/image.jpg"
-              className="rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-blue-500"
+            <label className="text-white/60 text-xs font-medium">이미지 파일</label>
+            <label
+              className="flex items-center gap-3 rounded-lg px-3 py-2 cursor-pointer"
               style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
-            />
+            >
+              <span
+                className="text-xs font-medium px-3 py-1 rounded-md shrink-0"
+                style={{ background: 'rgba(28,90,255,0.25)', color: '#7aa0ff', border: '1px solid rgba(28,90,255,0.4)' }}
+              >
+                파일 선택
+              </span>
+              <span className="text-sm truncate" style={{ color: imageFile ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.3)' }}>
+                {imageFile ? imageFile.name : '선택된 파일 없음'}
+              </span>
+              <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+            </label>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -371,29 +399,6 @@ function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated
             />
           </div>
 
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-white/60 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                name="isPublished"
-                checked={form.isPublished}
-                onChange={handleChange}
-                className="accent-blue-500"
-              />
-              공개
-            </label>
-            <label className="flex items-center gap-2 text-white/60 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                name="isClickable"
-                checked={form.isClickable}
-                onChange={handleChange}
-                className="accent-blue-500"
-              />
-              링크 활성화
-            </label>
-          </div>
-
           {error && <p className="text-red-400 text-xs">{error}</p>}
 
           <div className="flex gap-3 pt-1">
@@ -422,6 +427,7 @@ function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
 export default function CTFPage() {
   const { user } = useAuthContext()
+  const router = useRouter()
   const [events, setEvents] = useState<CtfEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [index, setIndex] = useState(0)
@@ -610,13 +616,14 @@ export default function CTFPage() {
               <p className="text-white/30 text-sm">등록된 CTF 이벤트가 없습니다.</p>
             </div>
           ) : (
-            <div className="flex gap-6">
+            <div className="flex flex-wrap gap-6">
               {visible.map(event => (
                 <CtfCard
                   key={event.id}
                   event={event}
                   onJoin={handleJoin}
                   isLoggedIn={!!user}
+                  onLoginRedirect={() => router.push('/login')}
                 />
               ))}
             </div>

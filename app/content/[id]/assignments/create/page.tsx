@@ -88,7 +88,7 @@ export default function AssignmentCreatePage() {
 
         <div style={{ borderRadius: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
           {/* Title */}
-          <div style={{ padding: '40px 40px 32px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="px-5 sm:px-8 lg:px-10 pt-8 pb-8" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <input
               value={title}
               onChange={e => setTitle(e.target.value)}
@@ -106,7 +106,7 @@ export default function AssignmentCreatePage() {
           </div>
 
           {/* Description */}
-          <div style={{ padding: '28px 40px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="px-5 sm:px-8 lg:px-10 py-7" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 600, marginBottom: '10px', letterSpacing: '0.06em' }}>과제 설명</p>
             <textarea
               value={description}
@@ -125,7 +125,7 @@ export default function AssignmentCreatePage() {
           </div>
 
           {/* Due date */}
-          <div style={{ padding: '24px 40px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div className="px-5 sm:px-8 lg:px-10 py-6 flex flex-wrap items-center gap-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 600, letterSpacing: '0.06em', margin: 0, whiteSpace: 'nowrap' }}>마감일 (선택)</p>
             <input
               type="datetime-local"
@@ -142,7 +142,7 @@ export default function AssignmentCreatePage() {
           </div>
 
           {/* Actions */}
-          <div style={{ padding: '20px 40px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+          <div className="px-5 sm:px-8 lg:px-10 py-5 flex justify-end gap-2.5">
             <Link
               href={`/content/${contentId}`}
               style={{ padding: '9px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(255,255,255,0.5)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}

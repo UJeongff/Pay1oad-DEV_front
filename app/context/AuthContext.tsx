@@ -5,6 +5,7 @@ import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
 export interface AuthUser {
   id: number
+  name: string
   nickname: string
   email: string
   role: 'MEMBER' | 'ADMIN'
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const normalizedRole: 'ADMIN' | 'MEMBER' = rawRole.toUpperCase().includes('ADMIN') ? 'ADMIN' : 'MEMBER'
       setUser({
         id: raw.userId ?? raw.id,
+        name: raw.name ?? raw.nickname,
         nickname: raw.nickname,
         email: raw.email,
         role: normalizedRole,

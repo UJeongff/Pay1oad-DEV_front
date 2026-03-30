@@ -233,7 +233,7 @@ export default function CompleteProfilePage() {
             style={{ opacity: 0.03, top: '-10px', left: '314px' }}
           />
 
-          <div style={{ width: 'min(860px, 100%)', padding: '0 24px' }}>
+          <div className="w-full px-4 sm:px-6" style={{ maxWidth: '860px' }}>
 
             {/* Header */}
             <div className="mb-8">
@@ -254,7 +254,7 @@ export default function CompleteProfilePage() {
             </div>
 
             <form onSubmit={handleSubmit} noValidate>
-              <div className="grid grid-cols-2 gap-x-10 gap-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">
 
                 {/* ── 왼쪽 열 ── */}
                 <div className="flex flex-col gap-4">

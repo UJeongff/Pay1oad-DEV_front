@@ -144,7 +144,7 @@ export default function LoginPage() {
   }
 
   const baseInput: React.CSSProperties = {
-    width: '384px',
+    width: '100%',
     height: '42px',
     padding: '0 16px',
     background: 'rgba(255,255,255,0.07)',
@@ -193,7 +193,7 @@ export default function LoginPage() {
             style={{ opacity: 0.03, top: '-10px', left: '306px' }}
           />
 
-          <div style={{ width: '384px' }}>
+          <div className="w-full max-w-sm px-4 sm:px-0">
 
             <h1 className="text-white text-3xl font-bold mb-7">Login</h1>
 
@@ -270,7 +270,7 @@ export default function LoginPage() {
                 type="submit"
                 disabled={loading}
                 style={{
-                  width: '384px',
+                  width: '100%',
                   height: '42px',
                   background: '#0041EF',
                   borderRadius: '3.56px',

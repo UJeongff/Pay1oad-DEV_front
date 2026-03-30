@@ -194,7 +194,7 @@ export default async function Home() {
         <div className="max-w-5xl mx-auto">
 
           {/* Stats cards */}
-          <div className="grid grid-cols-3 gap-5 mb-30 mt-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-30 mt-5">
             {stats.map((s) => (
               <div
                 key={s.label}
@@ -218,7 +218,7 @@ export default async function Home() {
             <h3 className="text-xl font-bold mb-6" style={{ color: '#1C5AFF' }}>
               주요 활동 분야
             </h3>
-            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${fields.length}, 1fr)` }}>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {fields.map((f) => (
                 <span
                   key={f}

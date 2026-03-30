@@ -105,9 +105,32 @@ export default function StudyDetailPage() {
   const [delegateTarget, setDelegateTarget] = useState<ContentMember | null>(null)
   const [delegateLoading, setDelegateLoading] = useState(false)
 
+  const [editingDescription, setEditingDescription] = useState(false)
+  const [descriptionDraft, setDescriptionDraft] = useState('')
+  const [descSaving, setDescSaving] = useState(false)
+
+  const handleSaveDescription = async () => {
+    if (descSaving) return
+    setDescSaving(true)
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: descriptionDraft }),
+      })
+      if (res.ok) {
+        setContent(prev => prev ? { ...prev, description: descriptionDraft } : prev)
+        setEditingDescription(false)
+      }
+    } catch {
+    } finally {
+      setDescSaving(false)
+    }
+  }
+
   const isAdmin = user?.role === 'ADMIN'
   const isLeaderOrAdmin = content?.isLeader || isAdmin
-  const canViewFull = isAdmin || content?.isMember || content?.isLeader || content?.visibility === 'MEMBER'
+  const canViewFull = isAdmin || content?.isLeader || content?.isMember || (content?.visibility === 'MEMBER' && !!user)
   const isProject = content?.type === 'PROJECT'
   const noticePosts = posts.filter(p => p.isNotice)
   const docPosts = posts.filter(p => !p.isNotice)
@@ -206,8 +229,8 @@ export default function StudyDetailPage() {
 
   useEffect(() => {
     Promise.all([
-      fetchWithAuth(`${API_URL}/v1/contents/${contentId}`).then(r => r.ok ? r.json() : null),
-      fetchWithAuth(`${API_URL}/v1/contents/${contentId}/members`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_URL}/v1/contents/${contentId}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null),
+      fetch(`${API_URL}/v1/contents/${contentId}/members`, { credentials: 'include' }).then(r => r.ok ? r.json() : null),
     ]).then(([contentJson, membersJson]) => {
       const list = membersJson?.data ?? []
       setMembers(list)
@@ -221,8 +244,8 @@ export default function StudyDetailPage() {
 
   useEffect(() => {
     Promise.all([
-      fetchWithAuth(`${API_URL}/v1/contents/${contentId}/notices`).then(r => r.ok ? r.json() : null),
-      fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_URL}/v1/contents/${contentId}/notices`, { credentials: 'include' }).then(r => r.ok ? r.json() : null),
+      fetch(`${API_URL}/v1/contents/${contentId}/docs`, { credentials: 'include' }).then(r => r.ok ? r.json() : null),
     ]).then(([noticesJson, docsJson]) => {
       const notices: ContentPost[] = (noticesJson?.data ?? []).map((n: { id: number; title: string; createdAt: string }) => ({
         id: n.id, title: n.title, isNotice: true, kind: 'notice' as const, authorName: '', createdAt: n.createdAt,
@@ -230,7 +253,7 @@ export default function StudyDetailPage() {
       const docs: ContentPost[] = (docsJson?.data ?? []).map((d: { id: number; title: string; authorName: string; createdAt: string; files?: unknown[] }) => ({
         id: d.id, title: d.title, isNotice: false, kind: 'doc' as const, authorName: d.authorName, createdAt: d.createdAt, hasAttachment: (d.files?.length ?? 0) > 0,
       }))
-      const sort = (arr: ContentPost[]) => arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      const sort = (arr: ContentPost[]) => arr.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
       const combined = [...sort(notices), ...sort(docs)]
       setPosts(combined)
     }).catch(() => {})
@@ -287,16 +310,9 @@ export default function StudyDetailPage() {
       <section className="max-w-5xl mx-auto px-[5vw] pt-36 pb-0">
 
         {/* Info card */}
-        <div style={{
-          display: 'flex',
-          padding: '40px',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderRadius: '10px',
-          background: 'rgba(255, 255, 255, 0.05)',
-          marginBottom: '48px',
-          gap: '40px',
-        }}>
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center rounded-[10px] mb-12 gap-8 md:gap-10 p-6 sm:p-8 lg:p-10"
+          style={{ background: 'rgba(255, 255, 255, 0.05)' }}
+        >
           {/* Left — title + badges */}
           <div style={{
             display: 'flex',
@@ -513,32 +529,82 @@ export default function StudyDetailPage() {
           {/* Right — description */}
           <div style={{
             display: 'flex',
-            width: '380px',
+            minWidth: '260px',
+            maxWidth: '380px',
+            flex: '0 1 340px',
             padding: '24px 28px',
             flexDirection: 'column',
             alignItems: 'flex-start',
             gap: '12px',
-            flexShrink: 0,
             alignSelf: 'stretch',
             borderRadius: '10px',
             background: 'rgba(255, 255, 255, 0.10)',
           }}>
-            <p style={{
-              fontSize: '12px', fontWeight: 600,
-              color: 'rgba(255,255,255,0.45)',
-              letterSpacing: '0.05em',
-              margin: 0,
-            }}>
-              활동소개 |
-            </p>
-            <p style={{
-              fontSize: '14px',
-              color: 'rgba(255,255,255,0.55)',
-              lineHeight: 1.85,
-              margin: 0,
-            }}>
-              {content?.description ?? '소개가 없습니다.'}
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <p style={{
+                fontSize: '12px', fontWeight: 600,
+                color: 'rgba(255,255,255,0.45)',
+                letterSpacing: '0.05em',
+                margin: 0,
+              }}>
+                활동소개 |
+              </p>
+              {isLeaderOrAdmin && !editingDescription && (
+                <button
+                  onClick={() => { setDescriptionDraft(content?.description ?? ''); setEditingDescription(true) }}
+                  title="소개 수정"
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', padding: '2px', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.3)' }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+              )}
+            </div>
+            {editingDescription ? (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <textarea
+                  value={descriptionDraft}
+                  onChange={e => setDescriptionDraft(e.target.value)}
+                  rows={5}
+                  autoFocus
+                  style={{
+                    width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: '6px', padding: '8px 10px', color: 'rgba(255,255,255,0.8)',
+                    fontSize: '13px', lineHeight: 1.7, outline: 'none', resize: 'vertical',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setEditingDescription(false)}
+                    style={{ padding: '5px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(255,255,255,0.5)', fontSize: '12px', cursor: 'pointer' }}
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={handleSaveDescription}
+                    disabled={descSaving}
+                    style={{ padding: '5px 12px', borderRadius: '6px', border: '1px solid rgba(28,90,255,0.5)', background: 'rgba(28,90,255,0.25)', color: '#91CDFF', fontSize: '12px', fontWeight: 600, cursor: descSaving ? 'not-allowed' : 'pointer', opacity: descSaving ? 0.6 : 1 }}
+                  >
+                    {descSaving ? '저장 중...' : '저장'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p style={{
+                fontSize: '14px',
+                color: 'rgba(255,255,255,0.55)',
+                lineHeight: 1.85,
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}>
+                {content?.description ?? '소개가 없습니다.'}
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -615,19 +681,17 @@ export default function StudyDetailPage() {
                   공지 작성
                 </Link>
               )}
-              {!isProject && (
-                <Link
-                  href={`/content/${contentId}/write`}
-                  style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
-                  onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.45)'; el.style.color = '#fff' }}
-                  onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.color = 'rgba(255,255,255,0.65)' }}
-                >
-                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                    <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                  </svg>
-                  글쓰기
-                </Link>
-              )}
+              <Link
+                href={`/content/${contentId}/write`}
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
+                onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.45)'; el.style.color = '#fff' }}
+                onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.color = 'rgba(255,255,255,0.65)' }}
+              >
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                  <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
+                글쓰기
+              </Link>
             </div>
           )}
         </div>
@@ -709,19 +773,6 @@ export default function StudyDetailPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-          {/* Add card — leader only */}
-          {isLeaderOrAdmin && (
-            <Link
-              href={`/content/${contentId}/assignments/create`}
-              style={{ width: '170px', height: '130px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', border: '1.5px dashed rgba(255,255,255,0.13)', background: 'rgba(255,255,255,0.02)', cursor: 'pointer', textDecoration: 'none', flexShrink: 0, transition: 'border-color 0.15s, background 0.15s' }}
-              onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.28)'; el.style.background = 'rgba(255,255,255,0.04)' }}
-              onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.13)'; el.style.background = 'rgba(255,255,255,0.02)' }}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                <path d="M12 5v14M5 12h14" stroke="rgba(255,255,255,0.28)" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </Link>
-          )}
 
           {/* Leader view: submission cards */}
           {isLeaderOrAdmin ? (
@@ -830,7 +881,7 @@ function PostRow({
   const menuRef = useRef<HTMLDivElement>(null)
 
   const isAdmin = user?.role === 'ADMIN'
-  const isOwner = user != null && post.authorName === user.nickname
+  const isOwner = user != null && post.authorName === (user.name ?? user.nickname)
   const showMenu = post.kind === 'notice' ? isLeaderOrAdmin : isAdmin || isOwner
 
   const detailHref = post.kind === 'notice'

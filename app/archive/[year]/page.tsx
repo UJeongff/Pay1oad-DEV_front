@@ -17,12 +17,14 @@ interface ArchiveItem {
   type: ArchiveItemType
   title: string
   archivedAt: string
+  isPublic?: boolean
 }
 
 interface ArchivePostResponse {
   id: number
   title: string
   archivedAt?: string
+  isPublic?: boolean
 }
 
 interface ArchiveContentResponse {
@@ -122,9 +124,23 @@ function ItemRow({
         <span className="text-white/45 text-[11px] uppercase tracking-wide flex-shrink-0">
           {item.type}
         </span>
-        <span className="text-white/85 text-sm font-medium truncate">
-          {item.title}
-        </span>
+        {item.type === 'BLOG' ? (
+          <Link
+            href={`/blog/${item.id}`}
+            className="text-white/85 text-sm font-medium truncate hover:text-white transition-colors"
+            style={{ textDecoration: 'none' }}
+          >
+            {item.title}
+          </Link>
+        ) : (
+          <Link
+            href={`/content/${item.id}`}
+            className="text-white/85 text-sm font-medium truncate hover:text-white transition-colors"
+            style={{ textDecoration: 'none' }}
+          >
+            {item.title}
+          </Link>
+        )}
       </div>
 
       <div className="flex items-center gap-3 flex-shrink-0">
@@ -154,7 +170,8 @@ function ItemRow({
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
                   onClick={async () => {
                     setMenuOpen(false)
-                    if (!window.confirm('블로그 목록으로 복원하시겠습니까?')) return
+                    const target = item.type === 'BLOG' ? '블로그' : '콘텐츠'
+                    if (!window.confirm(`${target} 목록으로 복원하시겠습니까?`)) return
                     onRestore(item)
                   }}
                 >
@@ -196,7 +213,7 @@ export default function ArchiveYearPage() {
   useEffect(() => {
     async function fetchArchives() {
       try {
-        const res = await fetchWithAuth(`${API_URL}/v1/archive/${year}`, { cache: 'no-store' })
+        const res = await fetch(`${API_URL}/v1/archive/${year}`, { cache: 'no-store', credentials: 'include' })
         if (!res.ok) { setItems([]); return }
 
         const json = await res.json()
@@ -208,6 +225,7 @@ export default function ArchiveYearPage() {
           id: Number(p.id), type: 'BLOG',
           title: String(p.title ?? ''),
           archivedAt: String(p.archivedAt ?? `${year}-01-01`),
+          isPublic: p.isPublic,
         }))
         const contentItems: ArchiveItem[] = contents.map(c => ({
           id: Number(c.id), type: c.type === 'PROJECT' ? 'PROJECT' : 'STUDY',
@@ -226,10 +244,14 @@ export default function ArchiveYearPage() {
   }, [year])
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return items
-    const q = search.toLowerCase()
-    return items.filter(item => item.title.toLowerCase().includes(q))
-  }, [items, search])
+    const q = search.trim().toLowerCase()
+    return items.filter(item => {
+      // 비로그인 사용자는 BLOG 중 isPublic이 명시적으로 false인 것은 제외
+      if (!user && item.type === 'BLOG' && item.isPublic === false) return false
+      if (q && !item.title.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [items, search, user])
 
   const grouped = useMemo(() => groupByType(filtered), [filtered])
 
@@ -291,7 +313,7 @@ export default function ArchiveYearPage() {
 
           <div className="absolute inset-0">
             <div
-              className="absolute flex flex-col justify-center h-full pl-8"
+              className="absolute flex flex-col justify-center h-full pl-2 sm:pl-4 lg:pl-8"
               style={{ left: '6%', width: '23.3%' }}
             >
               <svg width="18" height="18" viewBox="0 0 20 20" fill="none" className="mb-1">

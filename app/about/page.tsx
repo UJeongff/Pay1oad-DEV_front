@@ -10,7 +10,7 @@ export default function AboutPage() {
     <main className="relative select-none" style={{ background: 'linear-gradient(to bottom, #0F0F0F, #0B101E)' }}>
 
       {/* ── Hero Section ──────────────────────────────── */}
-      <section className="relative flex items-center justify-center overflow-hidden" style={{ height: '75vh', minHeight: '480px' }}>
+      <section className="relative flex items-center justify-center overflow-hidden min-h-[480px] h-[75vh]">
 
         {/* Background Image */}
         <div
@@ -51,7 +51,8 @@ export default function AboutPage() {
           </h1>
           <p
             className="text-white/60 leading-relaxed"
-            style={{ fontSize: 'clamp(0.8rem, 1.2vw, 0.95rem)', maxWidth: '640px', wordBreak: 'keep-all' }}
+            style={{ maxWidth: '640px', wordBreak: 'keep-all' }}
+          className="text-white/60 leading-relaxed text-xs sm:text-sm"
           >
             우리는 정보보호 전문가를 꿈꾸는 사람들과 함께 모여 실력을 갈고닦는 공간입니다.
             <br></br>
