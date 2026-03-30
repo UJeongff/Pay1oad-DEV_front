@@ -42,6 +42,8 @@ interface SiteUser {
 }
 
 // 지원하기/모집 (GET /v1/admin/recruitment)
+type RecruitStatus = 'RECRUITING' | 'UPCOMING' | 'CLOSED'
+
 interface Recruitment {
   id: number
   title: string
@@ -49,6 +51,8 @@ interface Recruitment {
   startAt: string   // LocalDateTime
   endAt: string
   isActive: boolean
+  status?: RecruitStatus
+  generation?: number
   createdAt: string
 }
 
@@ -140,6 +144,8 @@ export default function MypagePage() {
   const [deleteNoticeId, setDeleteNoticeId] = useState<number | null>(null)
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', startAt: '', endAt: '' })
   const [noticeActionLoading, setNoticeActionLoading] = useState(false)
+  const [noticeTarget, setNoticeTarget] = useState<'ALL' | 'CONTENT'>('CONTENT')
+  const [noticeTargetContentId, setNoticeTargetContentId] = useState<number | null>(null)
 
   // ── 부원 관리 ─────────────────────────────────────────────────────────────
   const [members, setMembers]       = useState<SiteUser[]>([])
@@ -156,7 +162,9 @@ export default function MypagePage() {
   const [createRecruitOpen, setCreateRecruitOpen] = useState(false)
   const [deleteRecruitId, setDeleteRecruitId] = useState<number | null>(null)
   const [recruitForm, setRecruitForm] = useState({
-    title: '', applyUrl: '', startAt: '', endAt: '', isActive: true,
+    title: '', applyUrl: '', startAt: '', endAt: '',
+    status: 'UPCOMING' as RecruitStatus,
+    generation: '',
   })
   const [recruitActionLoading, setRecruitActionLoading] = useState(false)
 
@@ -253,11 +261,13 @@ export default function MypagePage() {
 
   // ─── 부원 fetch ───────────────────────────────────────────────────────────
 
-  const fetchMembers = useCallback(async (statusFilter?: string) => {
+  const fetchMembers = useCallback(async (statusFilter?: string, keyword?: string) => {
     setTabLoading(true)
     try {
-      const qs = statusFilter ? `?status=${statusFilter}&size=50` : `?size=50`
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/users${qs}`)
+      const params = new URLSearchParams({ size: '50' })
+      if (statusFilter) params.set('status', statusFilter)
+      if (keyword?.trim()) params.set('keyword', keyword.trim())
+      const res = await fetchWithAuth(`${API_URL}/v1/admin/users?${params}`)
       if (!res.ok) return
       const json = await res.json()
       setMembers(parseList<SiteUser>(json))
@@ -295,23 +305,36 @@ export default function MypagePage() {
   // ─── 공지 actions ─────────────────────────────────────────────────────────
 
   async function handleCreateNotice() {
-    if (!selectedContent || !noticeForm.title.trim() || !noticeForm.content.trim()) return
+    if (!noticeForm.title.trim() || !noticeForm.content.trim()) return
+    if (noticeTarget === 'CONTENT' && !noticeTargetContentId) return
     setNoticeActionLoading(true)
     try {
-      const res = await fetchWithAuth(`${API_URL}/v1/contents/${selectedContent.id}/notices`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title:   noticeForm.title,
-          content: noticeForm.content,
-          startAt: noticeForm.startAt,
-          endAt:   noticeForm.endAt,
-        }),
+      let res: Response
+      const body = JSON.stringify({
+        title:   noticeForm.title,
+        content: noticeForm.content,
+        startAt: noticeForm.startAt || undefined,
+        endAt:   noticeForm.endAt   || undefined,
       })
+      if (noticeTarget === 'ALL') {
+        res = await fetchWithAuth(`${API_URL}/v1/admin/notices`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        })
+      } else {
+        res = await fetchWithAuth(`${API_URL}/v1/contents/${noticeTargetContentId}/notices`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        })
+      }
       if (res.ok) {
         setCreateNoticeOpen(false)
         setNoticeForm({ title: '', content: '', startAt: '', endAt: '' })
-        await fetchNotices(selectedContent.id)
+        if (noticeTarget === 'CONTENT' && selectedContent?.id === noticeTargetContentId) {
+          await fetchNotices(selectedContent.id)
+        }
       }
     } finally {
       setNoticeActionLoading(false)
@@ -413,11 +436,13 @@ export default function MypagePage() {
 
   function recruitBody() {
     return JSON.stringify({
-      title:    recruitForm.title,
-      applyUrl: recruitForm.applyUrl,
-      startAt:  recruitForm.startAt ? `${recruitForm.startAt}T00:00:00` : undefined,
-      endAt:    recruitForm.endAt   ? `${recruitForm.endAt}T23:59:59`   : undefined,
-      isActive: recruitForm.isActive,
+      title:      recruitForm.title,
+      applyUrl:   recruitForm.applyUrl,
+      startAt:    recruitForm.startAt ? `${recruitForm.startAt}T00:00:00` : undefined,
+      endAt:      recruitForm.endAt   ? `${recruitForm.endAt}T23:59:59`   : undefined,
+      isActive:   recruitForm.status === 'RECRUITING',
+      status:     recruitForm.status,
+      generation: recruitForm.generation ? parseInt(recruitForm.generation) : undefined,
     })
   }
 
@@ -432,7 +457,7 @@ export default function MypagePage() {
       })
       if (res.ok) {
         setCreateRecruitOpen(false)
-        setRecruitForm({ title: '', applyUrl: '', startAt: '', endAt: '', isActive: true })
+        setRecruitForm({ title: '', applyUrl: '', startAt: '', endAt: '', status: 'UPCOMING', generation: '' })
         await fetchRecruitments()
       }
     } finally {
@@ -565,7 +590,8 @@ export default function MypagePage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-8 border-b border-white/10 overflow-x-auto">
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <div className="flex gap-1 mb-8 border-b border-white/10 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as any}>
           {TABS.map(({ key, label }) => (
             <button
               key={key}
@@ -595,6 +621,31 @@ export default function MypagePage() {
         {/* ── 공지 관리 ── */}
         {tab === 'notices' && (
           <div>
+            {/* 전체 부원 공지 (admin only) */}
+            {isAdmin && (
+              <div className="mb-6 p-4 rounded-xl flex items-center justify-between gap-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <div>
+                  <p className="text-white/70 text-sm font-semibold">전체 부원 공지</p>
+                  <p className="text-white/30 text-xs mt-0.5">모든 활성 부원에게 공지를 발송합니다.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setNoticeTarget('ALL')
+                    setNoticeTargetContentId(null)
+                    setNoticeForm({ title: '', content: '', startAt: '', endAt: '' })
+                    setCreateNoticeOpen(true)
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white flex-shrink-0"
+                  style={{ background: '#0041EF' }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  공지 작성
+                </button>
+              </div>
+            )}
+
             {/* 컨텐츠 선택 */}
             <div className="flex items-center gap-3 mb-6 flex-wrap">
               <span className="text-white/40 text-sm">스터디 / 프로젝트 선택:</span>
@@ -631,6 +682,8 @@ export default function MypagePage() {
                   </p>
                   <button
                     onClick={() => {
+                      setNoticeTarget('CONTENT')
+                      setNoticeTargetContentId(selectedContent?.id ?? null)
                       setNoticeForm({ title: '', content: '', startAt: '', endAt: '' })
                       setCreateNoticeOpen(true)
                     }}
@@ -715,18 +768,30 @@ export default function MypagePage() {
                 ))}
               </div>
               {/* 검색 */}
-              <div className="relative ml-auto">
-                <input
-                  type="text"
-                  placeholder="이름, 이메일, 학과 검색..."
-                  value={memberSearch}
-                  onChange={e => setMemberSearch(e.target.value)}
-                  className="pl-9 pr-4 py-2 text-sm text-white placeholder-white/30 rounded-lg outline-none"
-                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
-                />
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
+              <div className="flex items-center gap-2 ml-auto">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="이름, 이메일, 학과 검색..."
+                    value={memberSearch}
+                    onChange={e => setMemberSearch(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') fetchMembers(memberStatusFilter || undefined, memberSearch)
+                    }}
+                    className="pl-9 pr-4 py-2 text-sm text-white placeholder-white/30 rounded-lg outline-none"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  />
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                </div>
+                <button
+                  onClick={() => fetchMembers(memberStatusFilter || undefined, memberSearch)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold text-white transition-colors"
+                  style={{ background: '#0041EF' }}
+                >
+                  검색
+                </button>
               </div>
             </div>
 
@@ -803,7 +868,7 @@ export default function MypagePage() {
               <p className="text-white/40 text-sm">신규 부원 모집 기간을 관리합니다.</p>
               <button
                 onClick={() => {
-                  setRecruitForm({ title: '', applyUrl: '', startAt: '', endAt: '', isActive: true })
+                  setRecruitForm({ title: '', applyUrl: '', startAt: '', endAt: '', status: 'UPCOMING', generation: '' })
                   setCreateRecruitOpen(true)
                 }}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
@@ -827,9 +892,17 @@ export default function MypagePage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-white font-medium text-sm">{r.title}</p>
                           <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
-                            r.isActive ? 'text-green-400 bg-green-400/10' : 'text-white/30 bg-white/5'
+                            (r.status === 'RECRUITING' || (!r.status && r.isActive))
+                              ? 'text-green-400 bg-green-400/10'
+                              : r.status === 'UPCOMING'
+                                ? 'text-yellow-400 bg-yellow-400/10'
+                                : 'text-white/30 bg-white/5'
                           }`}>
-                            {r.isActive ? '모집 중' : '마감'}
+                            {r.status === 'RECRUITING' || (!r.status && r.isActive)
+                              ? '모집중'
+                              : r.status === 'UPCOMING'
+                                ? '모집예정'
+                                : '모집마감'}
                           </span>
                         </div>
                         <p className="text-white/30 text-xs mt-0.5">
@@ -849,11 +922,12 @@ export default function MypagePage() {
                           onClick={() => {
                             setEditRecruitment(r)
                             setRecruitForm({
-                              title:    r.title,
-                              applyUrl: r.applyUrl,
-                              startAt:  toDateInput(r.startAt),
-                              endAt:    toDateInput(r.endAt),
-                              isActive: r.isActive,
+                              title:      r.title,
+                              applyUrl:   r.applyUrl,
+                              startAt:    toDateInput(r.startAt),
+                              endAt:      toDateInput(r.endAt),
+                              status:     r.status ?? (r.isActive ? 'RECRUITING' : 'CLOSED'),
+                              generation: r.generation?.toString() ?? '',
                             })
                           }}
                           className="px-3 py-1 rounded text-xs text-white/50 hover:text-white hover:bg-white/10 transition-colors"
@@ -881,12 +955,54 @@ export default function MypagePage() {
       {/* 공지 작성 */}
       {createNoticeOpen && (
         <Modal title="공지 작성" onClose={() => setCreateNoticeOpen(false)}>
+          {/* 공지 보낼 대상 선택 */}
+          <div className="mb-4">
+            <label className="block text-white/50 text-xs font-semibold mb-1.5">공지 보낼 대상</label>
+            <div className="flex gap-2 mb-2">
+              {([['ALL', '전체 부원'], ['CONTENT', '스터디/프로젝트']] as [string, string][]).map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => {
+                    setNoticeTarget(val as 'ALL' | 'CONTENT')
+                    if (val === 'CONTENT') setNoticeTargetContentId(selectedContent?.id ?? noticeContents[0]?.id ?? null)
+                    else setNoticeTargetContentId(null)
+                  }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${noticeTarget === val ? 'text-white' : 'text-white/40 hover:text-white/70'}`}
+                  style={{
+                    background: noticeTarget === val ? '#0041EF' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${noticeTarget === val ? '#0041EF' : 'rgba(255,255,255,0.1)'}`,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {noticeTarget === 'CONTENT' && (
+              <select
+                value={noticeTargetContentId ?? ''}
+                onChange={e => setNoticeTargetContentId(Number(e.target.value))}
+                className={inputCls}
+                style={inputStyle}
+              >
+                <option value="">선택해주세요</option>
+                {noticeContents.map(c => (
+                  <option key={c.id} value={c.id}>{c.title}</option>
+                ))}
+              </select>
+            )}
+          </div>
           <NoticeForm form={noticeForm} onChange={setNoticeForm} />
           <div className="flex justify-end gap-2 pt-4">
             <button onClick={() => setCreateNoticeOpen(false)} className="px-4 py-2 rounded-lg text-sm text-white/50 hover:text-white hover:bg-white/10 transition-colors">취소</button>
             <button
               onClick={handleCreateNotice}
-              disabled={noticeActionLoading || !noticeForm.title.trim() || !noticeForm.content.trim() || !noticeForm.startAt || !noticeForm.endAt}
+              disabled={
+                noticeActionLoading ||
+                !noticeForm.title.trim() ||
+                !noticeForm.content.trim() ||
+                (noticeTarget === 'CONTENT' && (!noticeTargetContentId || !noticeForm.startAt || !noticeForm.endAt))
+              }
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
               style={{ background: '#0041EF' }}
             >
@@ -1104,19 +1220,30 @@ function RecruitForm({
   form,
   onChange,
 }: {
-  form: { title: string; applyUrl: string; startAt: string; endAt: string; isActive: boolean }
+  form: { title: string; applyUrl: string; startAt: string; endAt: string; status: RecruitStatus; generation: string }
   onChange: (f: typeof form) => void
 }) {
+  const statusOptions: { value: RecruitStatus; label: string; color: string }[] = [
+    { value: 'RECRUITING', label: '모집중',   color: '#16a34a' },
+    { value: 'UPCOMING',   label: '모집예정', color: '#ca8a04' },
+    { value: 'CLOSED',     label: '모집마감', color: 'rgba(255,255,255,0.15)' },
+  ]
   return (
     <div className="space-y-4">
       <InputField label="모집 제목">
         <input type="text" value={form.title} onChange={e => onChange({ ...form, title: e.target.value })}
-          placeholder="예) 2024년 1학기 신입 부원 모집" className={inputCls} style={inputStyle} />
+          placeholder="예) 2025년 1학기 신입 부원 모집" className={inputCls} style={inputStyle} />
       </InputField>
-      <InputField label="지원서 URL (외부 링크)">
-        <input type="url" value={form.applyUrl} onChange={e => onChange({ ...form, applyUrl: e.target.value })}
-          placeholder="https://forms.gle/..." className={inputCls} style={inputStyle} />
-      </InputField>
+      <div className="grid grid-cols-2 gap-3">
+        <InputField label="기수">
+          <input type="number" min="1" value={form.generation} onChange={e => onChange({ ...form, generation: e.target.value })}
+            placeholder="예) 12" className={inputCls} style={inputStyle} />
+        </InputField>
+        <InputField label="지원서 URL">
+          <input type="url" value={form.applyUrl} onChange={e => onChange({ ...form, applyUrl: e.target.value })}
+            placeholder="https://forms.gle/..." className={inputCls} style={inputStyle} />
+        </InputField>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <InputField label="모집 시작일">
           <input type="date" value={form.startAt} onChange={e => onChange({ ...form, startAt: e.target.value })}
@@ -1127,18 +1254,24 @@ function RecruitForm({
             className={inputCls} style={inputStyle} />
         </InputField>
       </div>
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => onChange({ ...form, isActive: !form.isActive })}
-          className={`w-10 h-5 rounded-full transition-colors relative ${form.isActive ? 'bg-blue-500' : 'bg-white/20'}`}
-        >
-          <span
-            className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.isActive ? 'translate-x-5' : 'translate-x-0.5'}`}
-          />
-        </button>
-        <span className="text-white/60 text-sm">{form.isActive ? '모집 중 (공개)' : '마감 (비공개)'}</span>
-      </div>
+      <InputField label="모집 상태">
+        <div className="flex gap-2">
+          {statusOptions.map(({ value, label, color }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onChange({ ...form, status: value })}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${form.status === value ? 'text-white' : 'text-white/40 hover:text-white/70'}`}
+              style={{
+                background: form.status === value ? color : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${form.status === value ? color : 'rgba(255,255,255,0.1)'}`,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </InputField>
     </div>
   )
 }

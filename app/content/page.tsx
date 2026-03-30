@@ -29,13 +29,13 @@ const SLOTS: Array<{ col: number; row: number; span: number; variant: Variant }>
   { col: 1, row: 1, span: 2, variant: 'blue'  }, // 0 — blue tall, left
   { col: 2, row: 1, span: 1, variant: 'white' }, // 1
   { col: 3, row: 1, span: 1, variant: 'gray'  }, // 2
-  { col: 2, row: 2, span: 1, variant: 'white' }, // 3
-  { col: 3, row: 2, span: 1, variant: 'gray'  }, // 4
+  { col: 2, row: 2, span: 1, variant: 'gray' }, // 3
+  { col: 3, row: 2, span: 1, variant: 'white'  }, // 4
   { col: 1, row: 3, span: 1, variant: 'gray'  }, // 5
   { col: 2, row: 3, span: 1, variant: 'white' }, // 6
-  { col: 3, row: 3, span: 2, variant: 'blue'  }, // 7 — blue tall, right
-  { col: 1, row: 4, span: 1, variant: 'white' }, // 8
-  { col: 2, row: 4, span: 1, variant: 'white' }, // 9
+  { col: 1, row: 4, span: 1, variant: 'white'  }, // 7 — blue tall, right
+  { col: 2, row: 4, span: 1, variant: 'gray' }, // 8
+  { col: 3, row: 3, span: 2, variant: 'blue' }, // 9
 ]
 
 const VS = {
@@ -439,10 +439,10 @@ export default function ContentPage() {
 
       {/* ── Card Grid ───────────────────────────────── */}
       <section className="relative pb-20">
-        <div className="max-w-5xl mx-auto px-[5vw]">
+        <div className="relative max-w-5xl mx-auto px-[5vw]">
 
           {/* 페이지 생성하기 버튼 */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+          <div className="lg:absolute lg:right-[5vw] lg:top-0 lg:z-10" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
             <Link
               href="/content/create"
               style={{
@@ -479,7 +479,7 @@ export default function ContentPage() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-[220px]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-[220px] lg:pt-16">
             {pageContents.map((content, i) => (
               <ContentCard
                 key={content.id}

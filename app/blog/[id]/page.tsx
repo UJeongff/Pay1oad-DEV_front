@@ -542,7 +542,7 @@ export default function BlogDetailPage() {
 
             {/* Comment input */}
             {user ? (
-              <div style={{ marginTop: '24px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden', background: 'rgba(10,13,22,0.4)' }}>
+              <div style={{ marginTop: '24px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: 'rgba(10,13,22,0.4)' }}>
                 {replyTo && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: 'rgba(28,90,255,0.08)', borderBottom: '1px solid rgba(28,90,255,0.15)' }}>
                     <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>
@@ -582,7 +582,7 @@ export default function BlogDetailPage() {
                     <div style={{
                       position: 'absolute', bottom: '100%', left: '14px', right: '14px',
                       background: '#0d1a2e', border: '1px solid rgba(28,90,255,0.4)',
-                      borderRadius: '10px', overflow: 'hidden', zIndex: 50,
+                      borderRadius: '10px', overflow: 'hidden', maxHeight: '220px', overflowY: 'auto', zIndex: 50,
                       boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
                     }}>
                       {mentionSuggestions.map((u, i) => (

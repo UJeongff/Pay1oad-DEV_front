@@ -64,42 +64,99 @@ function PersonIcon() {
   )
 }
 
-function formatDate(iso: string) {
-  const d = new Date(iso)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}.${m}.${day}`
+function formatDateTimeKst(iso: string) {
+  const date = new Date(iso)
+
+  const dateFormatter = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+
+  const timeFormatter = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+
+  const dateParts = dateFormatter.formatToParts(date)
+  const year = dateParts.find(part => part.type === 'year')?.value ?? ''
+  const month = dateParts.find(part => part.type === 'month')?.value ?? ''
+  const day = dateParts.find(part => part.type === 'day')?.value ?? ''
+  const time = timeFormatter.format(date)
+
+  return {
+    date: `${year}.${month}.${day}`,
+    time: `${time} KST`,
+  }
+}
+
+function resolveCtfImageSrc(imageUrl: string | null) {
+  if (!imageUrl) return '/ctf1.jpg'
+
+  const trimmed = imageUrl.trim()
+  if (!trimmed) return '/ctf1.jpg'
+
+  if (trimmed.startsWith('/')) return trimmed
+
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return trimmed
+    }
+  } catch {
+    return '/ctf1.jpg'
+  }
+
+  return '/ctf1.jpg'
 }
 
 function CtfCard({
   event,
-  onJoin,
+  onShortcutOpen,
   isLoggedIn,
   onLoginRedirect,
 }: {
   event: CtfEvent
-  onJoin: (id: number) => Promise<void>
+  onShortcutOpen: (id: number) => Promise<boolean>
   isLoggedIn: boolean
   onLoginRedirect: () => void
 }) {
-  const [joining, setJoining] = useState(false)
+  const [opening, setOpening] = useState(false)
 
-  const handleJoin = async (e: React.MouseEvent) => {
+  const handleShortcutOpen = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
+
+    if (event.status !== 'ongoing' || opening) return
+
     if (!isLoggedIn) {
       onLoginRedirect()
       return
     }
-    setJoining(true)
+
+    const popup = window.open('', '_blank', 'noopener,noreferrer')
+
+    setOpening(true)
     try {
-      await onJoin(event.id)
+      const opened = await onShortcutOpen(event.id)
+      if (!opened) {
+        popup?.close()
+        return
+      }
+
+      if (popup) {
+        popup.location.href = event.ctfdUrl
+      } else {
+        window.open(event.ctfdUrl, '_blank', 'noopener,noreferrer')
+      }
     } finally {
-      setJoining(false)
+      setOpening(false)
     }
   }
 
-  const imgSrc = event.imageUrl && event.imageUrl.trim() !== '' ? event.imageUrl : '/ctf1.jpg'
+  const imgSrc = resolveCtfImageSrc(event.imageUrl)
 
   return (
     <div
@@ -148,12 +205,17 @@ function CtfCard({
               <CalendarIcon />
               <span>End Date</span>
             </div>
-            <span className="text-white/70 text-xs pl-[18px]">{formatDate(event.startAt)}</span>
-            <span className="text-white/70 text-xs pl-[18px]">{formatDate(event.endAt)}</span>
+            <div className="text-white/70 text-xs pl-[18px] leading-relaxed">
+              <div>{formatDateTimeKst(event.startAt).date}</div>
+              <div className="text-white/45">{formatDateTimeKst(event.startAt).time}</div>
+            </div>
+            <div className="text-white/70 text-xs pl-[18px] leading-relaxed">
+              <div>{formatDateTimeKst(event.endAt).date}</div>
+              <div className="text-white/45">{formatDateTimeKst(event.endAt).time}</div>
+            </div>
           </div>
 
           <div className="flex items-center justify-between gap-2 pt-1">
-            {/* 참여인원: upcoming일 때 숨김 */}
             {event.status !== 'upcoming' ? (
               <div className="flex items-center gap-1 text-xs text-white/50 whitespace-nowrap">
                 <PersonIcon />
@@ -165,52 +227,30 @@ function CtfCard({
             )}
 
             <div className="flex items-center gap-2 shrink-0">
-              {/* 참가하기 버튼: ongoing만 활성화 */}
-              {event.status !== 'ended' && (
+              {event.ctfdUrl && (
                 <button
-                  onClick={event.status === 'ongoing' ? handleJoin : undefined}
-                  disabled={joining || event.status !== 'ongoing'}
+                  disabled={opening || event.status !== 'ongoing'}
                   className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap"
                   style={
                     event.status !== 'ongoing'
                       ? { color: 'rgba(255,255,255,0.3)', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', cursor: 'not-allowed' }
-                      : event.joined
-                        ? { color: '#4d7cff', background: 'rgba(77,124,255,0.15)', border: '1px solid rgba(77,124,255,0.5)' }
-                        : { color: '#ffffff', background: 'transparent', border: '1px solid rgba(255,255,255,0.35)' }
+                      : { color: '#ffffff', background: 'transparent', border: '1px solid rgba(255,255,255,0.35)' }
                   }
                   onMouseEnter={e => {
-                    if (event.status === 'ongoing' && !event.joined) {
+                    if (event.status === 'ongoing' && !opening) {
                       e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
                       e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)'
                     }
                   }}
                   onMouseLeave={e => {
-                    if (event.status === 'ongoing' && !event.joined) {
+                    if (event.status === 'ongoing') {
                       e.currentTarget.style.background = 'transparent'
                       e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'
                     }
                   }}
+                  onClick={handleShortcutOpen}
                 >
-                  {joining ? '...' : event.joined ? '참가중' : '참가하기'}
-                </button>
-              )}
-
-              {/* 바로가기 */}
-              {event.ctfdUrl && (
-                <button
-                  className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap"
-                  style={{ color: '#ffffff', background: 'transparent', border: '1px solid rgba(255,255,255,0.35)' }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)'
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.background = 'transparent'
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'
-                  }}
-                  onClick={() => window.open(event.ctfdUrl, '_blank')}
-                >
-                  바로가기
+                  {opening ? '이동 중...' : '바로가기'}
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                     <path d="M7.5 4L13 10L7.5 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
@@ -257,7 +297,7 @@ function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated
       if (imageFile) {
         const formData = new FormData()
         formData.append('file', imageFile)
-        const uploadRes = await fetchWithAuth(`${API_URL}/v1/admin/ctf/images`, {
+        const uploadRes = await fetchWithAuth(`${API_URL}/v1/admin/ctf/events/images`, {
           method: 'POST',
           body: formData,
         })
@@ -467,12 +507,12 @@ export default function CTFPage() {
     else if (wheelAccum.current < -80) { wheelAccum.current = 0; prev() }
   }, [next, prev])
 
-  const handleJoin = useCallback(async (eventId: number) => {
+  const handleShortcutOpen = useCallback(async (eventId: number) => {
     const res = await fetchWithAuth(`${API_URL}/v1/ctf/events/${eventId}/join`, { method: 'POST' })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       alert(data?.message ?? '오류가 발생했습니다.')
-      return
+      return false
     }
     const json = await res.json()
     const { joined, participantCount } = json.data
@@ -480,6 +520,7 @@ export default function CTFPage() {
     setEvents(prev =>
       prev.map(e => e.id === eventId ? { ...e, joined, participantCount } : e)
     )
+    return true
   }, [])
 
   const isAdmin = user?.role === 'ADMIN'
@@ -621,7 +662,7 @@ export default function CTFPage() {
                 <CtfCard
                   key={event.id}
                   event={event}
-                  onJoin={handleJoin}
+                  onShortcutOpen={handleShortcutOpen}
                   isLoggedIn={!!user}
                   onLoginRedirect={() => router.push('/login')}
                 />

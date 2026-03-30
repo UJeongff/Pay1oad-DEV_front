@@ -5,7 +5,37 @@ import ContactCards from '@/app/components/ContactCards'
 import RulesSection from '@/app/components/RulesSection'
 import HomeFooter from '@/app/components/HomeFooter'
 
-export default function AboutPage() {
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+
+interface Recruitment {
+  id: number
+  title: string
+  applyUrl: string | null
+  startAt: string
+  endAt: string
+  isActive: boolean
+  status?: 'RECRUITING' | 'UPCOMING' | 'CLOSED'
+  generation?: number
+}
+
+async function getActiveRecruitment(): Promise<Recruitment | null> {
+  try {
+    const res = await fetch(`${API_URL}/v1/admin/recruitment`, { cache: 'no-store' })
+    if (!res.ok) return null
+    const data = await res.json()
+    const list: Recruitment[] = data.data ?? data
+    const now = new Date()
+    return list.find((r) =>
+      (r.status === 'RECRUITING' || (!r.status && r.isActive)) &&
+      new Date(r.startAt) <= now && now <= new Date(r.endAt)
+    ) ?? null
+  } catch {
+    return null
+  }
+}
+
+export default async function AboutPage() {
+  const recruitment = await getActiveRecruitment()
   return (
     <main className="relative select-none" style={{ background: 'linear-gradient(to bottom, #0F0F0F, #0B101E)' }}>
 
@@ -50,9 +80,8 @@ export default function AboutPage() {
             가천대학교 No.1 정보보호동아리, Pay1oad
           </h1>
           <p
-            className="text-white/60 leading-relaxed"
+            className="text-white/60 leading-relaxed text-xs sm:text-sm"
             style={{ maxWidth: '640px', wordBreak: 'keep-all' }}
-          className="text-white/60 leading-relaxed text-xs sm:text-sm"
           >
             우리는 정보보호 전문가를 꿈꾸는 사람들과 함께 모여 실력을 갈고닦는 공간입니다.
             <br></br>
@@ -116,20 +145,24 @@ export default function AboutPage() {
             </p>
 
             <div className="flex flex-wrap gap-3">
-              <span
-                className="inline-flex items-center gap-2 border border-white/30 text-white/90 text-sm rounded-full px-6 py-2.5 cursor-default hover:border-blue-500 hover:bg-blue-600/20 transition-all duration-200"
-              >
-                함께 성장하러 가기
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M2.5 8H13.5M13.5 8L8 2.5M13.5 8L8 13.5"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
+              {recruitment?.applyUrl ? (
+                <Link
+                  href={recruitment.applyUrl}
+                  className="inline-flex items-center gap-2 border border-white/30 text-white/90 text-sm rounded-full px-6 py-2.5 hover:border-blue-500 hover:bg-blue-600/20 transition-all duration-200"
+                >
+                  함께 성장하러 가기
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                    <path d="M2.5 8H13.5M13.5 8L8 2.5M13.5 8L8 13.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </Link>
+              ) : (
+                <span className="inline-flex items-center gap-2 border border-white/10 text-white/30 text-sm rounded-full px-6 py-2.5 cursor-not-allowed">
+                  함께 성장하러 가기
+                  <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                    <path d="M2.5 8H13.5M13.5 8L8 2.5M13.5 8L8 13.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              )}
               <Link
                 href="/blog"
                 className="inline-flex items-center gap-2 border border-white/30 text-white/90 text-sm rounded-full px-6 py-2.5 hover:border-blue-500 hover:bg-blue-600/20 transition-all duration-200"

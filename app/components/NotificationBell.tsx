@@ -43,18 +43,31 @@ function formatDate(iso: string) {
   return `${y}.${m}.${day}`
 }
 
+function getNotificationHref(notification: Notification) {
+  if (notification.type === 'MENTION' && notification.contentId) {
+    return `/blog/${notification.contentId}`
+  }
+
+  if (notification.type === 'NOTICE_CREATED' && notification.contentId && notification.referenceId) {
+    return `/content/${notification.contentId}/docs/${notification.referenceId}`
+  }
+
+  return null
+}
+
 function NotificationItem({ n, isRead, onRead, onClose }: { n: Notification; isRead: boolean; onRead: () => void; onClose: () => void }) {
   const router = useRouter()
+  const href = getNotificationHref(n)
 
   const handleClick = () => {
     if (!isRead) onRead()
-    if (n.type === 'NOTICE_CREATED' && n.contentId && n.referenceId) {
+    if (href) {
       onClose()
-      router.push(`/content/${n.contentId}/notices/${n.referenceId}`)
+      router.push(href)
     }
   }
 
-  const isClickable = !isRead || (n.type === 'NOTICE_CREATED' && !!n.contentId && !!n.referenceId)
+  const isClickable = !isRead || !!href
 
   return (
     <div

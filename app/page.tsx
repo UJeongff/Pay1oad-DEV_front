@@ -15,6 +15,8 @@ interface Recruitment {
   startAt: string
   endAt: string
   isActive: boolean
+  status?: 'RECRUITING' | 'UPCOMING' | 'CLOSED'
+  generation?: number
 }
 
 async function getActiveRecruitment(): Promise<Recruitment | null> {
@@ -24,7 +26,10 @@ async function getActiveRecruitment(): Promise<Recruitment | null> {
     const data = await res.json()
     const list: Recruitment[] = data.data ?? data
     const now = new Date()
-    return list.find((r) => r.isActive && new Date(r.startAt) <= now && now <= new Date(r.endAt)) ?? null
+    return list.find((r) =>
+      (r.status === 'RECRUITING' || (!r.status && r.isActive)) &&
+      new Date(r.startAt) <= now && now <= new Date(r.endAt)
+    ) ?? null
   } catch {
     return null
   }
@@ -130,7 +135,7 @@ export default async function Home() {
                   href={recruitment.applyUrl ?? '/recruitment'}
                   className="inline-flex items-center gap-3 border border-white/80 text-white rounded-full px-7 py-3.5 text-sm font-semibold tracking-wider hover-brand transition-all duration-200"
                 >
-                  {recruitment.title} 지원하러가기
+                  {recruitment.generation ? `${recruitment.generation}기 지원하기` : `${recruitment.title} 지원하기`}
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path
                       d="M2.5 8H13.5M13.5 8L8 2.5M13.5 8L8 13.5"
