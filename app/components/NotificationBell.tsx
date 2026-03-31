@@ -17,7 +17,7 @@ interface Notification {
   createdAt: string
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 const EmptyState = () => (
   <div className="flex flex-col items-center justify-center py-10 gap-2">

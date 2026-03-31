@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 type JoinState = 'joining' | 'success' | 'error'
 

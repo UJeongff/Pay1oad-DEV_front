@@ -7,7 +7,7 @@ import HomeFooter from '@/app/components/HomeFooter'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 import DocCollabEditor from '@/app/components/DocCollabEditor'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 function decodeBodyToHtml(bodyJson: string | null): string {
   if (!bodyJson) return ''

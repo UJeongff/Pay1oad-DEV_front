@@ -5,7 +5,7 @@ import ContactCards from '@/app/components/ContactCards'
 import RulesSection from '@/app/components/RulesSection'
 import HomeFooter from '@/app/components/HomeFooter'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 interface Recruitment {
   id: number

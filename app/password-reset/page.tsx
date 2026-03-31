@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 const RED_BORDER = '1px solid rgba(255,60,60,0.85)'
 const RED_SHADOW = '0 0 8px rgba(255,40,40,0.45)'

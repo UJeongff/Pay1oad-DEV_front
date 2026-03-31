@@ -6,7 +6,7 @@ import HomeFooter from '@/app/components/HomeFooter'
 import { Suspense } from 'react'
 import GoogleLinkedToast from '@/app/components/GoogleLinkedToast'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 interface Recruitment {
   id: number

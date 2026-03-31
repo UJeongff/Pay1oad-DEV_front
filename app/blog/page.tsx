@@ -23,7 +23,7 @@ interface Post {
   thumbnailUrl?: string | null
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 const PAGE_SIZE = 9
 
 const FALLBACK_IMAGE = '/logo_blur.png'

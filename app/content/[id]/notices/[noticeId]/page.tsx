@@ -7,7 +7,7 @@ import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 interface NoticeDetail {
   id: number

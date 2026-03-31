@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthContext } from '@/app/context/AuthContext'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 const GOOGLE_CLIENT_ID = '496361331951-viefkapmkdapsgtge3icep02jkrdmsfi.apps.googleusercontent.com'
 
 const RED_BORDER = '1px solid rgba(255,60,60,0.85)'

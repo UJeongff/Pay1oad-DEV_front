@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
@@ -7,7 +7,7 @@ import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 interface Assignment {
   id: number
@@ -79,7 +79,7 @@ export default function AssignmentSubmissionWritePage() {
   const isClosed = !!assignment?.dueAt && new Date(assignment.dueAt).getTime() < Date.now()
 
   const handleSubmit = async () => {
-    if (!title.trim()) return setError('제목을 입력해주세요.')
+    if (isOwnPostedAssignment && !title.trim()) return setError('제목을 입력해주세요.')
     if (!body.trim() && attachedFiles.length === 0 && !(mySubmission?.files?.length ?? 0)) return setError('본문이나 첨부 파일 중 하나는 필요합니다.')
 
     setError(null)
@@ -132,7 +132,13 @@ export default function AssignmentSubmissionWritePage() {
         {loading ? <div style={{ height: '240px', borderRadius: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }} /> : (
           <div style={{ borderRadius: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
             <div style={{ padding: '28px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-              <input value={title} onChange={e => setTitle(e.target.value)} placeholder="과제 제목" style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 'clamp(1.6rem,3vw,2.1rem)', fontWeight: 900 }} />
+              {isOwnPostedAssignment ? (
+                <input value={title} onChange={e => setTitle(e.target.value)} placeholder="과제 제목" style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 'clamp(1.6rem,3vw,2.1rem)', fontWeight: 900 }} />
+              ) : (
+                <h1 style={{ margin: 0, color: '#fff', fontSize: 'clamp(1.6rem,3vw,2.1rem)', fontWeight: 900 }}>
+                  {assignment?.title ?? '과제'}
+                </h1>
+              )}
               {assignment?.dueAt && <p style={{ margin: '12px 0 0', color: isClosed ? '#ff9a9a' : 'rgba(255,255,255,0.5)', fontSize: '12px' }}>마감 | {formatDate(assignment.dueAt)}</p>}
               {error && <p style={{ margin: '12px 0 0', color: '#f87171', fontSize: '12px' }}>{error}</p>}
             </div>

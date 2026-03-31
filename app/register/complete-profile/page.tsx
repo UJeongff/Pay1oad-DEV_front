@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthContext } from '@/app/context/AuthContext'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 // 1기 = 2018, 9기 = 2026
 const GENERATION_OPTIONS = Array.from({ length: 9 }, (_, i) => {

@@ -7,7 +7,7 @@ import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 export default function AssignmentCreatePage() {
   const router = useRouter()
@@ -30,7 +30,11 @@ export default function AssignmentCreatePage() {
   }, [contentId])
 
   const handleSubmit = async () => {
-    if (!title.trim()) { setError('제목을 입력해주세요.'); return }
+    if (!title.trim()) {
+      setError('제목을 입력해주세요.')
+      return
+    }
+
     setError(null)
     setSubmitting(true)
     try {
@@ -74,7 +78,6 @@ export default function AssignmentCreatePage() {
       />
 
       <div className="relative max-w-5xl mx-auto px-[5vw] pt-36 pb-24">
-        {/* Breadcrumb */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '32px', fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
             <path d="M10 1.5V18.5M2.5 5.75L17.5 14.25M17.5 5.75L2.5 14.25" stroke="#1C5AFF" strokeWidth="2.5" strokeLinecap="round" />
@@ -87,7 +90,6 @@ export default function AssignmentCreatePage() {
         </div>
 
         <div style={{ borderRadius: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-          {/* Title */}
           <div className="px-5 sm:px-8 lg:px-10 pt-8 pb-8" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <input
               value={title}
@@ -105,7 +107,6 @@ export default function AssignmentCreatePage() {
             {error && <p style={{ color: '#f87171', fontSize: '12px', marginTop: '8px' }}>{error}</p>}
           </div>
 
-          {/* Description */}
           <div className="px-5 sm:px-8 lg:px-10 py-7" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 600, marginBottom: '10px', letterSpacing: '0.06em' }}>과제 설명</p>
             <textarea
@@ -124,7 +125,6 @@ export default function AssignmentCreatePage() {
             />
           </div>
 
-          {/* Due date */}
           <div className="px-5 sm:px-8 lg:px-10 py-6 flex flex-wrap items-center gap-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 600, letterSpacing: '0.06em', margin: 0, whiteSpace: 'nowrap' }}>마감일 (선택)</p>
             <input
@@ -141,7 +141,6 @@ export default function AssignmentCreatePage() {
             />
           </div>
 
-          {/* Actions */}
           <div className="px-5 sm:px-8 lg:px-10 py-5 flex justify-end gap-2.5">
             <Link
               href={`/content/${contentId}`}

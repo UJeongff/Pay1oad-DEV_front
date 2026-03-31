@@ -11,8 +11,8 @@ import { SimpleYjsProvider } from '@/app/lib/SimpleYjsProvider'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 import { useAuthContext } from '@/app/context/AuthContext'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
-const WS_URL = (process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000')
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const WS_URL = (process.env.NEXT_PUBLIC_WS_URL ?? 'wss://api.pay1oad.xyz')
 
 const CURSOR_COLORS = [
   '#1C5AFF', '#FF6B6B', '#FFD93D', '#6BCB77', '#C77DFF',

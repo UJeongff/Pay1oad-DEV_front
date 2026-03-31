@@ -8,7 +8,7 @@ import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 const POST_PAGE_SIZE = 5
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -781,14 +781,14 @@ export default function StudyDetailPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ width: '3px', height: '16px', background: '#1C5AFF', borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
-            <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>??</h2>
+            <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>과제</h2>
           </div>
           {user && !isLeaderOrAdmin && (
             <Link href={`/content/${contentId}/assignments/write`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
               <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                 <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
               </svg>
-              ?? ??
+              과제 제출
             </Link>
           )}
         </div>
@@ -804,7 +804,7 @@ export default function StudyDetailPage() {
             />
           ))}
           {assignments.length === 0 && (
-            <EmptyAssignmentCard message={isLeaderOrAdmin ? '??? ??? ????.' : '?? ??? ??? ????.'} />
+            <EmptyAssignmentCard message={isLeaderOrAdmin ? '등록된 과제가 없습니다.' : '아직 등록된 과제가 없습니다.'} />
           )}
         </div>
 
@@ -1039,10 +1039,10 @@ function PostRow({
 }
 
 const STATUS_STYLE: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  PENDING: { label: '?? ?? ?', bg: 'rgba(255,165,0,0.1)', color: '#FFB347', border: 'rgba(255,165,0,0.22)' },
-  O:       { label: '?? (O)',     bg: 'rgba(116,255,137,0.08)', color: '#74FF89', border: 'rgba(116,255,137,0.2)' },
-  LATE:    { label: '?? (LATE)',  bg: 'rgba(255,200,0,0.08)', color: '#FFD700', border: 'rgba(255,200,0,0.2)' },
-  X:       { label: '??? (X)',   bg: 'rgba(255,100,100,0.08)', color: '#FF6464', border: 'rgba(255,100,100,0.2)' },
+  PENDING: { label: '평가 대기 중', bg: 'rgba(255,165,0,0.1)', color: '#FFB347', border: 'rgba(255,165,0,0.22)' },
+  O:       { label: '완료 (O)',     bg: 'rgba(116,255,137,0.08)', color: '#74FF89', border: 'rgba(116,255,137,0.2)' },
+  LATE:    { label: '지각 (LATE)',  bg: 'rgba(255,200,0,0.08)', color: '#FFD700', border: 'rgba(255,200,0,0.2)' },
+  X:       { label: '미완료 (X)',   bg: 'rgba(255,100,100,0.08)', color: '#FF6464', border: 'rgba(255,100,100,0.2)' },
 }
 
 function MemberAssignmentCard({ assignment, myStatus, contentId, currentUserId }: { assignment: Assignment; myStatus?: string | null; contentId: string; currentUserId?: number }) {
@@ -1051,7 +1051,7 @@ function MemberAssignmentCard({ assignment, myStatus, contentId, currentUserId }
   const submitHref = `/content/${contentId}/assignments/${assignment.id}/write`
   const canSubmit = assignment.authorIsLeader
   const isAuthor = assignment.authorId != null && String(assignment.authorId) === String(currentUserId)
-  const metaLabel = canSubmit ? (s ? s.label : '???') : (isAuthor ? (s ? s.label : '? ??') : assignment.authorName)
+  const metaLabel = canSubmit ? (s ? s.label : '미제출') : (isAuthor ? (s ? s.label : '내 과제') : assignment.authorName)
   const metaStyle = canSubmit && s
     ? { background: s.bg, color: s.color, border: `1px solid ${s.border}` }
     : { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.1)' }
@@ -1064,15 +1064,15 @@ function MemberAssignmentCard({ assignment, myStatus, contentId, currentUserId }
     >
       <Link href={detailHref} style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <p style={{ fontSize: '14px', fontWeight: 600, color: '#fff', lineHeight: 1.4, margin: 0 }}>{assignment.title}</p>
-        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.32)', margin: 0 }}>??? | {formatDate(assignment.createdAt)}</p>
-        {assignment.dueAt && <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>?? | {formatDate(assignment.dueAt)}</p>}
+        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.32)', margin: 0 }}>작성일 | {formatDate(assignment.createdAt)}</p>
+        {assignment.dueAt && <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>마감 | {formatDate(assignment.dueAt)}</p>}
       </Link>
       <div style={{ marginTop: '8px' }}>
         <span style={{ fontSize: '11px', fontWeight: 600, padding: '4px 10px', borderRadius: '100px', ...metaStyle }}>{metaLabel}</span>
       </div>
       <div style={{ marginTop: '10px' }}>
         <Link href={canSubmit ? submitHref : detailHref} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '8px 12px', borderRadius: '8px', background: canSubmit ? 'rgba(28,90,255,0.18)' : 'rgba(255,255,255,0.05)', border: canSubmit ? '1px solid rgba(28,90,255,0.35)' : '1px solid rgba(255,255,255,0.12)', color: canSubmit ? '#A9C5FF' : 'rgba(255,255,255,0.72)', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}>
-          {canSubmit ? (myStatus ? '?? ????' : '?? ????') : '?? ??'}
+          {canSubmit ? (myStatus ? '제출 수정하기' : '과제 제출하기') : '과제 보기'}
         </Link>
       </div>
     </div>

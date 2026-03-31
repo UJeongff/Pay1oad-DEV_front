@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -6,7 +6,7 @@ import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
 type ContentType = 'STUDY' | 'PROJECT'
 type ContentVisibility = 'TEAM' | 'MEMBER'
@@ -27,8 +27,6 @@ export default function ContentCreatePage() {
   const [visibility, setVisibility] = useState<ContentVisibility>('TEAM')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  // 팀원 검색
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<UserResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -37,7 +35,6 @@ export default function ContentCreatePage() {
   const searchRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 드롭다운 외부 클릭 닫기
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -48,7 +45,6 @@ export default function ContentCreatePage() {
     return () => window.removeEventListener('mousedown', handler)
   }, [])
 
-  // 이름 검색 디바운스
   const handleSearchChange = (value: string) => {
     setSearchQuery(value)
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -57,6 +53,7 @@ export default function ContentCreatePage() {
       setDropdownOpen(false)
       return
     }
+
     debounceRef.current = setTimeout(async () => {
       setSearching(true)
       try {
@@ -64,7 +61,6 @@ export default function ContentCreatePage() {
         if (res.ok) {
           const json = await res.json()
           const list: UserResult[] = json?.data ?? []
-          // 이미 선택된 멤버 제외
           setSearchResults(list.filter(u => !selectedMembers.some(m => m.id === u.id)))
           setDropdownOpen(true)
         }
@@ -92,10 +88,10 @@ export default function ContentCreatePage() {
       setError('제목을 입력해주세요.')
       return
     }
+
     setError(null)
     setSubmitting(true)
     try {
-      // 1. 콘텐츠 생성
       const res = await fetchWithAuth(`${API_URL}/v1/contents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,15 +102,16 @@ export default function ContentCreatePage() {
           visibility,
         }),
       })
+
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
         setError(json?.message ?? '생성에 실패했습니다.')
         return
       }
+
       const json = await res.json()
       const contentId = json?.data?.id
 
-      // 2. 선택한 팀원 초대
       if (contentId && selectedMembers.length > 0) {
         await Promise.allSettled(
           selectedMembers.map(member =>
@@ -137,8 +134,6 @@ export default function ContentCreatePage() {
 
   return (
     <main className="relative min-h-screen select-none" style={{ background: 'linear-gradient(to bottom, #040d1f 0%, #0E1427 100%)' }}>
-
-      {/* Background */}
       <div
         className="absolute inset-x-0 top-0 pointer-events-none"
         style={{
@@ -153,8 +148,6 @@ export default function ContentCreatePage() {
       />
 
       <div className="relative max-w-5xl mx-auto px-[5vw] pt-36 pb-24">
-
-        {/* Breadcrumb */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '32px', fontSize: '13px', color: 'rgba(255,255,255,0.45)' }}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
             <path d="M10 1.5V18.5M2.5 5.75L17.5 14.25M17.5 5.75L2.5 14.25" stroke="#1C5AFF" strokeWidth="2.5" strokeLinecap="round" />
@@ -164,25 +157,9 @@ export default function ContentCreatePage() {
           <span style={{ color: 'rgba(255,255,255,0.75)' }}>페이지 생성하기</span>
         </div>
 
-        {/* Main card */}
-        <div style={{
-          borderRadius: '20px',
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          overflow: 'hidden',
-        }}>
-
-          {/* Top section: Title + Description */}
+        <div style={{ borderRadius: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
           <div className="grid grid-cols-1 md:grid-cols-2" style={{ minHeight: '260px' }}>
-
-            {/* Title */}
-            <div style={{
-              padding: '40px 40px 32px',
-              borderRight: '1px solid rgba(255,255,255,0.07)',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'flex-end',
-            }}>
+            <div style={{ padding: '40px 40px 32px', borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
               <input
                 value={title}
                 onChange={e => setTitle(e.target.value)}
@@ -204,15 +181,12 @@ export default function ContentCreatePage() {
                 }}
                 onKeyDown={e => { if (e.key === 'Enter') e.preventDefault() }}
               />
-              {error && (
-                <p style={{ color: '#f87171', fontSize: '12px', marginTop: '8px' }}>{error}</p>
-              )}
+              {error && <p style={{ color: '#f87171', fontSize: '12px', marginTop: '8px' }}>{error}</p>}
             </div>
 
-            {/* Description */}
             <div style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column' }}>
               <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 600, marginBottom: '10px', letterSpacing: '0.06em' }}>
-                활동소개
+                활동 소개
               </p>
               <textarea
                 value={description}
@@ -239,13 +213,9 @@ export default function ContentCreatePage() {
             </div>
           </div>
 
-          {/* Divider */}
           <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)' }} />
 
-          {/* Middle section: Type + Visibility + Member search */}
           <div style={{ padding: '24px 40px', display: 'flex', alignItems: 'center', gap: '32px', flexWrap: 'wrap' }}>
-
-            {/* Type selector */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontWeight: 600, letterSpacing: '0.06em', marginRight: '4px' }}>유형</span>
               {(['STUDY', 'PROJECT'] as ContentType[]).map(t => (
@@ -269,7 +239,6 @@ export default function ContentCreatePage() {
               ))}
             </div>
 
-            {/* Visibility selector */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
@@ -296,7 +265,6 @@ export default function ContentCreatePage() {
               ))}
             </div>
 
-            {/* Member search */}
             <div ref={searchRef} style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -305,7 +273,7 @@ export default function ContentCreatePage() {
                 <input
                   value={searchQuery}
                   onChange={e => handleSearchChange(e.target.value)}
-                  placeholder="팀원 이름으로 검색"
+                  placeholder="멤버 이름으로 검색"
                   style={{
                     background: 'transparent',
                     border: 'none',
@@ -323,20 +291,8 @@ export default function ContentCreatePage() {
                 )}
               </div>
 
-              {/* Search dropdown */}
               {dropdownOpen && searchResults.length > 0 && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 8px)',
-                  left: 0,
-                  right: 0,
-                  zIndex: 100,
-                  background: 'rgba(10,15,30,0.97)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px',
-                  overflow: 'hidden',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                }}>
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', left: 0, right: 0, zIndex: 100, background: 'rgba(10,15,30,0.97)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
                   {searchResults.map(user => (
                     <button
                       key={user.id}
@@ -357,12 +313,7 @@ export default function ContentCreatePage() {
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(28,90,255,0.12)' }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
                     >
-                      <div style={{
-                        width: '30px', height: '30px', borderRadius: '50%',
-                        background: 'rgba(28,90,255,0.25)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#7ba8ff', fontSize: '12px', fontWeight: 700, flexShrink: 0,
-                      }}>
+                      <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'rgba(28,90,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7ba8ff', fontSize: '12px', fontWeight: 700, flexShrink: 0 }}>
                         {user.name.charAt(0)}
                       </div>
                       <div>
@@ -377,42 +328,20 @@ export default function ContentCreatePage() {
               )}
 
               {dropdownOpen && searchQuery && searchResults.length === 0 && !searching && (
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 8px)',
-                  left: 0,
-                  right: 0,
-                  zIndex: 100,
-                  background: 'rgba(10,15,30,0.97)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px',
-                  padding: '14px',
-                  color: 'rgba(255,255,255,0.4)',
-                  fontSize: '13px',
-                  textAlign: 'center',
-                }}>
+                <div style={{ position: 'absolute', top: 'calc(100% + 8px)', left: 0, right: 0, zIndex: 100, background: 'rgba(10,15,30,0.97)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '14px', color: 'rgba(255,255,255,0.4)', fontSize: '13px', textAlign: 'center' }}>
                   검색 결과가 없습니다.
                 </div>
               )}
             </div>
           </div>
 
-          {/* Selected members */}
           {selectedMembers.length > 0 && (
             <>
               <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)', margin: '0 40px' }} />
               <div style={{ padding: '16px 40px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>초대할 팀원</span>
+                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>초대할 멤버</span>
                 {selectedMembers.map(member => (
-                  <span key={member.id} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                    padding: '4px 10px 4px 12px',
-                    borderRadius: '100px',
-                    background: 'rgba(28,90,255,0.15)',
-                    border: '1px solid rgba(28,90,255,0.35)',
-                    color: '#7ba8ff',
-                    fontSize: '12px', fontWeight: 500,
-                  }}>
+                  <span key={member.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px 4px 12px', borderRadius: '100px', background: 'rgba(28,90,255,0.15)', border: '1px solid rgba(28,90,255,0.35)', color: '#7ba8ff', fontSize: '12px', fontWeight: 500 }}>
                     {member.name}
                     <button
                       onClick={() => removeMember(member.id)}
@@ -428,10 +357,8 @@ export default function ContentCreatePage() {
             </>
           )}
 
-          {/* Divider */}
           <div style={{ height: '1px', background: 'rgba(255,255,255,0.07)' }} />
 
-          {/* Actions */}
           <div style={{ padding: '20px 40px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
             <Link
               href="/content"
@@ -485,9 +412,8 @@ export default function ContentCreatePage() {
           </div>
         </div>
 
-        {/* Helper text */}
         <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '12px', marginTop: '16px', textAlign: 'center' }}>
-          페이지를 생성한 사람이 팀장이 됩니다.
+          페이지를 생성하고 멤버를 초대할 수 있습니다.
         </p>
       </div>
 

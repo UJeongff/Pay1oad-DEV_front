@@ -30,7 +30,7 @@ const CATEGORY_COLOR: Record<Post['category'], string> = {
   QNA:        '#91CDFF',
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 const FALLBACK_IMAGE = '/logo_blur.png'
 
 function toFullUrl(url: string | null | undefined): string {
