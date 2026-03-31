@@ -42,6 +42,9 @@ export default function ContentWritePage() {
 
   const contentId = params.id as string
   const isNotice = searchParams.get('notice') === 'true'
+  const docId = searchParams.get('docId')
+  const docType = searchParams.get('type')?.toUpperCase() ?? 'POST'
+  const isEdit = !!docId
 
   const [contentTitle, setContentTitle] = useState('')
   const [title, setTitle] = useState('')
@@ -74,6 +77,31 @@ export default function ContentWritePage() {
       })
       .catch(() => {})
   }, [contentId])
+
+  // 수정 모드: 기존 doc 데이터 불러오기
+  useEffect(() => {
+    if (!docId) return
+    fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(json => {
+        const doc = json?.data ?? json
+        if (!doc) return
+        setTitle(doc.title ?? '')
+        // bodyJson 디코딩: base64(UTF-8(JSON({body: html})))
+        if (doc.bodyJson) {
+          try {
+            const bin = atob(doc.bodyJson)
+            const bytes = new Uint8Array(bin.length)
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+            const state = JSON.parse(new TextDecoder().decode(bytes))
+            const html = typeof state.body === 'string' ? state.body : ''
+            setBodyHtml(html)
+            if (editorRef.current) editorRef.current.innerHTML = html
+          } catch { /* ignore */ }
+        }
+      })
+      .catch(() => {})
+  }, [contentId, docId])
 
   // 공지 작성 시 멤버 목록 로드
   useEffect(() => {
@@ -155,14 +183,14 @@ export default function ContentWritePage() {
         await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${savedPostId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), content: rawContent, isNotice: false }),
+          body: JSON.stringify({ title: title.trim(), content: rawContent, isNotice: false, docType }),
         })
       } else {
         // 새 임시저장
         const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), content: rawContent, isNotice: false, isDraft: true }),
+          body: JSON.stringify({ title: title.trim(), content: rawContent, isNotice: false, isDraft: true, docType }),
         })
         if (res.ok) {
           const json = await res.json()
@@ -176,9 +204,9 @@ export default function ContentWritePage() {
     }
   }, [title, bodyHtml, saving, savedPostId, contentId])
 
-  // 30초마다 자동 저장 (게시글 전용, 제목이 있을 때)
+  // 30초마다 자동 저장 (게시글 전용, 제목이 있을 때, 수정 모드 제외)
   useEffect(() => {
-    if (isNotice) return
+    if (isNotice || isEdit) return
     const interval = setInterval(() => {
       if (title.trim() && (editorRef.current?.textContent?.trim())) {
         handleSaveDraft()
@@ -224,6 +252,26 @@ export default function ContentWritePage() {
         return
       }
 
+      // ── 수정 모드: 기존 doc PATCH ──────────────
+      if (isEdit && docId) {
+        const html = editorRef.current?.innerHTML ?? bodyHtml
+        const jsonStr = JSON.stringify({ body: html })
+        const bytes = new TextEncoder().encode(jsonStr)
+        const binary = String.fromCharCode(...Array.from(bytes))
+        const encodedBodyJson = btoa(binary)
+        const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: title.trim(), bodyJson: encodedBodyJson }),
+        })
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}))
+          throw new Error(json?.message ?? '수정에 실패했습니다.')
+        }
+        router.push(`/content/${contentId}`)
+        return
+      }
+
       // ── 일반 게시글 ────────────────────────────
       const rawContent = editorRef.current?.innerHTML ?? bodyHtml
       const parser = new DOMParser()
@@ -245,13 +293,13 @@ export default function ContentWritePage() {
         await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${postId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), content: placeholderContent, isNotice: false }),
+          body: JSON.stringify({ title: title.trim(), content: placeholderContent, isNotice: false, docType }),
         })
       } else {
         const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), content: placeholderContent, isNotice: false }),
+          body: JSON.stringify({ title: title.trim(), content: placeholderContent, isNotice: false, docType }),
         })
         if (!res.ok) {
           const json = await res.json().catch(() => ({}))
@@ -354,7 +402,7 @@ export default function ContentWritePage() {
           {contentTitle || '...'}
         </Link>
         <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <span style={{ color: '#fff' }}>{isNotice ? '공지 작성하기' : '게시글 작성하기'}</span>
+        <span style={{ color: '#fff' }}>{isNotice ? '공지 작성하기' : isEdit ? '게시글 수정하기' : docType === 'REPORT' ? '보고서 작성하기' : '게시글 작성하기'}</span>
       </div>
 
       {/* ── Write form ──────────────────────────────── */}
@@ -372,7 +420,7 @@ export default function ContentWritePage() {
 
         {/* Section label */}
         <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)', marginBottom: '10px' }}>
-          {isNotice ? '공지 작성하기' : '게시글 작성하기'}
+          {isNotice ? '공지 작성하기' : isEdit ? '게시글 수정하기' : docType === 'REPORT' ? '보고서 작성하기' : '게시글 작성하기'}
         </p>
 
         {/* Title input */}
@@ -616,24 +664,12 @@ export default function ContentWritePage() {
           >
             취소
           </Link>
-          {/* 임시 저장 버튼 (게시글 전용) */}
-          {!isNotice && (
-            <button
-              onClick={handleSaveDraft}
-              disabled={saving || !title.trim()}
-              style={{ padding: '10px 24px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(255,255,255,0.55)', fontSize: '14px', fontWeight: 500, cursor: (saving || !title.trim()) ? 'not-allowed' : 'pointer', opacity: (saving || !title.trim()) ? 0.5 : 1, transition: 'all 0.15s' }}
-              onMouseEnter={e => { if (!saving && title.trim()) { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.35)'; (e.currentTarget as HTMLElement).style.color = '#fff' } }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.55)' }}
-            >
-              {saving ? '저장 중...' : '임시 저장'}
-            </button>
-          )}
           <button
             onClick={handleSubmit}
             disabled={submitting}
             style={{ padding: '10px 28px', borderRadius: '8px', border: '0.734px solid rgba(0, 65, 239, 0.6)', background: 'rgba(0, 65, 239, 0.4)', color: '#fff', fontSize: '14px', fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
           >
-            {submitting ? '등록 중...' : '등록하기'}
+            {submitting ? (isEdit ? '수정 중...' : '등록 중...') : (isEdit ? '수정하기' : '등록하기')}
           </button>
         </div>
       </div>

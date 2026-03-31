@@ -10,7 +10,7 @@ export default function DocEditRedirectPage() {
   const docId = params.docId as string
 
   useEffect(() => {
-    router.replace(`/content/${contentId}/write?docId=${docId}`)
+    router.replace(`/content/${contentId}/docs/${docId}/write`)
   }, [contentId, docId, router])
 
   return (

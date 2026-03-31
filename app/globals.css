@@ -57,3 +57,29 @@ body {
   border-color: #1C5AFF;
   color: #ffffff;
 }
+
+/* ── Collaboration Cursor ── */
+.collaboration-cursor__caret {
+  border-left: 2px solid;
+  border-right: 2px solid;
+  margin-left: -1px;
+  margin-right: -1px;
+  pointer-events: none;
+  position: relative;
+  word-break: normal;
+}
+
+.collaboration-cursor__label {
+  border-radius: 3px 3px 3px 0;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  left: -1px;
+  line-height: 1;
+  padding: 3px 6px;
+  pointer-events: none;
+  position: absolute;
+  top: -1.4em;
+  user-select: none;
+  white-space: nowrap;
+}

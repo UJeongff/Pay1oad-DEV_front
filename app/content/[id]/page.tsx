@@ -137,7 +137,7 @@ export default function StudyDetailPage() {
   const postDocs = posts.filter(p => !p.isNotice && p.docType === 'POST')
   const reportDocs = posts.filter(p => !p.isNotice && p.docType === 'REPORT')
   const docPosts = isProject ? reportDocs : postDocs
-  const activePostList = isProject ? noticePosts : posts
+  const activePostList = isProject ? postDocs : posts
   const pagedPosts = activePostList.slice((postPage - 1) * POST_PAGE_SIZE, postPage * POST_PAGE_SIZE)
   const computedPostPages = Math.max(1, Math.ceil(activePostList.length / POST_PAGE_SIZE))
   const pagedReportPosts = docPosts.slice((reportPage - 1) * POST_PAGE_SIZE, reportPage * POST_PAGE_SIZE)
@@ -689,7 +689,7 @@ export default function StudyDetailPage() {
                 </Link>
               )}
               <Link
-                href={`/content/${contentId}/write`}
+                href={isProject ? `/content/${contentId}/write?type=post` : `/content/${contentId}/write`}
                 style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
                 onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.45)'; el.style.color = '#fff' }}
                 onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.color = 'rgba(255,255,255,0.65)' }}
@@ -758,7 +758,7 @@ export default function StudyDetailPage() {
 
           {user && (
             <Link
-              href={`/content/${contentId}/write`}
+              href={`/content/${contentId}/write?type=report`}
               style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
               onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.45)'; el.style.color = '#fff' }}
               onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.color = 'rgba(255,255,255,0.65)' }}
@@ -896,7 +896,7 @@ function PostRow({
     : `/content/${contentId}/docs/${post.id}`
   const editHref = post.kind === 'notice'
     ? `/content/${contentId}/notices/${post.id}/edit`
-    : `/content/${contentId}/docs/${post.id}/edit`
+    : `/content/${contentId}/docs/${post.id}/write`
   const deleteApiUrl = post.kind === 'notice'
     ? `${API_URL}/v1/contents/${contentId}/notices/${post.id}`
     : `${API_URL}/v1/contents/${contentId}/docs/${post.id}`
