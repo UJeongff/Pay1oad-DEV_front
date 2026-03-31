@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@tiptap/extension-collaboration": "^3.21.0",
-    "@tiptap/extension-collaboration-cursor": "^2.26.2",
     "@tiptap/pm": "^3.21.0",
     "@tiptap/react": "^3.21.0",
     "@tiptap/starter-kit": "^3.21.0",

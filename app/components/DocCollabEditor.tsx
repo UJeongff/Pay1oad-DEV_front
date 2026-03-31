@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
-import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import * as Y from 'yjs'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { SimpleYjsProvider } from '@/app/lib/SimpleYjsProvider'
@@ -13,16 +12,6 @@ import { useAuthContext } from '@/app/context/AuthContext'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 const WS_URL = (process.env.NEXT_PUBLIC_WS_URL ?? 'wss://api.pay1oad.xyz')
-
-const CURSOR_COLORS = [
-  '#1C5AFF', '#FF6B6B', '#FFD93D', '#6BCB77', '#C77DFF',
-  '#FF9F43', '#00CFE8', '#FF6EC7', '#A29BFE', '#FD79A8',
-]
-
-function getUserColor(userId: number | string): string {
-  const hash = String(userId).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
-  return CURSOR_COLORS[hash % CURSOR_COLORS.length]
-}
 
 function encodeBodyJson(html: string): string {
   const jsonStr = JSON.stringify({ body: html })
@@ -65,20 +54,11 @@ export default function DocCollabEditor({
     awarenessRef.current = new awarenessProtocol.Awareness(ydocRef.current)
   }
 
-  const cursorUser = useMemo(() => ({
-    name: user?.nickname ?? user?.name ?? '익명',
-    color: getUserColor(user?.id ?? Math.random()),
-  }), [user])
-
   const editor = useEditor({
     extensions: [
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       StarterKit.configure({ history: false } as any), // Yjs가 undo/redo 관리
       Collaboration.configure({ document: ydocRef.current }),
-      CollaborationCursor.configure({
-        provider: { awareness: awarenessRef.current },
-        user: cursorUser,
-      }),
     ],
     editorProps: {
       attributes: {
