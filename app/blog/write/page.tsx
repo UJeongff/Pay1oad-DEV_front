@@ -170,43 +170,56 @@ export default function BlogWritePage() {
       // 3. 에디터 이미지 업로드 및 URL 교체
       let finalContent = placeholderContent
       for (let i = 0; i < pendingFiles.length; i++) {
-        const fd = new FormData()
-        fd.append('file', pendingFiles[i])
-        const fileRes = await fetchWithAuth(`${API_URL}/v1/posts/${postId}/files`, {
-          method: 'POST',
-          body: fd,
-        })
-        if (fileRes.ok) {
-          const fileJson = await fileRes.json()
-          const fileUrl: string = fileJson.data.fileUrl
-          const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${API_URL}${fileUrl}`
-          finalContent = finalContent.replace(`__IMG_PLACEHOLDER_${i}__`, fullUrl)
+        try {
+          const fd = new FormData()
+          fd.append('file', pendingFiles[i])
+          const fileRes = await fetchWithAuth(`${API_URL}/v1/posts/${postId}/files`, {
+            method: 'POST',
+            body: fd,
+          })
+          if (fileRes.ok) {
+            const fileJson = await fileRes.json()
+            const fileUrl: string = fileJson.data.fileUrl
+            const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${API_URL}${fileUrl}`
+            finalContent = finalContent.replace(`__IMG_PLACEHOLDER_${i}__`, fullUrl)
+          }
+        } catch {
+          // 이미지 업로드 실패 시 placeholder 제거
+          finalContent = finalContent.replace(`__IMG_PLACEHOLDER_${i}__`, '')
         }
       }
 
       // 4. 첨부파일 업로드
       for (const file of attachedFiles) {
-        const fd = new FormData()
-        fd.append('file', file)
-        await fetchWithAuth(`${API_URL}/v1/posts/${postId}/files`, {
-          method: 'POST',
-          body: fd,
-        })
+        try {
+          const fd = new FormData()
+          fd.append('file', file)
+          await fetchWithAuth(`${API_URL}/v1/posts/${postId}/files`, {
+            method: 'POST',
+            body: fd,
+          })
+        } catch {
+          // 첨부파일 업로드 실패는 무시하고 계속 진행
+        }
       }
 
       // 5. 이미지가 있었으면 최종 content로 업데이트 (필수 필드 전체 포함)
       if (pendingFiles.length > 0) {
-        await fetchWithAuth(`${API_URL}/v1/posts/${postId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: title.trim(),
-            content: finalContent,
-            category,
-            visibility,
-            authorDisplay,
-          }),
-        })
+        try {
+          await fetchWithAuth(`${API_URL}/v1/posts/${postId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: title.trim(),
+              content: finalContent,
+              category,
+              visibility,
+              authorDisplay,
+            }),
+          })
+        } catch {
+          // content 업데이트 실패해도 게시글은 생성됐으므로 이동
+        }
       }
 
       router.push('/blog')
