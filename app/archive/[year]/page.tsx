@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useMemo, useRef } from 'react'
-import { useParams } from 'next/navigation'
+import { createPortal } from 'react-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import HomeFooter from '@/app/components/HomeFooter'
-import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 import { useAuthContext } from '@/app/context/AuthContext'
+import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 const PAGE_SIZE = 10
@@ -17,22 +18,26 @@ interface ArchiveItem {
   type: ArchiveItemType
   title: string
   archivedAt: string
-  isPublic?: boolean
+  description?: string | null
+  visibility?: 'PUBLIC' | 'MEMBER' | 'ADMIN'
 }
 
 interface ArchivePostResponse {
   id: number
   title: string
   archivedAt?: string
-  isPublic?: boolean
 }
 
 interface ArchiveContentResponse {
   id: number
   type: 'STUDY' | 'PROJECT'
   title: string
+  description?: string | null
+  visibility?: 'PUBLIC' | 'MEMBER' | 'ADMIN'
   archivedAt?: string
 }
+
+type ArchiveContentDetail = ArchiveContentResponse
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
@@ -46,14 +51,15 @@ function formatDate(dateStr: string) {
 function groupByType(items: ArchiveItem[]): Record<'B' | 'C', ArchiveItem[]> {
   const map: Record<'B' | 'C', ArchiveItem[]> = { B: [], C: [] }
   for (const item of items) {
-    if (item.type === 'BLOG') map['B'].push(item)
-    else map['C'].push(item)
+    if (item.type === 'BLOG') map.B.push(item)
+    else map.C.push(item)
   }
   return map
 }
 
 function Pagination({ page, total, onChange }: { page: number; total: number; onChange: (p: number) => void }) {
   if (total <= 1) return null
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '20px' }}>
       <button
@@ -62,7 +68,7 @@ function Pagination({ page, total, onChange }: { page: number; total: number; on
         style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: page === 1 ? 'default' : 'pointer', color: page === 1 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)', borderRadius: '5px' }}
       >
         <svg width="6" height="10" viewBox="0 0 7 12" fill="none">
-          <path d="M6 1L1 6L6 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M6 1L1 6L6 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {Array.from({ length: total }, (_, i) => i + 1).map(n => (
@@ -82,10 +88,153 @@ function Pagination({ page, total, onChange }: { page: number; total: number; on
         style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: page === total ? 'default' : 'pointer', color: page === total ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)', borderRadius: '5px' }}
       >
         <svg width="6" height="10" viewBox="0 0 7 12" fill="none">
-          <path d="M1 1L6 6L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M1 1L6 6L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
     </div>
+  )
+}
+
+function ArchiveBadge({ label }: { label: string }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '4px 10px',
+        borderRadius: '999px',
+        border: '1px solid rgba(255,255,255,0.12)',
+        background: 'rgba(255,255,255,0.04)',
+        color: 'rgba(255,255,255,0.72)',
+        fontSize: '11px',
+        fontWeight: 600,
+      }}
+    >
+      {label}
+    </span>
+  )
+}
+
+function ArchiveContentModal({
+  item,
+  detail,
+  loading,
+  onClose,
+}: {
+  item: ArchiveItem | null
+  detail: ArchiveContentDetail | null
+  loading: boolean
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [onClose])
+
+  if (!item || typeof window === 'undefined') return null
+
+  return createPortal(
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        background: 'rgba(0,0,0,0.68)',
+        backdropFilter: 'blur(6px)',
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: 'min(520px, 100%)',
+          borderRadius: '20px',
+          border: '1px solid rgba(255,255,255,0.1)',
+          background: 'linear-gradient(180deg, #0E1427 0%, #0A1020 100%)',
+          boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
+          padding: '28px',
+        }}
+        onClick={event => event.stopPropagation()}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <ArchiveBadge label={detail?.type === 'PROJECT' ? 'Project' : 'Study'} />
+              <ArchiveBadge label={detail?.visibility === 'PUBLIC' ? 'Only Team' : 'All Member'} />
+              <ArchiveBadge label="Archive" />
+            </div>
+            <h2
+              style={{
+                margin: 0,
+                color: '#fff',
+                fontSize: 'clamp(1.6rem, 3vw, 2.1rem)',
+                lineHeight: 1.15,
+                letterSpacing: '0.03em',
+                textTransform: 'uppercase',
+                fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif",
+              }}
+            >
+              {item.title}
+            </h2>
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'rgba(255,255,255,0.45)',
+              cursor: 'pointer',
+              fontSize: '22px',
+              lineHeight: 1,
+              padding: '2px',
+            }}
+          >
+            {'\u00D7'}
+          </button>
+        </div>
+
+        <div
+          style={{
+            marginTop: '20px',
+            padding: '18px 20px',
+            borderRadius: '14px',
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.03)',
+          }}
+        >
+          {loading ? (
+            <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '14px' }}>{'\uC124\uBA85\uC744 \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.'}</p>
+          ) : (
+            <>
+              <p style={{ margin: '0 0 10px', color: 'rgba(255,255,255,0.35)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                Description
+              </p>
+              <p style={{ margin: 0, color: 'rgba(255,255,255,0.75)', fontSize: '14px', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                {detail?.description?.trim() ? detail.description : '\uC124\uBA85\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.'}
+              </p>
+            </>
+          )}
+        </div>
+
+        <p style={{ margin: '18px 0 0', color: 'rgba(255,255,255,0.34)', fontSize: '12px', lineHeight: 1.6 }}>
+          {'Archive\uC5D0\uC11C\uB294 content\uC758 \uC124\uBA85\uB9CC \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uBCF5\uC6D0 \uC804\uC5D0\uB294 \uAE30\uC874 \uD300 \uAE30\uB2A5\uC744 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.'}
+        </p>
+      </div>
+    </div>,
+    document.body
   )
 }
 
@@ -94,11 +243,13 @@ function ItemRow({
   isAdmin,
   onRestore,
   onDelete,
+  onOpenContent,
 }: {
   item: ArchiveItem
   isAdmin: boolean
   onRestore: (item: ArchiveItem) => void
   onDelete: (item: ArchiveItem) => void
+  onOpenContent: (item: ArchiveItem) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -133,13 +284,15 @@ function ItemRow({
             {item.title}
           </Link>
         ) : (
-          <Link
-            href={`/content/${item.id}`}
+          <button
+            type="button"
+            onClick={() => onOpenContent(item)}
+
             className="text-white/85 text-sm font-medium truncate hover:text-white transition-colors"
-            style={{ textDecoration: 'none' }}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
           >
             {item.title}
-          </Link>
+          </button>
         )}
       </div>
 
@@ -156,7 +309,7 @@ function ItemRow({
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'rgba(255,255,255,0.4)', lineHeight: 1 }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+                <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
               </svg>
             </button>
 
@@ -168,26 +321,26 @@ function ItemRow({
                   style={{ background: 'rgba(36,36,36,0.8)', border: 'none', color: 'rgba(255,255,255,0.85)', fontSize: '12px', fontWeight: 500, padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '6px', width: '100%' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
-                  onClick={async () => {
+                  onClick={() => {
                     setMenuOpen(false)
-                    const target = item.type === 'BLOG' ? '블로그' : '콘텐츠'
-                    if (!window.confirm(`${target} 목록으로 복원하시겠습니까?`)) return
+                    const target = item.type === 'BLOG' ? '\uBE14\uB85C\uADF8' : '\uCF58\uD150\uCE20'
+                    if (!window.confirm(target + ' \uBAA9\uB85D\uC73C\uB85C \uBCF5\uC6D0\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return
                     onRestore(item)
                   }}
                 >
-                  복원하기
+                  {'\uBCF5\uC6D0\uD558\uAE30'}
                 </button>
                 <button
                   style={{ background: 'rgba(36,36,36,0.8)', border: 'none', color: '#f87171', fontSize: '12px', fontWeight: 500, padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '6px', width: '100%' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
-                  onClick={async () => {
+                  onClick={() => {
                     setMenuOpen(false)
-                    if (!window.confirm('영구 삭제하시겠습니까?')) return
+                    if (!window.confirm('\uC601\uAD6C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return
                     onDelete(item)
                   }}
                 >
-                  삭제하기
+                  {'\uC0AD\uC81C\uD558\uAE30'}
                 </button>
               </div>
             )}
@@ -209,12 +362,18 @@ export default function ArchiveYearPage() {
   const [search, setSearch] = useState('')
   const [pageB, setPageB] = useState(1)
   const [pageC, setPageC] = useState(1)
+  const [selectedContent, setSelectedContent] = useState<ArchiveItem | null>(null)
+  const [selectedContentDetail, setSelectedContentDetail] = useState<ArchiveContentDetail | null>(null)
+  const [contentModalLoading, setContentModalLoading] = useState(false)
 
   useEffect(() => {
     async function fetchArchives() {
       try {
         const res = await fetch(`${API_URL}/v1/archive/${year}`, { cache: 'no-store', credentials: 'include' })
-        if (!res.ok) { setItems([]); return }
+        if (!res.ok) {
+          setItems([])
+          return
+        }
 
         const json = await res.json()
         const data = json?.data ?? {}
@@ -222,14 +381,17 @@ export default function ArchiveYearPage() {
         const contents: ArchiveContentResponse[] = Array.isArray(data?.contents) ? data.contents : []
 
         const postItems: ArchiveItem[] = posts.map(p => ({
-          id: Number(p.id), type: 'BLOG',
+          id: Number(p.id),
+          type: 'BLOG',
           title: String(p.title ?? ''),
           archivedAt: String(p.archivedAt ?? `${year}-01-01`),
-          isPublic: p.isPublic,
         }))
         const contentItems: ArchiveItem[] = contents.map(c => ({
-          id: Number(c.id), type: c.type === 'PROJECT' ? 'PROJECT' : 'STUDY',
+          id: Number(c.id),
+          type: c.type === 'PROJECT' ? 'PROJECT' : 'STUDY',
           title: String(c.title ?? ''),
+          description: c.description ?? null,
+          visibility: c.visibility,
           archivedAt: String(c.archivedAt ?? `${year}-01-01`),
         }))
 
@@ -240,23 +402,24 @@ export default function ArchiveYearPage() {
         setLoading(false)
       }
     }
+
     fetchArchives()
   }, [year])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return items.filter(item => {
-      // 비로그인 사용자는 BLOG 중 isPublic이 명시적으로 false인 것은 제외
-      if (!user && item.type === 'BLOG' && item.isPublic === false) return false
       if (q && !item.title.toLowerCase().includes(q)) return false
       return true
     })
-  }, [items, search, user])
+  }, [items, search])
 
   const grouped = useMemo(() => groupByType(filtered), [filtered])
 
-  // 검색 시 페이지 리셋
-  useEffect(() => { setPageB(1); setPageC(1) }, [search])
+  useEffect(() => {
+    setPageB(1)
+    setPageC(1)
+  }, [search])
 
   const totalPagesB = Math.max(1, Math.ceil(grouped.B.length / PAGE_SIZE))
   const totalPagesC = Math.max(1, Math.ceil(grouped.C.length / PAGE_SIZE))
@@ -281,6 +444,19 @@ export default function ArchiveYearPage() {
       const res = await fetchWithAuth(url, { method: 'DELETE' })
       if (res.ok) setItems(prev => prev.filter(i => !(i.id === item.id && i.type === item.type)))
     } catch {}
+  }
+
+  const handleOpenContent = (item: ArchiveItem) => {
+    setSelectedContent(item)
+    setSelectedContentDetail({
+      id: item.id,
+      title: item.title,
+      type: item.type === 'PROJECT' ? 'PROJECT' : 'STUDY',
+      description: item.description ?? null,
+      visibility: item.visibility,
+      archivedAt: item.archivedAt,
+    })
+    setContentModalLoading(false)
   }
 
   const sections: Array<{ key: 'B' | 'C'; items: ArchiveItem[]; page: number; totalPages: number; setPage: (p: number) => void }> = [
@@ -351,6 +527,7 @@ export default function ArchiveYearPage() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search title"
+                maxLength={50}
                 className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/30"
               />
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -381,7 +558,7 @@ export default function ArchiveYearPage() {
 
                   <div className="flex-1 flex flex-col">
                     {grouped[key].length === 0 ? (
-                      <span className="text-white/20 text-sm py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>—</span>
+                      <span className="text-white/20 text-sm py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>No archived items.</span>
                     ) : (
                       <>
                         {sectionItems.map(item => (
@@ -391,6 +568,7 @@ export default function ArchiveYearPage() {
                             isAdmin={isAdmin}
                             onRestore={handleRestore}
                             onDelete={handleDelete}
+                            onOpenContent={handleOpenContent}
                           />
                         ))}
                         <Pagination page={page} total={totalPages} onChange={setPage} />
@@ -405,6 +583,19 @@ export default function ArchiveYearPage() {
       </section>
 
       <HomeFooter />
+
+      {selectedContent && (
+        <ArchiveContentModal
+          item={selectedContent}
+          detail={selectedContentDetail}
+          loading={contentModalLoading}
+          onClose={() => {
+            setSelectedContent(null)
+            setSelectedContentDetail(null)
+            setContentModalLoading(false)
+          }}
+        />
+      )}
     </main>
   )
 }

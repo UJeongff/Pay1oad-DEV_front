@@ -25,13 +25,17 @@ const EmptyState = () => (
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
-    <p className="text-white/30 text-xs">알림이 없습니다.</p>
+    <p className="text-white/30 text-xs">No notifications.</p>
   </div>
 )
 
 function typeToLabel(type: string) {
-  if (type === 'NOTICE_CREATED') return '공지'
-  if (type === 'MENTION') return '멘션'
+  if (type === 'NOTICE_CREATED') return 'Notice'
+  if (type === 'MENTION') return 'Mention'
+  if (type === 'ASSIGNMENT_CREATED') return 'Assignment'
+  if (type === 'ASSIGNMENT_GRADED') return 'Graded'
+  if (type === 'COMMENT_CREATED') return 'Comment'
+  if (type === 'MEMBER_INVITED') return 'Invite'
   return type.replace(/_/g, ' ')
 }
 
@@ -48,8 +52,24 @@ function getNotificationHref(notification: Notification) {
     return `/blog/${notification.contentId}`
   }
 
-  if (notification.type === 'NOTICE_CREATED' && notification.contentId && notification.referenceId) {
+  if (notification.type === 'NOTICE_CREATED' && notification.contentId != null && notification.referenceId != null) {
+    return `/content/${notification.contentId}/notices/${notification.referenceId}`
+  }
+
+  if (notification.type === 'ASSIGNMENT_CREATED' && notification.contentId != null && notification.referenceId != null) {
+    return `/content/${notification.contentId}/assignments/${notification.referenceId}`
+  }
+
+  if (notification.type === 'ASSIGNMENT_GRADED' && notification.contentId != null && notification.referenceId != null) {
+    return `/content/${notification.contentId}/assignments/${notification.referenceId}`
+  }
+
+  if (notification.type === 'COMMENT_CREATED' && notification.contentId != null && notification.referenceId != null) {
     return `/content/${notification.contentId}/docs/${notification.referenceId}`
+  }
+
+  if (notification.type === 'MEMBER_INVITED' && notification.contentId) {
+    return `/content/${notification.contentId}`
   }
 
   return null
@@ -61,9 +81,17 @@ function NotificationItem({ n, isRead, onRead, onClose }: { n: Notification; isR
 
   const handleClick = () => {
     if (!isRead) onRead()
-    if (href) {
-      onClose()
-      router.push(href)
+    if (!href) return
+
+    router.push(href)
+    onClose()
+
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        if (window.location.pathname !== href) {
+          window.location.assign(href)
+        }
+      }, 120)
     }
   }
 
@@ -82,13 +110,11 @@ function NotificationItem({ n, isRead, onRead, onClose }: { n: Notification; isR
         transition: 'background 0.3s ease',
       }}
     >
-      {/* Left accent border — only when unread */}
       {!isRead && (
         <div className="w-[3px] flex-shrink-0" style={{ background: 'rgba(255, 145, 147, 0.65)' }} />
       )}
 
       <div className="flex flex-col gap-2 px-4 py-3 flex-1 min-w-0">
-        {/* Tag + icon + title */}
         <div className="flex items-center gap-2 flex-wrap">
           <span
             className="text-white/70 text-[10px] px-2 py-0.5 flex-shrink-0 whitespace-nowrap"
@@ -96,14 +122,13 @@ function NotificationItem({ n, isRead, onRead, onClose }: { n: Notification; isR
           >
             {typeToLabel(n.type)}
           </span>
-          <span className="text-sm leading-none flex-shrink-0">📢</span>
+          <span className="text-sm leading-none flex-shrink-0">!</span>
           <p className="text-white text-sm font-semibold leading-snug">{n.message}</p>
         </div>
 
-        {/* Footer */}
         <div className="flex justify-end">
           <p className="text-white/40 text-xs">
-            작성자 | {n.actorName}&nbsp;&nbsp;&nbsp;등록일 | {formatDate(n.createdAt)}
+            Author | {n.actorName}&nbsp;&nbsp;&nbsp;Date | {formatDate(n.createdAt)}
           </p>
         </div>
       </div>
@@ -166,7 +191,6 @@ export default function NotificationBell() {
   const unread = all.filter((n) => !n.isRead && !readIds.has(n.id)).length
   const list = tab === 'notice' ? notices : alerts
 
-  // Reset index when tab changes
   useEffect(() => { setCurrentIndex(0) }, [tab])
 
   function markAsRead(id: number) {
@@ -187,11 +211,11 @@ export default function NotificationBell() {
       <button
         onClick={() => setOpen((o) => !o)}
         className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-white/10 transition-colors"
-        aria-label="알림"
+        aria-label="Notifications"
       >
         <Image
           src={unread > 0 ? '/Noticification.svg' : '/Noticification_read.svg'}
-          alt="알림"
+          alt="Notifications"
           width={20}
           height={20}
         />
@@ -214,7 +238,6 @@ export default function NotificationBell() {
             right: '40px',
           }}
         >
-          {/* Header + Tabs */}
           <div className="flex items-center gap-3">
             <span className="text-white text-xs font-bold tracking-widest uppercase">Notifications</span>
             <div
@@ -241,7 +264,7 @@ export default function NotificationBell() {
                   fontWeight: 500,
                 }}
               >
-                공지
+                Notice
                 <span style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -274,7 +297,7 @@ export default function NotificationBell() {
                   fontWeight: 500,
                 }}
               >
-                멘션
+                Alert
                 <span style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -294,27 +317,23 @@ export default function NotificationBell() {
             </div>
           </div>
 
-          {/* Divider */}
           <div style={{ height: '1px', background: 'rgba(255,255,255,0.10)', margin: '0 -2px' }} />
 
-          {/* Carousel */}
           {list.length === 0 ? (
             <EmptyState />
           ) : (
             <div className="flex items-center gap-2">
-              {/* Left arrow */}
               <button
                 onClick={() => hasPrev && goTo(currentIndex - 1)}
                 className="flex-shrink-0 transition-colors"
                 style={{ color: hasPrev ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.20)', cursor: hasPrev ? 'pointer' : 'default' }}
-                aria-label="이전"
+                aria-label="Previous"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
 
-              {/* Item */}
               {current && (
                 <div className="flex-1 min-w-0">
                   <NotificationItem
@@ -326,12 +345,11 @@ export default function NotificationBell() {
                 </div>
               )}
 
-              {/* Right arrow */}
               <button
                 onClick={() => hasNext && goTo(currentIndex + 1)}
                 className="flex-shrink-0 transition-colors"
                 style={{ color: hasNext ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.20)', cursor: hasNext ? 'pointer' : 'default' }}
-                aria-label="다음"
+                aria-label="Next"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

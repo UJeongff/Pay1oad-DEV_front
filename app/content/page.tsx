@@ -355,12 +355,14 @@ function PlaceholderCard({ slot }: { slot: typeof SLOTS[number] }) {
 }
 
 export default function ContentPage() {
-  const { user } = useAuthContext()
+  const { user, loading } = useAuthContext()
   const [allContents, setAllContents] = useState<Content[]>([])
   const [page, setPage] = useState(1)
   const [createHovered, setCreateHovered] = useState(false)
 
   useEffect(() => {
+    if (loading) return
+
     async function load() {
       try {
         const res = await fetchWithAuth(`${API_URL}/v1/contents`)
@@ -376,7 +378,7 @@ export default function ContentPage() {
       }
     }
     load()
-  }, [])
+  }, [loading, user?.id, user?.role])
 
   const handleDeleted = (id: number) => {
     setAllContents(prev => prev.filter(c => c.id !== id))
@@ -387,9 +389,7 @@ export default function ContentPage() {
   }
 
   const isAdmin = user?.role === 'ADMIN'
-  const visibleContents = allContents.filter(c =>
-    isAdmin || c.visibility !== 'TEAM' || c.isMember
-  )
+  const visibleContents = allContents
   const totalPages = Math.max(1, Math.ceil(visibleContents.length / PAGE_SIZE))
   const pageContents = visibleContents.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const createSlot = pageContents.length < PAGE_SIZE ? SLOTS[pageContents.length] : null

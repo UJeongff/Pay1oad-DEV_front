@@ -627,11 +627,23 @@ export default function BlogDetailPage() {
                 </div>
               </div>
             ) : (
-              <div style={{ marginTop: '20px', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', textAlign: 'center' }}>
+              <Link
+                href="/login"
+                style={{
+                  marginTop: '20px',
+                  padding: '14px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'rgba(255,255,255,0.02)',
+                  textAlign: 'center',
+                  display: 'block',
+                  textDecoration: 'none',
+                }}
+              >
                 <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '13px' }}>댓글을 작성하려면 </span>
-                <Link href="/auth/login" style={{ color: '#7aa3ff', fontSize: '13px' }}>로그인</Link>
+                <span style={{ color: '#7aa3ff', fontSize: '13px' }}>로그인</span>
                 <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '13px' }}>이 필요합니다.</span>
-              </div>
+              </Link>
             )}
           </div>
 

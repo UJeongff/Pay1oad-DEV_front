@@ -1162,7 +1162,7 @@ function CommentList({ items }: { items: MyComment[] }) {
   return (
     <div className="divide-y divide-white/10">
       {items.map(c => (
-        <Link key={c.id} href={`/blog/${c.postId}`} className="py-4 px-4 -mx-4 rounded-lg hover:bg-white/5 transition-colors block group">
+        <Link key={`${c.postId}-${c.id}`} href={`/blog/${c.postId}`} className="py-4 px-4 -mx-4 rounded-lg hover:bg-white/5 transition-colors block group">
           <p className="text-white/40 text-xs mb-1 group-hover:text-blue-300 transition-colors truncate">{c.postTitle}</p>
           <p className="text-white font-medium text-sm">{c.content}</p>
           <p className="text-white/30 text-xs mt-1">{new Date(c.createdAt).toLocaleDateString('ko-KR')}</p>

@@ -18,6 +18,13 @@ function toIsoDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function encodeBodyJson(html: string) {
+  const jsonStr = JSON.stringify({ body: html })
+  const bytes = new TextEncoder().encode(jsonStr)
+  const binary = String.fromCharCode(...Array.from(bytes))
+  return btoa(binary)
+}
+
 interface NoticeMember {
   userId: number
   name: string
@@ -287,33 +294,30 @@ export default function ContentWritePage() {
       })
       const placeholderContent = doc.body.innerHTML
 
-      let postId = savedPostId
-      if (postId) {
-        // 임시저장된 글 업데이트
-        await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${postId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), content: placeholderContent, isNotice: false, docType }),
-        })
-      } else {
-        const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), content: placeholderContent, isNotice: false, docType }),
-        })
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}))
-          throw new Error(json?.message ?? '게시글 등록에 실패했습니다.')
-        }
-        const json = await res.json()
-        postId = json.data?.id ?? json.id
+      const createRes = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          docType,
+          bodyJson: encodeBodyJson(placeholderContent),
+        }),
+      })
+      if (!createRes.ok) {
+        const json = await createRes.json().catch(() => ({}))
+        throw new Error(json?.message ?? '게시글 등록에 실패했습니다.')
       }
-
+      const createJson = await createRes.json()
+      const docRes = createJson?.data ?? createJson
+      const createdDocId = docRes?.id
+      if (!createdDocId) {
+        throw new Error('생성된 문서 ID를 확인할 수 없습니다.')
+      }
       let finalContent = placeholderContent
       for (let i = 0; i < pendingFiles.length; i++) {
         const fd = new FormData()
         fd.append('file', pendingFiles[i])
-        const fileRes = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${postId}/files`, {
+        const fileRes = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${createdDocId}/files`, {
           method: 'POST',
           body: fd,
         })
@@ -328,17 +332,17 @@ export default function ContentWritePage() {
       for (const file of attachedFiles) {
         const fd = new FormData()
         fd.append('file', file)
-        await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${postId}/files`, {
+        await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${createdDocId}/files`, {
           method: 'POST',
           body: fd,
         })
       }
 
       if (pendingFiles.length > 0) {
-        await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/posts/${postId}`, {
+        await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${createdDocId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), content: finalContent, isNotice: false }),
+          body: JSON.stringify({ title: title.trim(), bodyJson: encodeBodyJson(finalContent) }),
         })
       }
 

@@ -569,7 +569,7 @@ export default function CTFPage() {
           동아리내의 대회 소식들을 공유하는 페이지입니다.
         </p>
         <p className="relative z-10 text-white/40 text-sm leading-relaxed">
-          다양한 보안 및 개발 대회 소식을 실시간으로 공유하고 함께 도전하는 공간입니다.<br />
+          * 다양한 보안 및 개발 대회 소식을 실시간으로 공유하고 함께 도전하는 공간입니다.<br />
           팀원을 모집하거나 기출 문제를 나누며 함께 성장해 보세요!
         </p>
       </section>

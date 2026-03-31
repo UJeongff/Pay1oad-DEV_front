@@ -225,14 +225,14 @@ export default function HistorySection() {
               const isRightCol = i % 2 === 1  // 교육(1), 성과(3) → 우측에 tooltip
               const isTopRow = i < 2           // 선정(0), 교육(1) → 아래 정렬
               return (
-                <div key={title} className={`group relative ${isTopRow ? 'self-end' : 'self-start'}`}>
+                <div key={title} className="group relative h-full">
                   {/* 카드 */}
                   <div
                     ref={(el) => { cardRefs.current[i] = el }}
                     className={`p-5 w-56 h-full ${cardStyles[i].rounded} cursor-default`}
                     style={{
                       background: cardStyles[i].gradient,
-                      minHeight: cardHeight || undefined,
+                      height: cardHeight || undefined,
                     }}
                   >
                     <h3 className="text-white font-bold text-sm tracking-wider mb-3 uppercase">

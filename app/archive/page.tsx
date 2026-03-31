@@ -413,11 +413,12 @@ export default function ArchivePage() {
           </h1>
         </div>
 
-        <p
-          className="relative z-10 text-white/75 font-medium mb-3"
-          style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.05rem)' }}
-        >
-          Browse archived studies and posts.
+        <p className="relative z-10 text-white/75 font-medium mb-3" style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.05rem)' }}>
+          지난 활동들을 보관하는 공간입니다.
+        </p>
+        <p className="relative z-10 text-white/40 text-sm leading-relaxed">
+          * 타인에 대한 비방, 욕설, 저작권 침해 등 부적절한 내용을 포함한 게시물은<br />
+          서비스 운영 원칙에 따라 사전 고지 없이 삭제될 수 있습니다. 
         </p>
       </section>
 

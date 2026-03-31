@@ -322,6 +322,7 @@ export default function BlogPage() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search title"
+                maxLength={50}
                 className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/30"
               />
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
