@@ -25,6 +25,11 @@ function encodeBodyJson(html: string) {
   return btoa(binary)
 }
 
+interface ApiErrorResponse {
+  message?: string
+  errors?: Array<{ field?: string; message?: string }>
+}
+
 interface NoticeMember {
   userId: number
   name: string
@@ -32,6 +37,10 @@ interface NoticeMember {
   role?: string
 }
 
+function getApiErrorMessage(payload: ApiErrorResponse | null | undefined, fallback: string) {
+  const fieldMessage = payload?.errors?.find(error => error?.message)?.message
+  return fieldMessage ?? payload?.message ?? fallback
+}
 function dataURLtoBlob(dataURL: string): Blob {
   const [header, data] = dataURL.split(',')
   const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png'
@@ -54,6 +63,8 @@ export default function ContentWritePage() {
   const isEdit = !!docId
 
   const [contentTitle, setContentTitle] = useState('')
+  const [canManageNotice, setCanManageNotice] = useState(false)
+  const [isMember, setIsMember] = useState(false)
   const [title, setTitle] = useState('')
   const [bodyHtml, setBodyHtml] = useState('')
   const [noticeText, setNoticeText] = useState('')
@@ -80,10 +91,14 @@ export default function ContentWritePage() {
     fetchWithAuth(`${API_URL}/v1/contents/${contentId}`)
       .then(r => r.ok ? r.json() : null)
       .then(json => {
-        if (json) setContentTitle(json.data?.title ?? json.title ?? '')
+        const data = json?.data ?? json
+        if (!data) return
+        setContentTitle(data.title ?? '')
+        setCanManageNotice(user?.role === 'ADMIN' || !!data.isLeader)
+        setIsMember(!!data.isMember || !!data.isLeader || user?.role === 'ADMIN')
       })
       .catch(() => {})
-  }, [contentId])
+  }, [contentId, user?.role])
 
   // 수정 모드: 기존 doc 데이터 불러오기
   useEffect(() => {
@@ -226,6 +241,8 @@ export default function ContentWritePage() {
 
   const handleSubmit = async () => {
     if (!title.trim()) { setError('제목을 입력해주세요.'); return }
+    if (isNotice && !canManageNotice) { setError('공지 작성 권한이 없습니다.'); return }
+    if (!isNotice && !isEdit && !isMember) { setError('게시글 작성 권한이 없습니다. 팀에 가입해주세요.'); return }
     if (isNotice) {
       if (!noticeText.trim()) { setError('본문을 입력해주세요.'); return }
       if (noticeText.length > NOTICE_MAX_CHARS) { setError(`글자 수 제한(${NOTICE_MAX_CHARS}자)을 초과했습니다.`); return }
@@ -252,8 +269,8 @@ export default function ContentWritePage() {
           }),
         })
         if (!res.ok) {
-          const json = await res.json().catch(() => ({}))
-          throw new Error(json?.message ?? '공지 등록에 실패했습니다.')
+          const json = await res.json().catch(() => null) as ApiErrorResponse | null
+          throw new Error(getApiErrorMessage(json, '공지 등록에 실패했습니다.'))
         }
         router.push(`/content/${contentId}`)
         return
@@ -272,8 +289,8 @@ export default function ContentWritePage() {
           body: JSON.stringify({ title: title.trim(), bodyJson: encodedBodyJson }),
         })
         if (!res.ok) {
-          const json = await res.json().catch(() => ({}))
-          throw new Error(json?.message ?? '수정에 실패했습니다.')
+          const json = await res.json().catch(() => null) as ApiErrorResponse | null
+          throw new Error(getApiErrorMessage(json, '수정에 실패했습니다.'))
         }
         router.push(`/content/${contentId}`)
         return
@@ -304,8 +321,8 @@ export default function ContentWritePage() {
         }),
       })
       if (!createRes.ok) {
-        const json = await createRes.json().catch(() => ({}))
-        throw new Error(json?.message ?? '게시글 등록에 실패했습니다.')
+        const json = await createRes.json().catch(() => null) as ApiErrorResponse | null
+        throw new Error(getApiErrorMessage(json, '게시글 등록에 실패했습니다.'))
       }
       const createJson = await createRes.json()
       const docRes = createJson?.data ?? createJson

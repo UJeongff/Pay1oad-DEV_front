@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
@@ -277,7 +277,7 @@ export default function ContentPage() {
         const data = await res.json()
         const list = data.data ?? data.content ?? data
         const arr: Content[] = Array.isArray(list) ? list : []
-        arr.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         setAllContents(arr)
       } catch {
         setAllContents([])

@@ -88,6 +88,7 @@ export default function StudyDetailPage() {
 
   const [content, setContent] = useState<ContentDetail | null>(null)
   const [posts, setPosts] = useState<ContentPost[]>([])
+  const [reportPosts, setReportPosts] = useState<ContentPost[]>([])
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [mySubmissionStatuses, setMySubmissionStatuses] = useState<Record<number, string | null>>({})
   const [leaderSubmissions, setLeaderSubmissions] = useState<LeaderSubmission[]>([])
@@ -139,12 +140,9 @@ export default function StudyDetailPage() {
   const canViewFull = isAdmin || !!content?.isLeader || isCurrentUserLeader || !!content?.isMember || isCurrentUserMember || (content?.visibility === 'MEMBER' && !!user)
   const isProject = content?.type === 'PROJECT'
   const noticePosts = posts.filter(p => p.isNotice)
-  const postDocs = posts.filter(p => !p.isNotice && p.docType === 'POST')
-  const reportDocs = posts.filter(p => !p.isNotice && p.docType === 'REPORT')
-  const docPosts = isProject ? reportDocs : postDocs
-  const activePostList = isProject
-    ? posts.filter(p => p.isNotice || p.docType === 'POST')
-    : posts
+  const postDocs = posts.filter(p => !p.isNotice)
+  const docPosts = isProject ? reportPosts : []
+  const activePostList = [...noticePosts, ...postDocs]
   const pagedPosts = activePostList.slice((postPage - 1) * POST_PAGE_SIZE, postPage * POST_PAGE_SIZE)
   const computedPostPages = Math.max(1, Math.ceil(activePostList.length / POST_PAGE_SIZE))
   const pagedReportPosts = docPosts.slice((reportPage - 1) * POST_PAGE_SIZE, reportPage * POST_PAGE_SIZE)
@@ -255,19 +253,32 @@ export default function StudyDetailPage() {
   useEffect(() => {
     Promise.all([
       fetchWithAuth(`${API_URL}/v1/contents/${contentId}/notices`).then(r => r.ok ? r.json() : null),
-      fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs`).then(r => r.ok ? r.json() : null),
-    ]).then(([noticesJson, docsJson]) => {
+      fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs?type=POST`).then(r => r.ok ? r.json() : null),
+      fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs?type=REPORT`).then(r => r.ok ? r.json() : null),
+    ]).then(([noticesJson, postDocsJson, reportDocsJson]) => {
       const notices: ContentPost[] = (noticesJson?.data ?? []).map((n: { id: number; title: string; createdAt: string }) => ({
         id: n.id, title: n.title, isNotice: true, kind: 'notice' as const, authorName: '', createdAt: n.createdAt,
       }))
-      const docs: ContentPost[] = (docsJson?.data ?? []).map((d: { id: number; title: string; authorName: string; createdAt: string; files?: unknown[] }) => ({
-        id: d.id, title: d.title, isNotice: false, kind: 'doc' as const, authorName: d.authorName, createdAt: d.createdAt, hasAttachment: (d.files?.length ?? 0) > 0,
-      }))
-      const sort = (arr: ContentPost[]) => arr.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-      const combined = [...sort(notices), ...sort(docs)]
-      setPosts(combined)
-    }).catch(() => {})
+      const mapDocs = (docsJson: { data?: Array<{ id: number; title: string; docType?: ContentPost['docType']; authorName: string; createdAt: string; files?: unknown[] }> } | null): ContentPost[] =>
+        (docsJson?.data ?? []).map(d => ({
+          id: d.id, title: d.title, isNotice: false, kind: 'doc' as const, docType: d.docType, authorName: d.authorName, createdAt: d.createdAt, hasAttachment: (d.files?.length ?? 0) > 0,
+        }))
+      const sort = (arr: ContentPost[]) => arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      setPosts(sort([...notices, ...mapDocs(postDocsJson)]))
+      setReportPosts(sort(mapDocs(reportDocsJson)))
+    }).catch(() => {
+      setPosts([])
+      setReportPosts([])
+    })
   }, [contentId])
+
+  useEffect(() => {
+    setPostPage(prev => Math.min(prev, computedPostPages))
+  }, [computedPostPages])
+
+  useEffect(() => {
+    setReportPage(prev => Math.min(prev, totalReportPages))
+  }, [totalReportPages])
 
   useEffect(() => {
     if (authLoading) return
@@ -626,14 +637,14 @@ export default function StudyDetailPage() {
         {/* Section title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
           <span style={{ width: '3px', height: '16px', background: '#1C5AFF', borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
-          <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>게시글</h2>
+          <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>공지 / 게시글</h2>
         </div>
 
         {/* Table */}
         <div style={{ borderTop: '1px solid rgba(28, 90, 255, 0.5)' }}>
-          {posts.length === 0 ? (
+          {activePostList.length === 0 ? (
             <p style={{ textAlign: 'center', padding: '48px', color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>
-              게시글이 없습니다.
+              등록된 공지나 게시글이 없습니다.
             </p>
           ) : (
             pagedPosts.map(post => (
@@ -678,7 +689,7 @@ export default function StudyDetailPage() {
           </div>
 
           {/* Write buttons */}
-          {user && (
+          {user && (!!content?.isMember || isLeaderOrAdmin) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               {isLeaderOrAdmin && (
                 <Link
@@ -702,7 +713,7 @@ export default function StudyDetailPage() {
                 <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                   <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
-                글쓰기
+                게시글 작성
               </Link>
             </div>
           )}
@@ -719,7 +730,7 @@ export default function StudyDetailPage() {
         <div style={{ borderTop: '1px solid rgba(28, 90, 255, 0.5)' }}>
           {docPosts.length === 0 ? (
             <p style={{ textAlign: 'center', padding: '48px', color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>
-              보고서가 없습니다.
+              등록된 보고서가 없습니다.
             </p>
           ) : (
             pagedReportPosts.map(post => (
@@ -761,9 +772,9 @@ export default function StudyDetailPage() {
             </button>
           </div>
 
-          {user && (
+          {user && (!!content?.isMember || isLeaderOrAdmin) && (
             <Link
-              href={`/content/${contentId}/write`}
+              href={`/content/${contentId}/write?type=REPORT`}
               style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
               onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.45)'; el.style.color = '#fff' }}
               onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.color = 'rgba(255,255,255,0.65)' }}
@@ -771,7 +782,7 @@ export default function StudyDetailPage() {
               <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                 <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
               </svg>
-              글쓰기
+              보고서 작성
             </Link>
           )}
         </div>
@@ -783,13 +794,22 @@ export default function StudyDetailPage() {
             <span style={{ width: '3px', height: '16px', background: '#1C5AFF', borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
             <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>과제</h2>
           </div>
-          {user && !isLeaderOrAdmin && (
-            <Link href={`/content/${contentId}/assignments/write`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
-              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-              </svg>
-              과제 제출
-            </Link>
+          {user && (
+            isLeaderOrAdmin ? (
+              <Link href={`/content/${contentId}/assignments/create`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(28,90,255,0.35)', color: '#91CDFF', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                  <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
+                과제 생성
+              </Link>
+            ) : (
+              <Link href={`/content/${contentId}/assignments/write`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                  <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
+                과제 제출
+              </Link>
+            )
           )}
         </div>
 

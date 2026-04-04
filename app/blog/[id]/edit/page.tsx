@@ -51,6 +51,28 @@ function dataURLtoBlob(dataURL: string): Blob {
   return new Blob([array], { type: mime })
 }
 
+function normalizeUploadedFileUrl(url: string) {
+  if (!url) return url
+  if (url.startsWith('/uploads/')) return `${API_URL}${url}`
+
+  try {
+    const parsed = new URL(url)
+    if (parsed.pathname.startsWith('/uploads/')) {
+      return `${API_URL}${parsed.pathname}`
+    }
+  } catch {
+    // Leave non-URL values unchanged.
+  }
+
+  return url
+}
+
+function normalizePostContent(content: string) {
+  return content.replace(/(<img[^>]+src=["'])([^"']+)(["'])/gi, (_match, prefix: string, src: string, suffix: string) => {
+    return `${prefix}${normalizeUploadedFileUrl(src)}${suffix}`
+  })
+}
+
 export default function BlogEditPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -107,7 +129,7 @@ export default function BlogEditPage() {
       setExistingFiles(post.files ?? [])
 
       if (editorRef.current) {
-        editorRef.current.innerHTML = post.content ?? ''
+        editorRef.current.innerHTML = normalizePostContent(post.content ?? '')
       }
     } catch {
       setNotFound(true)
@@ -251,6 +273,9 @@ export default function BlogEditPage() {
       }
 
       // 5. 게시글 수정
+      const firstImgMatch = finalContent.match(/<img[^>]+src=["']([^"']+)["']/i)
+      const thumbnailUrl = firstImgMatch ? firstImgMatch[1] : null
+
       const res = await fetchWithAuth(`${API_URL}/v1/posts/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -260,6 +285,7 @@ export default function BlogEditPage() {
           category,
           visibility,
           authorDisplay,
+          ...(thumbnailUrl ? { thumbnailUrl } : {}),
         }),
       })
 

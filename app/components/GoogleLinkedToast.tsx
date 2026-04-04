@@ -21,7 +21,8 @@ export default function GoogleLinkedToast() {
   if (!visible) return null
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-xl text-white text-sm font-medium shadow-lg"
+    <div
+      className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl px-5 py-3 text-sm font-medium text-white shadow-lg"
       style={{ background: 'rgba(28, 90, 255, 0.9)', backdropFilter: 'blur(12px)' }}
     >
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none">

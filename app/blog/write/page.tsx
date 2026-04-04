@@ -189,22 +189,31 @@ export default function BlogWritePage() {
         }
       }
 
-      // 4. 첨부파일 업로드
+      // 4. 첨부파일 업로드 (첫 번째 이미지 URL 수집)
+      let firstAttachedImageUrl: string | null = null
       for (const file of attachedFiles) {
         try {
           const fd = new FormData()
           fd.append('file', file)
-          await fetchWithAuth(`${API_URL}/v1/posts/${postId}/files`, {
+          const fileRes = await fetchWithAuth(`${API_URL}/v1/posts/${postId}/files`, {
             method: 'POST',
             body: fd,
           })
+          if (fileRes.ok && !firstAttachedImageUrl && file.type.startsWith('image/')) {
+            const fileJson = await fileRes.json()
+            const url: string = fileJson.data.fileUrl
+            firstAttachedImageUrl = url.startsWith('http') ? url : `${API_URL}${url}`
+          }
         } catch {
           // 첨부파일 업로드 실패는 무시하고 계속 진행
         }
       }
 
-      // 5. 이미지가 있었으면 최종 content로 업데이트 (필수 필드 전체 포함)
-      if (pendingFiles.length > 0) {
+      // 5. content 업데이트 및 썸네일 설정
+      const firstInlineImgMatch = finalContent.match(/<img[^>]+src=["']([^"']+)["']/i)
+      const thumbnailUrl = firstInlineImgMatch ? firstInlineImgMatch[1] : firstAttachedImageUrl
+
+      if (pendingFiles.length > 0 || thumbnailUrl) {
         try {
           await fetchWithAuth(`${API_URL}/v1/posts/${postId}`, {
             method: 'PATCH',
@@ -215,6 +224,7 @@ export default function BlogWritePage() {
               category,
               visibility,
               authorDisplay,
+              ...(thumbnailUrl ? { thumbnailUrl } : {}),
             }),
           })
         } catch {

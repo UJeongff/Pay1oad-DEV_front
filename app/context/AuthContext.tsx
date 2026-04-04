@@ -16,12 +16,14 @@ interface AuthContextValue {
   user: AuthUser | null
   loading: boolean
   refetch: () => Promise<void>
+  clearUser: () => void
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
   refetch: async () => {},
+  clearUser: () => {},
 })
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
@@ -45,20 +47,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const clearUser = useCallback(() => {
+    setUser(null)
+    setLoading(false)
+  }, [])
+
   const refetch = useCallback(async () => {
     try {
       const res = await fetchWithAuth(`${API_URL}/v1/users/me`)
       if (!res.ok) {
-        setUser(null)
+        clearUser()
         return
       }
       const json = await res.json()
       const raw = json?.data ?? json
-      console.log('[AuthContext] /v1/users/me raw:', raw)
-      const rawRole: string = (Array.isArray(raw.roles) ? raw.roles[0] : raw.role)
-        ?? (typeof window !== 'undefined' ? localStorage.getItem('user_role') : null)
-        ?? ''
-      console.log('[AuthContext] rawRole:', rawRole)
+      const rawRole: string = (Array.isArray(raw.roles) ? raw.roles[0] : raw.role) ?? ''
       const normalizedRole: 'ADMIN' | 'MEMBER' = rawRole.toUpperCase().includes('ADMIN') ? 'ADMIN' : 'MEMBER'
       setUser({
         id: raw.userId ?? raw.id,
@@ -73,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [clearUser])
 
   useEffect(() => {
     refetch()
@@ -87,14 +90,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const ok = await silentRefresh()
       if (!ok) {
         // refresh 토큰도 만료된 경우 로그아웃 처리
-        setUser(null)
+        clearUser()
       }
     }, REFRESH_INTERVAL_MS)
     return () => clearInterval(id)
-  }, [user])
+  }, [clearUser, user])
 
   return (
-    <AuthContext.Provider value={{ user, loading, refetch }}>
+    <AuthContext.Provider value={{ user, loading, refetch, clearUser }}>
       {children}
     </AuthContext.Provider>
   )

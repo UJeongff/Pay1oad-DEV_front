@@ -116,7 +116,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function MypagePage() {
-  const { user, loading: authLoading, refetch } = useAuthContext()
+  const { user, loading: authLoading, clearUser } = useAuthContext()
   const router = useRouter()
   const isAdmin = user?.role === 'ADMIN'
 
@@ -503,8 +503,7 @@ export default function MypagePage() {
     try {
       await fetchWithAuth(`${API_URL}/v1/auth/logout`, { method: 'POST' })
     } finally {
-      localStorage.removeItem('user_role')
-      await refetch()
+      clearUser()
       router.push('/login')
     }
   }

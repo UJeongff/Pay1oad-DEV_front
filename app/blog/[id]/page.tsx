@@ -76,6 +76,27 @@ function renderContentWithMentions(content: string) {
       : part
   )
 }
+function normalizeUploadedFileUrl(url: string) {
+  if (!url) return url
+  if (url.startsWith('/uploads/')) return `${API_URL}${url}`
+
+  try {
+    const parsed = new URL(url)
+    if (parsed.pathname.startsWith('/uploads/')) {
+      return `${API_URL}${parsed.pathname}`
+    }
+  } catch {
+    // Leave non-URL values unchanged.
+  }
+
+  return url
+}
+
+function normalizePostContent(content: string) {
+  return content.replace(/(<img[^>]+src=["'])([^"']+)(["'])/gi, (_match, prefix: string, src: string, suffix: string) => {
+    return `${prefix}${normalizeUploadedFileUrl(src)}${suffix}`
+  })
+}
 
 export default function BlogDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -104,6 +125,7 @@ export default function BlogDetailPage() {
 
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [commentPage, setCommentPage] = useState(1)
+  const [carouselIdx, setCarouselIdx] = useState(0)
   const COMMENTS_PER_PAGE = 5
 
   const isAdmin = user?.role === 'ADMIN'
@@ -174,7 +196,7 @@ export default function BlogDetailPage() {
     setCommentInput(val)
     const cursor = e.target.selectionStart ?? val.length
     // @ 뒤에 영문/한글/숫자가 1자 이상 입력됐는지 확인
-    const match = val.slice(0, cursor).match(/@([\w가-힣]{1,30})$/)
+    const match = val.slice(0, cursor).match(/@([^\s@]{1,30})$/)
     if (match) {
       const atIdx = cursor - match[0].length
       setMentionAt(atIdx)
@@ -366,30 +388,132 @@ export default function BlogDetailPage() {
           {/* Body content */}
           <div
             className="post-content"
-            dangerouslySetInnerHTML={{ __html: post.content }}
+            dangerouslySetInnerHTML={{ __html: normalizePostContent(post.content) }}
             style={{ color: 'rgba(255,255,255,0.82)', fontSize: '15px', lineHeight: 1.85 }}
           />
 
-          {/* 첨부 이미지 (content에 이미지가 없거나 파일로 별도 저장된 경우) */}
+          {/* 첨부 이미지 (content에 인라인 이미지가 없거나 파일로 별도 저장된 경우) */}
+          {/* 파일 이미지 캐러셀 (content에 인라인 이미지가 없을 때만) */}
           {(() => {
             const imageFiles = post.files?.filter(f => f.mimeType.startsWith('image/')) ?? []
             if (imageFiles.length === 0) return null
             const contentHasImages = /<img[^>]+src=["'](?!__IMG_PLACEHOLDER)[^"']+["']/i.test(post.content)
             if (contentHasImages) return null
+            const idx = Math.min(carouselIdx, imageFiles.length - 1)
             return (
-              <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {imageFiles.map(file => {
-                  const src = file.fileUrl.startsWith('http') ? file.fileUrl : `${API_URL}${file.fileUrl}`
-                  return (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
+              <div style={{ marginTop: '24px' }}>
+                <div style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', background: 'rgba(0,0,0,0.3)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={normalizeUploadedFileUrl(imageFiles[idx].fileUrl)}
+                    alt={imageFiles[idx].fileName}
+                    style={{ width: '100%', maxHeight: '520px', objectFit: 'contain', display: 'block' }}
+                  />
+                  {imageFiles.length > 1 && (
+                    <>
+                      <button
+                        onClick={() => setCarouselIdx(i => (i - 1 + imageFiles.length) % imageFiles.length)}
+                        style={{
+                          position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+                          width: '36px', height: '36px', borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.2)',
+                          color: '#fff', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        <svg width="8" height="14" viewBox="0 0 8 14" fill="none">
+                          <path d="M7 1L1 7L7 13" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setCarouselIdx(i => (i + 1) % imageFiles.length)}
+                        style={{
+                          position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                          width: '36px', height: '36px', borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.2)',
+                          color: '#fff', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                      >
+                        <svg width="8" height="14" viewBox="0 0 8 14" fill="none">
+                          <path d="M1 1L7 7L1 13" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      <div style={{
+                        position: 'absolute', top: '10px', right: '10px',
+                        background: 'rgba(0,0,0,0.5)', borderRadius: '100px',
+                        padding: '2px 10px', fontSize: '12px', color: 'rgba(255,255,255,0.8)',
+                      }}>
+                        {idx + 1} / {imageFiles.length}
+                      </div>
+                    </>
+                  )}
+                </div>
+                {imageFiles.length > 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginTop: '12px' }}>
+                    {imageFiles.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setCarouselIdx(i)}
+                        style={{
+                          width: i === idx ? '20px' : '6px', height: '6px',
+                          borderRadius: '3px',
+                          background: i === idx ? '#fff' : 'rgba(255,255,255,0.3)',
+                          border: 'none', cursor: 'pointer',
+                          transition: 'all 0.2s', padding: 0,
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* 비이미지 첨부파일 다운로드 목록 */}
+          {(() => {
+            const nonImageFiles = post.files?.filter(f => !f.mimeType.startsWith('image/')) ?? []
+            if (nonImageFiles.length === 0) return null
+            return (
+              <div style={{ marginTop: '28px' }}>
+                <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginBottom: '8px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>첨부파일</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {nonImageFiles.map(file => (
+                    <a
                       key={file.id}
-                      src={src}
-                      alt={file.fileName}
-                      style={{ maxWidth: '100%', height: 'auto', borderRadius: '8px', display: 'block' }}
-                    />
-                  )
-                })}
+                      href={normalizeUploadedFileUrl(file.fileUrl)}
+                      download={file.fileName}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '10px 14px', borderRadius: '8px',
+                        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+                        color: 'rgba(255,255,255,0.75)', fontSize: '13px', textDecoration: 'none',
+                        transition: 'background 0.15s, border-color 0.15s',
+                      }}
+                      onMouseEnter={e => {
+                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'
+                        ;(e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.2)'
+                      }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'
+                        ;(e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'
+                      }}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.6 }}>
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                      </svg>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.fileName}</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4 }}>
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                    </a>
+                  ))}
+                </div>
               </div>
             )
           })()}

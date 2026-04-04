@@ -202,7 +202,7 @@ function ArchiveContentModal({
               padding: '2px',
             }}
           >
-            {'\u00D7'}
+            {'×'}
           </button>
         </div>
 
@@ -216,21 +216,21 @@ function ArchiveContentModal({
           }}
         >
           {loading ? (
-            <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '14px' }}>{'\uC124\uBA85\uC744 \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4.'}</p>
+            <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '14px' }}>{'설명을 불러오는 중입니다.'}</p>
           ) : (
             <>
               <p style={{ margin: '0 0 10px', color: 'rgba(255,255,255,0.35)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                 Description
               </p>
               <p style={{ margin: 0, color: 'rgba(255,255,255,0.75)', fontSize: '14px', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
-                {detail?.description?.trim() ? detail.description : '\uC124\uBA85\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.'}
+                {detail?.description?.trim() ? detail.description : '설명이 없습니다.'}
               </p>
             </>
           )}
         </div>
 
         <p style={{ margin: '18px 0 0', color: 'rgba(255,255,255,0.34)', fontSize: '12px', lineHeight: 1.6 }}>
-          {'Archive\uC5D0\uC11C\uB294 content\uC758 \uC124\uBA85\uB9CC \uD655\uC778\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4. \uBCF5\uC6D0 \uC804\uC5D0\uB294 \uAE30\uC874 \uD300 \uAE30\uB2A5\uC744 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.'}
+          {'Archive에서는 content의 설명만 확인할 수 있습니다. 복원 전에는 기존 팀 기능을 사용할 수 없습니다.'}
         </p>
       </div>
     </div>,
@@ -323,12 +323,12 @@ function ItemRow({
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
                   onClick={() => {
                     setMenuOpen(false)
-                    const target = item.type === 'BLOG' ? '\uBE14\uB85C\uADF8' : '\uCF58\uD150\uCE20'
-                    if (!window.confirm(target + ' \uBAA9\uB85D\uC73C\uB85C \uBCF5\uC6D0\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return
+                    const target = item.type === 'BLOG' ? '블로그' : '콘텐츠'
+                    if (!window.confirm(target + ' 목록으로 복원하시겠습니까?')) return
                     onRestore(item)
                   }}
                 >
-                  {'\uBCF5\uC6D0\uD558\uAE30'}
+                  {'복원하기'}
                 </button>
                 <button
                   style={{ background: 'rgba(36,36,36,0.8)', border: 'none', color: '#f87171', fontSize: '12px', fontWeight: 500, padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '6px', width: '100%' }}
@@ -336,11 +336,11 @@ function ItemRow({
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
                   onClick={() => {
                     setMenuOpen(false)
-                    if (!window.confirm('\uC601\uAD6C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return
+                    if (!window.confirm('영구 삭제하시겠습니까?')) return
                     onDelete(item)
                   }}
                 >
-                  {'\uC0AD\uC81C\uD558\uAE30'}
+                  {'삭제하기'}
                 </button>
               </div>
             )}

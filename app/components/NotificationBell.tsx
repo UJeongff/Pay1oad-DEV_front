@@ -141,7 +141,6 @@ export default function NotificationBell() {
   const [tab, setTab] = useState<'notice' | 'alert'>('notice')
   const [all, setAll] = useState<Notification[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [readIds, setReadIds] = useState<Set<number>>(new Set())
   const [mounted, setMounted] = useState(false)
   const bellRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -188,13 +187,13 @@ export default function NotificationBell() {
 
   const notices = all.filter((n) => n.type === 'NOTICE_CREATED')
   const alerts = all.filter((n) => n.type !== 'NOTICE_CREATED')
-  const unread = all.filter((n) => !n.isRead && !readIds.has(n.id)).length
+  const unread = all.filter((n) => !n.isRead).length
   const list = tab === 'notice' ? notices : alerts
 
   useEffect(() => { setCurrentIndex(0) }, [tab])
 
   function markAsRead(id: number) {
-    setReadIds((prev) => new Set(prev).add(id))
+    setAll((prev) => prev.map((n) => n.id === id ? { ...n, isRead: true } : n))
     fetchWithAuth(`${API_URL}/v1/notifications/${id}/read`, { method: 'PATCH' }).catch(() => {})
   }
 
@@ -338,7 +337,7 @@ export default function NotificationBell() {
                 <div className="flex-1 min-w-0">
                   <NotificationItem
                     n={current}
-                    isRead={current.isRead || readIds.has(current.id)}
+                    isRead={current.isRead}
                     onRead={() => markAsRead(current.id)}
                     onClose={() => setOpen(false)}
                   />

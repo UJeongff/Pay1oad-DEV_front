@@ -113,6 +113,20 @@ function resolveCtfImageSrc(imageUrl: string | null) {
   return '/ctf1.jpg'
 }
 
+function resolveCtfShortcutUrl(ctfdUrl: string) {
+  const trimmed = ctfdUrl.trim()
+  if (!trimmed) return null
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString()
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
 function CtfCard({
   event,
   onShortcutOpen,
@@ -120,40 +134,28 @@ function CtfCard({
   onLoginRedirect,
 }: {
   event: CtfEvent
-  onShortcutOpen: (id: number) => Promise<boolean>
+  onShortcutOpen: (id: number) => void
   isLoggedIn: boolean
   onLoginRedirect: () => void
 }) {
-  const [opening, setOpening] = useState(false)
-
-  const handleShortcutOpen = async (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleShortcutOpen = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
 
-    if (event.status !== 'ongoing' || opening) return
+    if (event.status !== 'ongoing') return
 
     if (!isLoggedIn) {
       onLoginRedirect()
       return
     }
 
-    const popup = window.open('', '_blank', 'noopener,noreferrer')
-
-    setOpening(true)
-    try {
-      const opened = await onShortcutOpen(event.id)
-      if (!opened) {
-        popup?.close()
-        return
-      }
-
-      if (popup) {
-        popup.location.href = event.ctfdUrl
-      } else {
-        window.open(event.ctfdUrl, '_blank', 'noopener,noreferrer')
-      }
-    } finally {
-      setOpening(false)
+    const shortcutUrl = resolveCtfShortcutUrl(event.ctfdUrl)
+    if (!shortcutUrl) {
+      alert('CTF URL이 설정되지 않았습니다.')
+      return
     }
+
+    window.open(shortcutUrl, '_blank', 'noopener,noreferrer')
+    onShortcutOpen(event.id)
   }
 
   const imgSrc = resolveCtfImageSrc(event.imageUrl)
@@ -229,7 +231,7 @@ function CtfCard({
             <div className="flex items-center gap-2 shrink-0">
               {event.ctfdUrl && (
                 <button
-                  disabled={opening || event.status !== 'ongoing'}
+                  disabled={event.status !== 'ongoing'}
                   className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-full transition-all whitespace-nowrap"
                   style={
                     event.status !== 'ongoing'
@@ -237,7 +239,7 @@ function CtfCard({
                       : { color: '#ffffff', background: 'transparent', border: '1px solid rgba(255,255,255,0.35)' }
                   }
                   onMouseEnter={e => {
-                    if (event.status === 'ongoing' && !opening) {
+                    if (event.status === 'ongoing') {
                       e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
                       e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)'
                     }
@@ -250,7 +252,7 @@ function CtfCard({
                   }}
                   onClick={handleShortcutOpen}
                 >
-                  {opening ? '이동 중...' : '바로가기'}
+                  바로가기
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                     <path d="M7.5 4L13 10L7.5 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
@@ -312,8 +314,8 @@ function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated
       const body = {
         name: form.name,
         imageUrl,
-        startAt: form.startAt ? new Date(form.startAt).toISOString().slice(0, 19) : null,
-        endAt: form.endAt ? new Date(form.endAt).toISOString().slice(0, 19) : null,
+        startAt: form.startAt ? form.startAt + ':00' : null,
+        endAt: form.endAt ? form.endAt + ':00' : null,
         ctfdUrl: form.ctfdUrl,
         description: form.description || null,
       }
@@ -507,20 +509,17 @@ export default function CTFPage() {
     else if (wheelAccum.current < -80) { wheelAccum.current = 0; prev() }
   }, [next, prev])
 
-  const handleShortcutOpen = useCallback(async (eventId: number) => {
-    const res = await fetchWithAuth(`${API_URL}/v1/ctf/events/${eventId}/join`, { method: 'POST' })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      alert(data?.message ?? '오류가 발생했습니다.')
-      return false
-    }
-    const json = await res.json()
-    const { joined, participantCount } = json.data
-
-    setEvents(prev =>
-      prev.map(e => e.id === eventId ? { ...e, joined, participantCount } : e)
-    )
-    return true
+  const handleShortcutOpen = useCallback((eventId: number) => {
+    fetchWithAuth(`${API_URL}/v1/ctf/events/${eventId}/join`, { method: 'POST' })
+      .then(res => res.ok ? res.json() : null)
+      .then(json => {
+        if (!json) return
+        const { joined, participantCount } = json.data
+        setEvents(prev =>
+          prev.map(e => e.id === eventId ? { ...e, joined, participantCount } : e)
+        )
+      })
+      .catch(() => {})
   }, [])
 
   const isAdmin = user?.role === 'ADMIN'

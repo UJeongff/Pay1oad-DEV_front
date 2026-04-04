@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono, Rajdhani, Archivo_Black } from 'next/font/google'
 import './globals.css'
 import Navbar from '@/app/components/Navbar'
+import GoogleLinkedToast from '@/app/components/GoogleLinkedToast'
 import { AuthProvider } from '@/app/context/AuthContext'
 
 const geistSans = Geist({
@@ -52,6 +53,7 @@ export default function RootLayout({
         <AuthProvider>
           <Navbar />
           {children}
+          <GoogleLinkedToast />
         </AuthProvider>
       </body>
     </html>
