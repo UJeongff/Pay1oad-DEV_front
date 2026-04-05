@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
@@ -83,8 +83,23 @@ function formatDate(dateStr: string) {
 
 export default function StudyDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const { user, loading: authLoading } = useAuthContext()
   const contentId = params.id as string
+
+  const handleCreateDoc = async (docType: 'POST' | 'REPORT') => {
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: docType === 'REPORT' ? '새 보고서' : '새 게시글', docType }),
+      })
+      if (!res.ok) return
+      const json = await res.json()
+      const newDocId = json.data?.id ?? json.id
+      if (newDocId) router.push(`/content/${contentId}/docs/${newDocId}/write`)
+    } catch {}
+  }
 
   const [content, setContent] = useState<ContentDetail | null>(null)
   const [posts, setPosts] = useState<ContentPost[]>([])
@@ -689,7 +704,7 @@ export default function StudyDetailPage() {
           </div>
 
           {/* Write buttons */}
-          {user && (!!content?.isMember || isLeaderOrAdmin) && (
+          {user && (!!content?.isMember || isCurrentUserMember || isLeaderOrAdmin) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               {isLeaderOrAdmin && (
                 <Link
@@ -704,9 +719,9 @@ export default function StudyDetailPage() {
                   공지 작성
                 </Link>
               )}
-              <Link
-                href={`/content/${contentId}/write`}
-                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
+              <button
+                onClick={() => handleCreateDoc('POST')}
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s' }}
                 onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.45)'; el.style.color = '#fff' }}
                 onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.color = 'rgba(255,255,255,0.65)' }}
               >
@@ -714,7 +729,7 @@ export default function StudyDetailPage() {
                   <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
                 게시글 작성
-              </Link>
+              </button>
             </div>
           )}
         </div>
@@ -773,9 +788,9 @@ export default function StudyDetailPage() {
           </div>
 
           {user && (!!content?.isMember || isLeaderOrAdmin) && (
-            <Link
-              href={`/content/${contentId}/write?type=REPORT`}
-              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}
+            <button
+              onClick={() => handleCreateDoc('REPORT')}
+              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s' }}
               onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.45)'; el.style.color = '#fff' }}
               onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.18)'; el.style.color = 'rgba(255,255,255,0.65)' }}
             >
@@ -783,7 +798,7 @@ export default function StudyDetailPage() {
                 <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
               </svg>
               보고서 작성
-            </Link>
+            </button>
           )}
         </div>
       </section>)}
@@ -795,38 +810,40 @@ export default function StudyDetailPage() {
             <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>과제</h2>
           </div>
           {user && (
-            isLeaderOrAdmin ? (
+            isAdmin ? (
               <Link href={`/content/${contentId}/assignments/create`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(28,90,255,0.35)', color: '#91CDFF', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
                 <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                   <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
                 과제 생성
               </Link>
-            ) : (
+            ) : !isCurrentUserLeader && (isCurrentUserMember || !!content?.isMember) ? (
               <Link href={`/content/${contentId}/assignments/write`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
                 <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                   <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                 </svg>
                 과제 제출
               </Link>
-            )
+            ) : null
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-          {assignments.map(a => (
-            <MemberAssignmentCard
-              key={a.id}
-              assignment={a}
-              myStatus={mySubmissionStatuses[a.id]}
-              contentId={contentId}
-              currentUserId={user?.id}
-            />
-          ))}
-          {assignments.length === 0 && (
-            <EmptyAssignmentCard message={isLeaderOrAdmin ? '등록된 과제가 없습니다.' : '아직 등록된 과제가 없습니다.'} />
-          )}
-        </div>
+        {!isLeaderOrAdmin && (
+          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+            {assignments.map(a => (
+              <MemberAssignmentCard
+                key={a.id}
+                assignment={a}
+                myStatus={mySubmissionStatuses[a.id]}
+                contentId={contentId}
+                currentUserId={user?.id}
+              />
+            ))}
+            {assignments.length === 0 && (
+              <EmptyAssignmentCard message='아직 등록된 과제가 없습니다.' />
+            )}
+          </div>
+        )}
 
         {isLeaderOrAdmin && (
           <div style={{ marginTop: '28px' }}>
@@ -1069,8 +1086,8 @@ function MemberAssignmentCard({ assignment, myStatus, contentId, currentUserId }
   const s = myStatus ? (STATUS_STYLE[myStatus] ?? STATUS_STYLE.PENDING) : null
   const detailHref = `/content/${contentId}/assignments/${assignment.id}`
   const submitHref = `/content/${contentId}/assignments/${assignment.id}/write`
-  const canSubmit = assignment.authorIsLeader
   const isAuthor = assignment.authorId != null && String(assignment.authorId) === String(currentUserId)
+  const canSubmit = !isAuthor
   const metaLabel = canSubmit ? (s ? s.label : '미제출') : (isAuthor ? (s ? s.label : '내 과제') : assignment.authorName)
   const metaStyle = canSubmit && s
     ? { background: s.bg, color: s.color, border: `1px solid ${s.border}` }

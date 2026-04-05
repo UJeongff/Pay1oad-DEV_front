@@ -30,6 +30,7 @@ export default function DocCollabWritePage() {
 
   const [contentTitle, setContentTitle] = useState('')
   const [docTitle, setDocTitle] = useState('')
+  const [docType, setDocType] = useState<string | null>(null)
   const [initialHtml, setInitialHtml] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -44,6 +45,7 @@ export default function DocCollabWritePage() {
       const doc = docJson?.data ?? docJson
       if (doc) {
         setDocTitle(doc.title ?? '')
+        setDocType(doc.docType ?? null)
         setInitialHtml(decodeBodyToHtml(doc.bodyJson))
       }
     }).catch(() => {})
@@ -92,7 +94,9 @@ export default function DocCollabWritePage() {
           {contentTitle || '...'}
         </Link>
         <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <span style={{ color: '#fff' }}>문서 편집</span>
+        <span style={{ color: '#fff' }}>
+          {docType === 'REPORT' ? '보고서 편집' : docType === 'POST' ? '게시글 편집' : '문서 편집'}
+        </span>
       </div>
 
       <div className="relative max-w-4xl mx-auto px-[5vw] py-12">

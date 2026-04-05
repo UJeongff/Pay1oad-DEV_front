@@ -265,15 +265,26 @@ export default function BlogDetailPage() {
       })
       if (res.ok) {
         if (parentId) {
-          setComments(prev => prev.map(c =>
-            c.id === parentId
-              ? { ...c, replies: c.replies.filter(r => r.id !== commentId) }
-              : c
-          ))
+          // 대댓글 삭제: 백엔드는 부모에 활성 대댓글이 남아있으면 commentCount를 감소시키지 않으므로
+          // 남은 대댓글 수를 확인한 뒤 카운트 조정
+          setComments(prev => prev.map(c => {
+            if (c.id !== parentId) return c
+            const newReplies = c.replies.filter(r => r.id !== commentId)
+            return { ...c, replies: newReplies }
+          }))
+          // 삭제 후 부모 댓글의 활성 대댓글이 0개일 때만 감소 (백엔드 동일 조건)
+          setComments(prev => {
+            const parent = prev.find(c => c.id === parentId)
+            const remainingReplies = parent?.replies.filter(r => r.id !== commentId) ?? []
+            if (remainingReplies.length === 0 && post) {
+              setPost({ ...post, commentCount: Math.max(0, post.commentCount - 1) })
+            }
+            return prev
+          })
         } else {
           setComments(prev => prev.filter(c => c.id !== commentId))
+          if (post) setPost({ ...post, commentCount: Math.max(0, post.commentCount - 1) })
         }
-        if (post) setPost({ ...post, commentCount: Math.max(0, post.commentCount - 1) })
       }
     } catch {}
   }

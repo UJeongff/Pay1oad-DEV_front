@@ -16,7 +16,8 @@ const WS_URL = (process.env.NEXT_PUBLIC_WS_URL ?? 'wss://api.pay1oad.xyz')
 function encodeBodyJson(html: string): string {
   const jsonStr = JSON.stringify({ body: html })
   const bytes = new TextEncoder().encode(jsonStr)
-  const binary = String.fromCharCode(...Array.from(bytes))
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
   return btoa(binary)
 }
 
@@ -38,7 +39,7 @@ export default function DocCollabEditor({
   const { user } = useAuthContext()
   const ydocRef = useRef<Y.Doc | null>(null)
   const providerRef = useRef<SimpleYjsProvider | null>(null)
-  const title = initialTitle
+  const [title, setTitle] = useState(initialTitle)
   const [connected, setConnected] = useState(false)
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
@@ -67,6 +68,11 @@ export default function DocCollabEditor({
     },
     immediatelyRender: false,
   })
+
+  // 초기 제목 동기화 (비동기로 로드된 경우 대비)
+  useEffect(() => {
+    if (initialTitle) setTitle(initialTitle)
+  }, [initialTitle])
 
   // 초기 HTML 콘텐츠 로드 (에디터 준비 후)
   useEffect(() => {
@@ -171,9 +177,23 @@ export default function DocCollabEditor({
       </div>
 
       {/* 제목 */}
-      <h1 style={{ color: '#fff', fontSize: '28px', fontWeight: 700, marginBottom: '28px', margin: '0 0 28px 0' }}>
-        {title}
-      </h1>
+      <input
+        type="text"
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        placeholder="제목"
+        style={{
+          width: '100%',
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          color: '#fff',
+          fontSize: '28px',
+          fontWeight: 700,
+          marginBottom: '28px',
+          caretColor: '#1C5AFF',
+        }}
+      />
 
       {/* 메타 */}
       <div style={rowStyle}>
