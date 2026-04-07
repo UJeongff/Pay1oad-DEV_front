@@ -356,6 +356,44 @@ export default function StudyDetailPage() {
         <div className="flex flex-col md:flex-row md:justify-between md:items-center rounded-[10px] mb-12 gap-8 md:gap-10 p-6 sm:p-8 lg:p-10"
           style={{ background: 'rgba(255, 255, 255, 0.05)' }}
         >
+          {/* 팀 전용 미리보기 — 제목 + 안내 */}
+          {isTeamOnlyPreview && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+                  <path d="M10 1.5V18.5M2.5 5.75L17.5 14.25M17.5 5.75L2.5 14.25" stroke="#1C5AFF" strokeWidth="2.8" strokeLinecap="round" />
+                </svg>
+                <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.04em' }}>Content</span>
+                <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.2)' }}>&gt;</span>
+                <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.04em' }}>{content?.title ?? '...'}</span>
+              </div>
+              <h1 style={{
+                color: '#fff', fontSize: 'clamp(1.8rem, 3.5vw, 2.8rem)', fontWeight: 900,
+                letterSpacing: '0.04em', textTransform: 'uppercase',
+                fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif",
+                lineHeight: 1.1, margin: 0,
+              }}>
+                {content?.title}
+              </h1>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, padding: '4px 14px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.7)' }}>
+                  {content?.type === 'STUDY' ? 'Study' : 'Project'}
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '4px 14px', borderRadius: '100px', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.7)' }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                  Only Team
+                </span>
+              </div>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.35)', margin: 0, lineHeight: 1.6 }}>
+                팀원만 접근할 수 있는 콘텐츠입니다. 팀에 참여하려면 초대 링크가 필요합니다.
+              </p>
+            </div>
+          )}
+
           {/* Left — title + badges (팀 비공개 미리보기 시 숨김) */}
           {!isTeamOnlyPreview && <div style={{
             display: 'flex',

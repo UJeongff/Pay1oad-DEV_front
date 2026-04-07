@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { Geist, Geist_Mono, Rajdhani, Archivo_Black } from 'next/font/google'
 import './globals.css'
 import Navbar from '@/app/components/Navbar'
@@ -53,7 +54,9 @@ export default function RootLayout({
         <AuthProvider>
           <Navbar />
           {children}
-          <GoogleLinkedToast />
+          <Suspense fallback={null}>
+            <GoogleLinkedToast />
+          </Suspense>
         </AuthProvider>
       </body>
     </html>
