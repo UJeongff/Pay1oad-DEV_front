@@ -413,7 +413,7 @@ export default function ContentCreatePage() {
         </div>
 
         <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '12px', marginTop: '16px', textAlign: 'center' }}>
-          페이지를 생성하고 멤버를 초대할 수 있습니다.
+          페이지를 생성한 사람이 팀장이 됩니다.
         </p>
       </div>
 
