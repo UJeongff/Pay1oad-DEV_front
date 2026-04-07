@@ -16,6 +16,7 @@ interface Content {
   description?: string
   visibility?: 'MEMBER' | 'TEAM'
   isMember?: boolean
+  leaderName?: string
   createdAt: string
 }
 
@@ -241,6 +242,9 @@ function ContentCard({
               {content.description}
             </p>
           )}
+          <p style={{ color: vs.text, opacity: 0.5, fontSize: '11px', marginTop: '8px' }}>
+            참여인원 {content.memberCount ?? 0}명
+          </p>
         </div>
       </Link>
       {isAdmin && <ContentCardMenu content={content} onDeleted={onDeleted} onArchived={onArchived} />}
@@ -369,7 +373,7 @@ export default function ContentPage() {
                 <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
               </svg>
               페이지 생성하기
-              {createHovered && <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 400, fontSize: '13px' }}>페이지를 생성하고 멤버를 초대할 수 있습니다.</span>}
+              {createHovered && <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 400, fontSize: '13px' }}>페이지를 생성한 사람이 팀장이 됩니다.</span>}
             </Link>
           </div>
 
