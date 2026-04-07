@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import * as Y from 'yjs'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { SimpleYjsProvider } from '@/app/lib/SimpleYjsProvider'
@@ -55,11 +56,25 @@ export default function DocCollabEditor({
     awarenessRef.current = new awarenessProtocol.Awareness(ydocRef.current)
   }
 
+  const CURSOR_COLORS = ['#FF6B6B', '#4ECDC4', '#FFD93D', '#A29BFE', '#74FF89', '#FF9F43', '#54A0FF', '#FF6EB4']
+  const cursorColor = CURSOR_COLORS[(user?.id ?? 0) % CURSOR_COLORS.length]
+
+  // awareness에 내 사용자 정보 설정
+  useEffect(() => {
+    if (!awarenessRef.current || !user) return
+    awarenessRef.current.setLocalStateField('user', {
+      name: user.nickname ?? user.name ?? '익명',
+      color: cursorColor,
+    })
+  }, [user, cursorColor])
+
   const editor = useEditor({
     extensions: [
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       StarterKit.configure({ history: false } as any), // Yjs가 undo/redo 관리
       Collaboration.configure({ document: ydocRef.current }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      CollaborationCursor.configure({ provider: { awareness: awarenessRef.current } as any }),
     ],
     editorProps: {
       attributes: {

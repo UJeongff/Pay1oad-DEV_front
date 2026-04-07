@@ -8,12 +8,13 @@ import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
-function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit, showMenu = false }: {
+function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit, onDelete, showMenu = false }: {
   year: number
   onNavigate: () => void
   menuOpen: boolean
   onMenuToggle: () => void
   onEdit: () => void
+  onDelete: () => void
   showMenu?: boolean
 }) {
   const gradFillId = `fg-fill-${year}`
@@ -82,7 +83,7 @@ function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit, showMenu
                 style={{ background: 'rgba(36,36,36,0.8)', color: '#f87171' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'rgba(36,36,36,1)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'rgba(36,36,36,0.8)')}
-                onClick={() => onMenuToggle()}
+                onClick={() => { onMenuToggle(); onDelete() }}
               >
                 Delete
               </button>
@@ -348,6 +349,14 @@ export default function ArchivePage() {
     setEditYearError('')
   }
 
+  async function handleDeleteYear(year: number) {
+    if (!window.confirm(`${year} 아카이브를 삭제하시겠습니까?`)) return
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/archive/years/${year}`, { method: 'DELETE' })
+      if (res.ok) setYears(prev => prev.filter(y => y !== year))
+    } catch {}
+  }
+
   async function handleEditConfirm() {
     if (editYearInput.length !== 4) {
       setEditYearError('Please enter a 4-digit year.')
@@ -455,6 +464,7 @@ export default function ArchivePage() {
                       menuOpen={openMenuYear === year}
                       onMenuToggle={() => setOpenMenuYear(openMenuYear === year ? null : year)}
                       onEdit={() => handleEditStart(year)}
+                      onDelete={() => handleDeleteYear(year)}
                       showMenu={isAdmin}
                     />
                   )}

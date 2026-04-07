@@ -171,6 +171,7 @@ export default function DocDetailPage() {
             {/* Body */}
             {bodyHtml ? (
               <div
+                className="doc-content"
                 dangerouslySetInnerHTML={{ __html: bodyHtml }}
                 style={{ color: 'rgba(255,255,255,0.8)', fontSize: '15px', lineHeight: 1.8, wordBreak: 'break-word' }}
               />

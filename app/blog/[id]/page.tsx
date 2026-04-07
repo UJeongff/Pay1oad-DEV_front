@@ -159,7 +159,8 @@ export default function BlogDetailPage() {
         const res = await fetchWithAuth(`${API_URL}/v1/posts/${id}/comments`, { cache: 'no-store' })
         if (!res.ok) return
         const json = await res.json()
-        setComments(json.data ?? [])
+        const data: Comment[] = json.data ?? []
+        setComments([...data].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
       } catch {}
     }
     fetchComments()
@@ -223,7 +224,7 @@ export default function BlogDetailPage() {
   }
 
   const handleCommentSubmit = async () => {
-    if (!commentInput.trim() || !user) return
+    if (!commentInput.trim() || !user || submittingComment) return
     setSubmittingComment(true)
     try {
       const body: Record<string, unknown> = {
@@ -246,7 +247,7 @@ export default function BlogDetailPage() {
             c.id === replyTo.id ? { ...c, replies: [...c.replies, newComment] } : c
           ))
         } else {
-          setComments(prev => [...prev, { ...newComment, replies: [] }])
+          setComments(prev => [{ ...newComment, replies: [] }, ...prev])
         }
         setCommentInput('')
         setReplyTo(null)
