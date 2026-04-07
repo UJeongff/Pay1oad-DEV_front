@@ -125,7 +125,7 @@ export default function DocDetailPage() {
         {canEdit && (
           <div style={{ marginLeft: 'auto' }}>
             <Link
-              href={`/content/${contentId}/write?docId=${docId}`}
+              href={`/content/${contentId}/docs/${docId}/write`}
               style={{ padding: '5px 14px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.6)', fontSize: '12px', textDecoration: 'none', transition: 'all 0.15s' }}
               onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.5)'; el.style.color = '#fff' }}
               onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.2)'; el.style.color = 'rgba(255,255,255,0.6)' }}
@@ -221,7 +221,7 @@ export default function DocDetailPage() {
               </button>
               {canEdit && (
                 <Link
-                  href={`/content/${contentId}/write?docId=${docId}`}
+                  href={`/content/${contentId}/docs/${docId}/write`}
                   style={{ padding: '9px 22px', borderRadius: '8px', border: '0.734px solid rgba(0, 65, 239, 0.6)', background: 'rgba(0, 65, 239, 0.35)', color: '#fff', fontSize: '13px', fontWeight: 600, textDecoration: 'none', transition: 'background 0.15s' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0, 65, 239, 0.55)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0, 65, 239, 0.35)' }}

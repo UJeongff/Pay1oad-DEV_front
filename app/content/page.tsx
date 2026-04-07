@@ -114,9 +114,16 @@ function ContentCardMenu({
   const handleArchive = async (e: React.MouseEvent) => {
     e.preventDefault()
     setOpen(false)
-    if (!window.confirm(`"${content.title}"을(를) 보관하시겠습니까?\n아카이브에 ${new Date(content.createdAt).getFullYear()}년 기록으로 이동합니다.`)) return
+    const year = new Date(content.createdAt).getFullYear()
     try {
-      const year = new Date(content.createdAt).getFullYear()
+      const yearsRes = await fetchWithAuth(`${API_URL}/v1/archive/years`, { cache: 'no-store' })
+      const yearsJson = yearsRes.ok ? await yearsRes.json() : {}
+      const availableYears: number[] = Array.isArray(yearsJson?.data) ? yearsJson.data : []
+      if (!availableYears.includes(year)) {
+        window.alert(`${year}년 아카이브 폴더가 없습니다.\nArchive 페이지에서 먼저 폴더를 생성해주세요.`)
+        return
+      }
+      if (!window.confirm(`"${content.title}"을(를) 보관하시겠습니까?\n아카이브에 ${year}년 기록으로 이동합니다.`)) return
       const res = await fetchWithAuth(`${API_URL}/v1/admin/contents/${content.id}/archive`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -261,7 +268,7 @@ function PlaceholderCard({ slot }: { slot: typeof SLOTS[number] }) {
         <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
       </svg>
       <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>페이지 생성하기</p>
-      <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px' }}>페이지를 생성하고 멤버를 초대할 수 있습니다.</p>
+      <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px' }}>페이지를 생성한 사람이 팀장이 됩니다.</p>
     </Link>
   )
 }

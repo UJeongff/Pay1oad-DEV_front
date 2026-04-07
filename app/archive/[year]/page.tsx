@@ -221,7 +221,7 @@ export default function ArchiveYearPage() {
   useEffect(() => {
     async function fetchArchives() {
       try {
-        const res = await fetch(`${API_URL}/v1/archive/${year}`, { cache: 'no-store', credentials: 'include' })
+        const res = await fetchWithAuth(`${API_URL}/v1/archive/${year}`, { cache: 'no-store' })
         if (!res.ok) {
           setItems([])
           return
