@@ -22,6 +22,7 @@ interface ContentDetail {
   memberCount: number
   isMember?: boolean
   isLeader?: boolean
+  isArchived?: boolean
 }
 
 interface ContentMember {
@@ -152,7 +153,11 @@ export default function StudyDetailPage() {
   const isCurrentUserMember = !!currentMember
   const isCurrentUserLeader = currentMember?.role === 'team_leader'
   const isLeaderOrAdmin = !!content?.isLeader || isCurrentUserLeader || isAdmin
-  const canViewFull = isAdmin || !!content?.isLeader || isCurrentUserLeader || !!content?.isMember || isCurrentUserMember || (content?.visibility === 'MEMBER' && !!user)
+  const isArchivedContent = !!content?.isArchived
+  const canViewFull = isArchivedContent
+    ? isAdmin
+    : (isAdmin || !!content?.isLeader || isCurrentUserLeader || !!content?.isMember || isCurrentUserMember || (content?.visibility === 'MEMBER' && !!user))
+  const isTeamOnlyPreview = (!canViewFull && content?.visibility === 'TEAM') || (isArchivedContent && !isAdmin)
   const isProject = content?.type === 'PROJECT'
   const noticePosts = posts.filter(p => p.isNotice)
   const postDocs = posts.filter(p => !p.isNotice)
@@ -351,8 +356,8 @@ export default function StudyDetailPage() {
         <div className="flex flex-col md:flex-row md:justify-between md:items-center rounded-[10px] mb-12 gap-8 md:gap-10 p-6 sm:p-8 lg:p-10"
           style={{ background: 'rgba(255, 255, 255, 0.05)' }}
         >
-          {/* Left — title + badges */}
-          <div style={{
+          {/* Left — title + badges (팀 비공개 미리보기 시 숨김) */}
+          {!isTeamOnlyPreview && <div style={{
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
@@ -562,7 +567,7 @@ export default function StudyDetailPage() {
                 )}
               </div>
             </div>
-          </div>
+          </div>}
 
           {/* Right — description */}
           <div style={{

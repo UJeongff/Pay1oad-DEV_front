@@ -408,22 +408,33 @@ export default function BlogDetailPage() {
           {(() => {
             const imageFiles = post.files?.filter(f => f.mimeType.startsWith('image/')) ?? []
             if (imageFiles.length === 0) return null
-            const contentHasImages = /<img[^>]+src=["'](?!__IMG_PLACEHOLDER)[^"']+["']/i.test(post.content)
-            if (contentHasImages) return null
-            const idx = Math.min(carouselIdx, imageFiles.length - 1)
+            // content에 인라인으로 삽입된 파일은 이미 본문에 표시되므로 캐러셀에서 제외
+            const inlineFilenames = new Set<string>()
+            const imgSrcRe = /<img[^>]+src=["']([^"']+)["']/gi
+            let m: RegExpExecArray | null
+            while ((m = imgSrcRe.exec(post.content)) !== null) {
+              const parts = m[1].split('/')
+              inlineFilenames.add(parts[parts.length - 1])
+            }
+            const attachedImages = imageFiles.filter(f => {
+              const fname = f.fileUrl.split('/').pop() ?? ''
+              return fname && !inlineFilenames.has(fname)
+            })
+            if (attachedImages.length === 0) return null
+            const idx = Math.min(carouselIdx, attachedImages.length - 1)
             return (
               <div style={{ marginTop: '24px' }}>
                 <div style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', background: 'rgba(0,0,0,0.3)' }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={normalizeUploadedFileUrl(imageFiles[idx].fileUrl)}
-                    alt={imageFiles[idx].fileName}
+                    src={normalizeUploadedFileUrl(attachedImages[idx].fileUrl)}
+                    alt={attachedImages[idx].fileName}
                     style={{ width: '100%', maxHeight: '520px', objectFit: 'contain', display: 'block' }}
                   />
-                  {imageFiles.length > 1 && (
+                  {attachedImages.length > 1 && (
                     <>
                       <button
-                        onClick={() => setCarouselIdx(i => (i - 1 + imageFiles.length) % imageFiles.length)}
+                        onClick={() => setCarouselIdx(i => (i - 1 + attachedImages.length) % attachedImages.length)}
                         style={{
                           position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
                           width: '36px', height: '36px', borderRadius: '50%',
@@ -437,7 +448,7 @@ export default function BlogDetailPage() {
                         </svg>
                       </button>
                       <button
-                        onClick={() => setCarouselIdx(i => (i + 1) % imageFiles.length)}
+                        onClick={() => setCarouselIdx(i => (i + 1) % attachedImages.length)}
                         style={{
                           position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
                           width: '36px', height: '36px', borderRadius: '50%',
@@ -455,14 +466,14 @@ export default function BlogDetailPage() {
                         background: 'rgba(0,0,0,0.5)', borderRadius: '100px',
                         padding: '2px 10px', fontSize: '12px', color: 'rgba(255,255,255,0.8)',
                       }}>
-                        {idx + 1} / {imageFiles.length}
+                        {idx + 1} / {attachedImages.length}
                       </div>
                     </>
                   )}
                 </div>
-                {imageFiles.length > 1 && (
+                {attachedImages.length > 1 && (
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginTop: '12px' }}>
-                    {imageFiles.map((_, i) => (
+                    {attachedImages.map((_, i) => (
                       <button
                         key={i}
                         onClick={() => setCarouselIdx(i)}

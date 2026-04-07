@@ -1,9 +1,8 @@
 'use client'
 
-import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
@@ -36,8 +35,6 @@ interface ArchiveContentResponse {
   visibility?: 'PUBLIC' | 'MEMBER' | 'ADMIN'
   archivedAt?: string
 }
-
-type ArchiveContentDetail = ArchiveContentResponse
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
@@ -92,149 +89,6 @@ function Pagination({ page, total, onChange }: { page: number; total: number; on
         </svg>
       </button>
     </div>
-  )
-}
-
-function ArchiveBadge({ label }: { label: string }) {
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '4px 10px',
-        borderRadius: '999px',
-        border: '1px solid rgba(255,255,255,0.12)',
-        background: 'rgba(255,255,255,0.04)',
-        color: 'rgba(255,255,255,0.72)',
-        fontSize: '11px',
-        fontWeight: 600,
-      }}
-    >
-      {label}
-    </span>
-  )
-}
-
-function ArchiveContentModal({
-  item,
-  detail,
-  loading,
-  onClose,
-}: {
-  item: ArchiveItem | null
-  detail: ArchiveContentDetail | null
-  loading: boolean
-  onClose: () => void
-}) {
-  useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.body.style.overflow = prev
-      window.removeEventListener('keydown', onKeyDown)
-    }
-  }, [onClose])
-
-  if (!item || typeof window === 'undefined') return null
-
-  return createPortal(
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '24px',
-        background: 'rgba(0,0,0,0.68)',
-        backdropFilter: 'blur(6px)',
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          width: 'min(520px, 100%)',
-          borderRadius: '20px',
-          border: '1px solid rgba(255,255,255,0.1)',
-          background: 'linear-gradient(180deg, #0E1427 0%, #0A1020 100%)',
-          boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
-          padding: '28px',
-        }}
-        onClick={event => event.stopPropagation()}
-      >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <ArchiveBadge label={detail?.type === 'PROJECT' ? 'Project' : 'Study'} />
-              <ArchiveBadge label={detail?.visibility === 'PUBLIC' ? 'Only Team' : 'All Member'} />
-              <ArchiveBadge label="Archive" />
-            </div>
-            <h2
-              style={{
-                margin: 0,
-                color: '#fff',
-                fontSize: 'clamp(1.6rem, 3vw, 2.1rem)',
-                lineHeight: 1.15,
-                letterSpacing: '0.03em',
-                textTransform: 'uppercase',
-                fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif",
-              }}
-            >
-              {item.title}
-            </h2>
-          </div>
-
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'rgba(255,255,255,0.45)',
-              cursor: 'pointer',
-              fontSize: '22px',
-              lineHeight: 1,
-              padding: '2px',
-            }}
-          >
-            {'×'}
-          </button>
-        </div>
-
-        <div
-          style={{
-            marginTop: '20px',
-            padding: '18px 20px',
-            borderRadius: '14px',
-            border: '1px solid rgba(255,255,255,0.08)',
-            background: 'rgba(255,255,255,0.03)',
-          }}
-        >
-          {loading ? (
-            <p style={{ margin: 0, color: 'rgba(255,255,255,0.45)', fontSize: '14px' }}>{'설명을 불러오는 중입니다.'}</p>
-          ) : (
-            <>
-              <p style={{ margin: '0 0 10px', color: 'rgba(255,255,255,0.35)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                Description
-              </p>
-              <p style={{ margin: 0, color: 'rgba(255,255,255,0.75)', fontSize: '14px', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
-                {detail?.description?.trim() ? detail.description : '설명이 없습니다.'}
-              </p>
-            </>
-          )}
-        </div>
-
-        <p style={{ margin: '18px 0 0', color: 'rgba(255,255,255,0.34)', fontSize: '12px', lineHeight: 1.6 }}>
-          {'Archive에서는 content의 설명만 확인할 수 있습니다. 복원 전에는 기존 팀 기능을 사용할 수 없습니다.'}
-        </p>
-      </div>
-    </div>,
-    document.body
   )
 }
 
@@ -362,9 +216,7 @@ export default function ArchiveYearPage() {
   const [search, setSearch] = useState('')
   const [pageB, setPageB] = useState(1)
   const [pageC, setPageC] = useState(1)
-  const [selectedContent, setSelectedContent] = useState<ArchiveItem | null>(null)
-  const [selectedContentDetail, setSelectedContentDetail] = useState<ArchiveContentDetail | null>(null)
-  const [contentModalLoading, setContentModalLoading] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
     async function fetchArchives() {
@@ -447,16 +299,7 @@ export default function ArchiveYearPage() {
   }
 
   const handleOpenContent = (item: ArchiveItem) => {
-    setSelectedContent(item)
-    setSelectedContentDetail({
-      id: item.id,
-      title: item.title,
-      type: item.type === 'PROJECT' ? 'PROJECT' : 'STUDY',
-      description: item.description ?? null,
-      visibility: item.visibility,
-      archivedAt: item.archivedAt,
-    })
-    setContentModalLoading(false)
+    router.push(`/content/${item.id}`)
   }
 
   const sections: Array<{ key: 'B' | 'C'; items: ArchiveItem[]; page: number; totalPages: number; setPage: (p: number) => void }> = [
@@ -584,18 +427,6 @@ export default function ArchiveYearPage() {
 
       <HomeFooter />
 
-      {selectedContent && (
-        <ArchiveContentModal
-          item={selectedContent}
-          detail={selectedContentDetail}
-          loading={contentModalLoading}
-          onClose={() => {
-            setSelectedContent(null)
-            setSelectedContentDetail(null)
-            setContentModalLoading(false)
-          }}
-        />
-      )}
     </main>
   )
 }

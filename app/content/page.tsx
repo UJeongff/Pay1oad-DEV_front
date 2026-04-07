@@ -116,7 +116,12 @@ function ContentCardMenu({
     setOpen(false)
     if (!window.confirm(`"${content.title}"을(를) 보관하시겠습니까?\n아카이브에 ${new Date(content.createdAt).getFullYear()}년 기록으로 이동합니다.`)) return
     try {
-      const res = await fetchWithAuth(`${API_URL}/v1/contents/${content.id}/archive`, { method: 'POST' })
+      const year = new Date(content.createdAt).getFullYear()
+      const res = await fetchWithAuth(`${API_URL}/v1/admin/contents/${content.id}/archive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year }),
+      })
       if (res.ok) {
         onArchived(content.id)
       } else {

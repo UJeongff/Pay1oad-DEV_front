@@ -96,6 +96,7 @@ function sortPosts(list: Post[], sortOption: SortOption): Post[] {
 export default function BlogPage() {
   const { user } = useAuthContext()
   const [posts, setPosts] = useState<Post[]>([])
+  const [canWrite, setCanWrite] = useState(false)
   const [sort, setSort] = useState<SortOption>('최신순')
 
   const handlePinToggle = (postId: number, newIsFeatured: boolean) => {
@@ -122,6 +123,15 @@ export default function BlogPage() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   const sortRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLDivElement>(null)
+
+  // 글쓰기 권한 확인 (로그인 시에만)
+  useEffect(() => {
+    if (!user) { setCanWrite(false); return }
+    fetchWithAuth(`${API_URL}/v1/posts/can-write`)
+      .then(res => res.ok ? res.json() : null)
+      .then(json => setCanWrite(json?.data ?? false))
+      .catch(() => setCanWrite(false))
+  }, [user])
 
   // 검색어 디바운스
   useEffect(() => {
@@ -330,7 +340,7 @@ export default function BlogPage() {
                 <path d="M16.5 16.5L21 21" stroke="rgba(255,255,255,0.45)" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </div>
-            {user && (
+            {canWrite && (
               <Link
                 href="/blog/write"
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', borderRadius: '8px', background: 'transparent', border: '1px solid rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.8)', fontSize: '14px', fontWeight: 500, textDecoration: 'none', transition: 'border-color 0.15s, color 0.15s' }}

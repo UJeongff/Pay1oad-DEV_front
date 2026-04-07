@@ -191,6 +191,7 @@ export default function BlogWritePage() {
 
       // 4. 첨부파일 업로드 (첫 번째 이미지 URL 수집)
       let firstAttachedImageUrl: string | null = null
+      const failedFiles: string[] = []
       for (const file of attachedFiles) {
         try {
           const fd = new FormData()
@@ -199,14 +200,22 @@ export default function BlogWritePage() {
             method: 'POST',
             body: fd,
           })
-          if (fileRes.ok && !firstAttachedImageUrl && file.type.startsWith('image/')) {
+          if (!fileRes.ok) {
+            const errJson = await fileRes.json().catch(() => ({}))
+            failedFiles.push(`${file.name} (${errJson?.message ?? '업로드 실패'})`)
+          } else if (!firstAttachedImageUrl && file.type.startsWith('image/')) {
             const fileJson = await fileRes.json()
             const url: string = fileJson.data.fileUrl
             firstAttachedImageUrl = url.startsWith('http') ? url : `${API_URL}${url}`
           }
         } catch {
-          // 첨부파일 업로드 실패는 무시하고 계속 진행
+          failedFiles.push(`${file.name} (네트워크 오류)`)
         }
+      }
+      if (failedFiles.length > 0) {
+        setError(`일부 파일 업로드 실패: ${failedFiles.join(', ')}`)
+        setSubmitting(false)
+        return
       }
 
       // 5. content 업데이트 및 썸네일 설정
