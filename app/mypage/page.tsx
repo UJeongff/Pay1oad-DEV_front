@@ -11,7 +11,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface MyPost { id: number; title: string; category: string; createdAt: string }
-interface MyComment { id: number; content: string; postTitle: string; postId: number; createdAt: string }
+interface MyComment { commentId: number; content: string; postTitle: string; postId: number; createdAt: string }
 
 // Content 목록 (GET /v1/contents)
 interface ContentSummary { id: number; title: string; type: string; isMember: boolean }
@@ -523,7 +523,7 @@ export default function MypagePage() {
       <main className="min-h-screen flex items-center justify-center" style={{ background: '#040d1f' }}>
         <div className="text-center">
           <p className="text-white/40 mb-4">로그인이 필요합니다.</p>
-          <Link href="/login" className="text-blue-400 hover:text-blue-300 font-semibold text-sm">로그인하기</Link>
+          <Link href="/login?next=%2Fmypage" className="text-blue-400 hover:text-blue-300 font-semibold text-sm">로그인하기</Link>
         </div>
       </main>
     )
@@ -1161,7 +1161,7 @@ function CommentList({ items }: { items: MyComment[] }) {
   return (
     <div className="divide-y divide-white/10">
       {items.map(c => (
-        <Link key={`${c.postId}-${c.id}`} href={`/blog/${c.postId}`} className="py-4 px-4 -mx-4 rounded-lg hover:bg-white/5 transition-colors block group">
+        <Link key={`${c.postId}-${c.commentId}`} href={`/blog/${c.postId}`} className="py-4 px-4 -mx-4 rounded-lg hover:bg-white/5 transition-colors block group">
           <p className="text-white/40 text-xs mb-1 group-hover:text-blue-300 transition-colors truncate">{c.postTitle}</p>
           <p className="text-white font-medium text-sm">{c.content}</p>
           <p className="text-white/30 text-xs mt-1">{new Date(c.createdAt).toLocaleDateString('ko-KR')}</p>

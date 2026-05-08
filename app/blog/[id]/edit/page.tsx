@@ -6,6 +6,7 @@ import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { BlogEditorToolbar } from '@/app/components/BlogEditorToolbar'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
@@ -76,7 +77,13 @@ function normalizePostContent(content: string) {
 export default function BlogEditPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { user } = useAuthContext()
+  const { user, loading: authLoading } = useAuthContext()
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace(`/login?next=${encodeURIComponent('/blog/' + id + '/edit')}`)
+    }
+  }, [authLoading, user, router, id])
 
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -93,6 +100,7 @@ export default function BlogEditPage() {
   const [newFiles, setNewFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
   const [originalAuthorId, setOriginalAuthorId] = useState<number | null>(null)
 
   const categoryRef = useRef<HTMLDivElement>(null)
@@ -291,7 +299,8 @@ export default function BlogEditPage() {
 
       if (!res.ok) throw new Error('게시글 수정에 실패했습니다.')
 
-      router.push(`/blog/${id}`)
+      setToast('게시글이 수정되었습니다.')
+      setTimeout(() => router.push(`/blog/${id}`), 900)
     } catch (err) {
       setError(err instanceof Error ? err.message : '오류가 발생했습니다.')
     } finally {
@@ -352,6 +361,21 @@ export default function BlogEditPage() {
 
   return (
     <main className="relative min-h-screen select-none" style={{ background: '#040d1f' }}>
+
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: 'fixed', top: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
+          padding: '11px 24px', borderRadius: '8px',
+          background: 'rgba(0, 65, 239, 0.95)',
+          border: '1px solid rgba(28,90,255,0.6)',
+          color: '#fff', fontSize: '14px', fontWeight: 500,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+          whiteSpace: 'nowrap',
+        }}>
+          ✓&nbsp;{toast}
+        </div>
+      )}
 
       {/* Background */}
       <div
@@ -621,6 +645,8 @@ export default function BlogEditPage() {
             position: 'relative',
           }}
         >
+          <BlogEditorToolbar editorRef={editorRef} onContentChange={() => { /* no-op: edit page reads innerHTML on submit */ }} />
+
           <div
             ref={editorRef}
             contentEditable

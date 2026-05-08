@@ -55,6 +55,16 @@ function LoginContent() {
   const [pendingGoogleEmail, setPendingGoogleEmail] = useState('')
 
   useEffect(() => {
+    const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]')
+    if (existingScript) {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleGoogleCredential,
+        })
+      }
+      return
+    }
     const script = document.createElement('script')
     script.src = 'https://accounts.google.com/gsi/client'
     script.async = true
@@ -66,7 +76,6 @@ function LoginContent() {
       })
     }
     document.body.appendChild(script)
-    return () => { document.body.removeChild(script) }
   }, [])
 
   async function requestGooglePrecheck(credential: string): Promise<GoogleOAuthPrecheck> {

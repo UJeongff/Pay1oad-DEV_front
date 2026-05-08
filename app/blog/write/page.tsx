@@ -6,6 +6,7 @@ import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { BlogEditorToolbar } from '@/app/components/BlogEditorToolbar'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
@@ -23,7 +24,13 @@ function formatDate(d: Date) {
 
 export default function BlogWritePage() {
   const router = useRouter()
-  const { user } = useAuthContext()
+  const { user, loading: authLoading } = useAuthContext()
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace('/login?next=%2Fblog%2Fwrite')
+    }
+  }, [authLoading, user, router])
 
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState<Category>('ACTIVITIES')
@@ -35,6 +42,7 @@ export default function BlogWritePage() {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
 
   const categoryRef = useRef<HTMLDivElement>(null)
   const visibilityRef = useRef<HTMLDivElement>(null)
@@ -241,7 +249,8 @@ export default function BlogWritePage() {
         }
       }
 
-      router.push('/blog')
+      setToast('게시글이 등록되었습니다.')
+      setTimeout(() => router.push(`/blog/${postId}`), 900)
     } catch (err) {
       setError(err instanceof Error ? err.message : '오류가 발생했습니다.')
     } finally {
@@ -267,6 +276,21 @@ export default function BlogWritePage() {
 
   return (
     <main className="relative min-h-screen select-none" style={{ background: '#040d1f' }}>
+
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position: 'fixed', top: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
+          padding: '11px 24px', borderRadius: '8px',
+          background: 'rgba(0, 65, 239, 0.95)',
+          border: '1px solid rgba(28,90,255,0.6)',
+          color: '#fff', fontSize: '14px', fontWeight: 500,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
+          whiteSpace: 'nowrap',
+        }}>
+          ✓&nbsp;{toast}
+        </div>
+      )}
 
       {/* Background */}
       <div
@@ -504,6 +528,8 @@ export default function BlogWritePage() {
             position: 'relative',
           }}
         >
+          <BlogEditorToolbar editorRef={editorRef} onContentChange={() => { if (editorRef.current) setContent(editorRef.current.innerHTML) }} />
+
           <div
             ref={editorRef}
             contentEditable

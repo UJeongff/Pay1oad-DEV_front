@@ -130,13 +130,17 @@ export default function StudyDetailPage() {
   const [descSaving, setDescSaving] = useState(false)
 
   const handleSaveDescription = async () => {
-    if (descSaving) return
+    if (descSaving || !content) return
     setDescSaving(true)
     try {
       const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: descriptionDraft }),
+        body: JSON.stringify({
+          title: content.title,
+          visibility: content.visibility,
+          description: descriptionDraft,
+        }),
       })
       if (res.ok) {
         setContent(prev => prev ? { ...prev, description: descriptionDraft } : prev)

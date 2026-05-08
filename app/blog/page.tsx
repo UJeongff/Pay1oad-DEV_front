@@ -49,12 +49,6 @@ const CATEGORY_COLOR: Record<Post['category'], { border: string; text: string; b
 const SORT_OPTIONS = ['최신순', '인기순'] as const
 type SortOption = typeof SORT_OPTIONS[number]
 
-const CATEGORY_OPTIONS: Array<{ value: Post['category'] | 'ALL'; label: string }> = [
-  { value: 'ALL',        label: 'All' },
-  { value: 'ACTIVITIES', label: 'Activities' },
-  { value: 'KNOWLEDGE',  label: 'Knowledge' },
-  { value: 'QNA',        label: 'QnA' },
-]
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
@@ -98,6 +92,7 @@ export default function BlogPage() {
   const [posts, setPosts] = useState<Post[]>([])
   const [canWrite, setCanWrite] = useState(false)
   const [sort, setSort] = useState<SortOption>('최신순')
+  const [activeTab, setActiveTab] = useState<'blog' | 'activities' | 'knowledge' | 'qna'>('blog')
 
   const handlePinToggle = (postId: number, newIsFeatured: boolean) => {
     const now = Date.now()
@@ -115,14 +110,11 @@ export default function BlogPage() {
   }
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [category, setCategory] = useState<Post['category'] | 'ALL'>('ALL')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [openSort, setOpenSort] = useState(false)
-  const [openFilter, setOpenFilter] = useState(false)
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   const sortRef = useRef<HTMLDivElement>(null)
-  const filterRef = useRef<HTMLDivElement>(null)
 
   // 글쓰기 권한 확인 (로그인 시에만)
   useEffect(() => {
@@ -139,8 +131,8 @@ export default function BlogPage() {
     return () => clearTimeout(timer)
   }, [search])
 
-  // 카테고리/정렬/검색 변경 시 첫 페이지로 리셋
-  useEffect(() => { setPage(1) }, [category, sort, debouncedSearch])
+  // 탭/정렬/검색 변경 시 첫 페이지로 리셋
+  useEffect(() => { setPage(1) }, [activeTab, sort, debouncedSearch])
 
   // 서버사이드 페이지네이션 + 카테고리 필터 + 키워드 검색
   useEffect(() => {
@@ -150,7 +142,9 @@ export default function BlogPage() {
           page: String(page - 1),  // 백엔드는 0-indexed
           size: String(PAGE_SIZE),
         })
-        if (category !== 'ALL') params.set('category', category)
+        if (activeTab === 'qna') params.set('category', 'QNA')
+        else if (activeTab === 'activities') params.set('category', 'ACTIVITIES')
+        else if (activeTab === 'knowledge') params.set('category', 'KNOWLEDGE')
         if (debouncedSearch.trim()) params.set('keyword', debouncedSearch.trim())
 
         const res = await fetchWithAuth(`${API_URL}/v1/posts?${params}`, { cache: 'no-store' })
@@ -171,13 +165,12 @@ export default function BlogPage() {
       }
     }
     fetchPosts()
-  }, [page, category, sort, debouncedSearch])
+  }, [page, sort, debouncedSearch, activeTab])
 
   // 드롭다운 외부 클릭 닫기
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (sortRef.current && !sortRef.current.contains(e.target as Node)) setOpenSort(false)
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setOpenFilter(false)
     }
     window.addEventListener('mousedown', handler)
     return () => window.removeEventListener('mousedown', handler)
@@ -262,13 +255,30 @@ export default function BlogPage() {
       <div className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 rounded-t-[100px]"
         style={{ background: 'rgba(0, 65, 239, 0.4)' }}
       >
-        <span className="text-white text-sm font-medium tracking-widest flex-1">Blog</span>
-        <div className="flex items-center gap-3">
+        {/* Tabs */}
+        <div className="flex items-center flex-1 gap-1">
+          {(['blog', 'activities', 'knowledge', 'qna'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: '5px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: 600,
+                border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                background: activeTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent',
+                color: activeTab === tab ? '#fff' : 'rgba(255,255,255,0.45)',
+                letterSpacing: '0.02em',
+              }}
+            >
+              {tab === 'blog' ? 'Blog' : tab === 'activities' ? 'Activities' : tab === 'knowledge' ? 'Knowledge' : 'QnA'}
+            </button>
+          ))}
+        </div>
 
+        <div className="flex items-center gap-3">
           {/* Sort dropdown */}
           <div ref={sortRef} style={{ position: 'relative' }}>
             <button
-              onClick={() => { setOpenSort(v => !v); setOpenFilter(false) }}
+              onClick={() => setOpenSort(v => !v)}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#fff', fontSize: '14px', fontWeight: 500, background: 'transparent', border: 'none', cursor: 'pointer' }}
             >
               {sort}
@@ -289,28 +299,6 @@ export default function BlogPage() {
             )}
           </div>
 
-          {/* Category filter */}
-          <div ref={filterRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => { setOpenFilter(v => !v); setOpenSort(false) }}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '8px', background: openFilter ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.12)', border: 'none', cursor: 'pointer' }}
-            >
-              <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
-                <path d="M1 1H17M4 7H14M7 13H11" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-              </svg>
-            </button>
-            {openFilter && (
-              <div style={dropdownStyle}>
-                {CATEGORY_OPTIONS.map(opt => (
-                  <button key={opt.value} style={dropdownItemStyle(category === opt.value, hoveredItem === `cat-${opt.value}`)}
-                    onMouseEnter={() => setHoveredItem(`cat-${opt.value}`)} onMouseLeave={() => setHoveredItem(null)}
-                    onClick={() => { setCategory(opt.value); setOpenFilter(false) }}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
 

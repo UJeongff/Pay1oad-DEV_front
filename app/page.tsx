@@ -49,7 +49,7 @@ const fields = [
 export default async function Home() {
   const recruitment = await getActiveRecruitment()
   return (
-    <main className="relative select-none">
+    <main className="relative select-none overflow-x-hidden">
       <Suspense>
         <GoogleLinkedToast />
       </Suspense>
@@ -62,8 +62,8 @@ export default async function Home() {
           className="absolute inset-0"
           style={{
             backgroundImage: 'url(/home_background.png)',
-            backgroundSize: '130%',
-            backgroundPosition: 'center',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center top',
             backgroundRepeat: 'no-repeat',
           }}
         />

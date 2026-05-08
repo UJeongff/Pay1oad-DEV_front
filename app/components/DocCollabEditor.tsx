@@ -45,6 +45,7 @@ export default function DocCollabEditor({
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
   const contentInitialized = useRef(false)
 
   // Y.Doc + Awareness 초기화 (한 번만)
@@ -142,6 +143,10 @@ export default function DocCollabEditor({
         throw new Error(json?.message ?? '저장에 실패했습니다.')
       }
       setLastSaved(new Date())
+      if (!silent) {
+        setSaveSuccess(true)
+        setTimeout(() => setSaveSuccess(false), 2500)
+      }
     } catch (err) {
       if (!silent) setError(err instanceof Error ? err.message : '저장 오류')
     } finally {
@@ -260,6 +265,7 @@ export default function DocCollabEditor({
       </div>
 
       {error && <p style={{ color: '#FF6060', fontSize: '13px', marginTop: '12px' }}>{error}</p>}
+      {saveSuccess && <p style={{ color: '#74FF89', fontSize: '13px', marginTop: '12px' }}>저장되었습니다.</p>}
 
       {/* 버튼 */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px', marginBottom: '48px' }}>

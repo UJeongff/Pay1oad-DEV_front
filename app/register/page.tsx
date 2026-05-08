@@ -19,7 +19,7 @@ const POLICIES = [
   { label: '개인정보 처리방침', href: 'https://policy.pay1oad.kr/privacy-policy', external: true },
   { label: '개인정보 수집 및 동의', href: 'https://policy.pay1oad.kr/personal-info-consent', external: true },
   { label: '마케팅 및 수신 동의', href: 'https://policy.pay1oad.kr/marketing-consent', external: true },
-  { label: '초상권', href: '/policy/portrait-rights', external: false },
+  { label: '초상권', href: '/policy/portrait-rights', external: true },
 ]
 
 const RED_BORDER = '1px solid rgba(255,60,60,0.85)'
@@ -131,6 +131,38 @@ export default function RegisterPage() {
     setFieldErrors((p) => ({ ...p, [key]: '' }))
   }
 
+  // ── sessionStorage 복원 (마운트 시 1회) ─────────────────────────
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('register_draft')
+      if (!saved) return
+      const d = JSON.parse(saved)
+      if (d.name)       setName(d.name)
+      if (d.email)      setEmail(d.email)
+      if (d.password)   setPassword(d.password)
+      if (d.nickname)   setNickname(d.nickname)
+      if (d.department) setDepartment(d.department)
+      if (d.studentId)  setStudentId(d.studentId)
+      if (d.joinYear)   setJoinYear(d.joinYear)
+      if (d.agreed)     setAgreed(d.agreed)
+      if (d.checkedNickname) {
+        setCheckedNickname(d.checkedNickname)
+        setNicknameAvailable(d.nicknameAvailable ?? null)
+      }
+    } catch { /* 손상된 데이터 무시 */ }
+  }, [])
+
+  // ── sessionStorage 저장 (필드 변경 시마다) ──────────────────────
+  useEffect(() => {
+    if (signupDone) return
+    try {
+      sessionStorage.setItem('register_draft', JSON.stringify({
+        name, email, password, nickname, department, studentId, joinYear, agreed,
+        checkedNickname, nicknameAvailable,
+      }))
+    } catch { /* 저장 실패 무시 */ }
+  }, [name, email, password, nickname, department, studentId, joinYear, agreed, checkedNickname, nicknameAvailable, signupDone])
+
   // ── 이메일 인증 전 이탈 방지 ────────────────────────────────────
   const handleBeforeUnload = useCallback((e: BeforeUnloadEvent) => {
     e.preventDefault()
@@ -202,6 +234,7 @@ export default function RegisterPage() {
         return
       }
       setEmailVerified(true)
+      sessionStorage.removeItem('register_draft')
       // 자동 로그인
       try {
         const loginRes = await fetch(`${API_URL}/v1/auth/login`, {
@@ -301,6 +334,7 @@ export default function RegisterPage() {
       }
 
       // 인증 코드가 이메일로 발송됨 → 인증 화면으로 전환
+      sessionStorage.removeItem('register_draft')
       setSignupDone(true)
     } catch {
       setApiError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.')

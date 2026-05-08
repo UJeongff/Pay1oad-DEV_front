@@ -219,11 +219,17 @@ export default function ArchiveYearPage() {
   const router = useRouter()
 
   useEffect(() => {
+    const yearNum = Number(year)
+    if (!year || !/^\d{4}$/.test(year) || yearNum < 2000 || yearNum > 2099) {
+      router.replace('/archive')
+      return
+    }
+
     async function fetchArchives() {
       try {
         const res = await fetchWithAuth(`${API_URL}/v1/archive/${year}`, { cache: 'no-store' })
         if (!res.ok) {
-          setItems([])
+          router.replace('/archive')
           return
         }
 
@@ -256,7 +262,7 @@ export default function ArchiveYearPage() {
     }
 
     fetchArchives()
-  }, [year])
+  }, [year, router])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()

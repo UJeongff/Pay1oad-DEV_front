@@ -663,7 +663,7 @@ export default function CTFPage() {
                   event={event}
                   onShortcutOpen={handleShortcutOpen}
                   isLoggedIn={!!user}
-                  onLoginRedirect={() => router.push('/login')}
+                  onLoginRedirect={() => router.push('/login?next=%2Fctf')}
                 />
               ))}
             </div>

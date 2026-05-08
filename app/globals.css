@@ -28,6 +28,10 @@
   --font-display: var(--font-eurostile);
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

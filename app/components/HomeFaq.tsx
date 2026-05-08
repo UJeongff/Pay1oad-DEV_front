@@ -75,14 +75,16 @@ export default function HomeFaq() {
                 {/* Answer */}
                 <div
                   style={{
-                    maxHeight: isOpen ? '300px' : '0',
-                    overflow: 'hidden',
-                    transition: 'max-height 0.3s ease',
+                    display: 'grid',
+                    gridTemplateRows: isOpen ? '1fr' : '0fr',
+                    transition: 'grid-template-rows 0.3s ease',
                   }}
                 >
-                  <p className="px-5 pb-5 text-white/50 text-sm leading-relaxed">
-                    {item.answer}
-                  </p>
+                  <div style={{ overflow: 'hidden', minHeight: 0 }}>
+                    <p className="px-5 pb-5 text-white/50 text-sm leading-relaxed">
+                      {item.answer}
+                    </p>
+                  </div>
                 </div>
               </div>
             )

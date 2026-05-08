@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+
+import hljs from 'highlight.js'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
@@ -123,10 +125,18 @@ export default function BlogDetailPage() {
   const [mentionUserIds, setMentionUserIds] = useState<number[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  const [commentSort, setCommentSort] = useState<'newest' | 'oldest'>('newest')
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [commentPage, setCommentPage] = useState(1)
   const [carouselIdx, setCarouselIdx] = useState(0)
   const COMMENTS_PER_PAGE = 5
+
+  const sortedComments = useMemo(() => {
+    return [...comments].sort((a, b) => {
+      const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      return commentSort === 'newest' ? -diff : diff
+    })
+  }, [comments, commentSort])
 
   const isAdmin = user?.role === 'ADMIN'
   const isOwner = user != null && post != null && user.id === post.authorId
@@ -151,6 +161,14 @@ export default function BlogDetailPage() {
     }
     fetchPost()
   }, [id])
+
+  // 코드 블록 syntax highlighting
+  useEffect(() => {
+    if (!post) return
+    document.querySelectorAll<HTMLElement>('.post-content pre code').forEach(block => {
+      hljs.highlightElement(block)
+    })
+  }, [post])
 
   // 댓글 불러오기
   useEffect(() => {
@@ -220,7 +238,7 @@ export default function BlogDetailPage() {
     setMentionAt(null)
     setMentionQuery('')
     setMentionSuggestions([])
-    setTimeout(() => textareaRef.current?.focus(), 0)
+    setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0)
   }
 
   const handleCommentSubmit = async () => {
@@ -618,21 +636,42 @@ export default function BlogDetailPage() {
 
           {/* ── Comments ─────────────────────────────── */}
           <div style={{ marginTop: '48px' }}>
-            <h3 style={{ color: 'rgba(255,255,255,0.65)', fontSize: '14px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              댓글
-              {comments.length > 0 && (
-                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '13px', fontWeight: 400 }}>
-                  {comments.reduce((acc, c) => acc + 1 + (c.replies?.length ?? 0), 0)}
-                </span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <h3 style={{ color: 'rgba(255,255,255,0.65)', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                댓글
+                {comments.length > 0 && (
+                  <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '13px', fontWeight: 400 }}>
+                    {comments.reduce((acc, c) => acc + 1 + (c.replies?.length ?? 0), 0)}
+                  </span>
+                )}
+              </h3>
+              {comments.length > 1 && (
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {(['newest', 'oldest'] as const).map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => { setCommentSort(opt); setCommentPage(1) }}
+                      style={{
+                        padding: '3px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
+                        border: commentSort === opt ? '1px solid rgba(28,90,255,0.6)' : '1px solid rgba(255,255,255,0.1)',
+                        background: commentSort === opt ? 'rgba(28,90,255,0.2)' : 'transparent',
+                        color: commentSort === opt ? '#7aa3ff' : 'rgba(255,255,255,0.4)',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {opt === 'newest' ? '최신순' : '등록순'}
+                    </button>
+                  ))}
+                </div>
               )}
-            </h3>
+            </div>
 
             {/* Comment list */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {comments.length === 0 ? (
                 <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '13px', padding: '20px 0' }}>첫 댓글을 남겨보세요.</p>
               ) : (
-                comments
+                sortedComments
                   .slice((commentPage - 1) * COMMENTS_PER_PAGE, commentPage * COMMENTS_PER_PAGE)
                   .map(comment => (
                     <CommentItem
@@ -646,6 +685,8 @@ export default function BlogDetailPage() {
                         setReplyTo({ id: c.id, authorName: c.authorName ?? '익명', authorId: c.authorId })
                         setCommentInput('@' + (c.authorName ?? '익명') + ' ')
                         if (c.authorId != null) setMentionUserIds(prev => prev.includes(c.authorId!) ? prev : [...prev, c.authorId!])
+                        textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 350)
                       }}
                     />
                   ))
@@ -653,7 +694,7 @@ export default function BlogDetailPage() {
             </div>
 
             {/* Pagination */}
-            {Math.ceil(comments.length / COMMENTS_PER_PAGE) > 1 && (
+            {Math.ceil(sortedComments.length / COMMENTS_PER_PAGE) > 1 && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginTop: '20px' }}>
                 <button
                   onClick={() => setCommentPage(p => Math.max(1, p - 1))}
@@ -662,7 +703,7 @@ export default function BlogDetailPage() {
                 >
                   <svg width="6" height="10" viewBox="0 0 6 10" fill="none"><path d="M5 1L1 5L5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </button>
-                {Array.from({ length: Math.ceil(comments.length / COMMENTS_PER_PAGE) }, (_, i) => i + 1).map(p => (
+                {Array.from({ length: Math.ceil(sortedComments.length / COMMENTS_PER_PAGE) }, (_, i) => i + 1).map(p => (
                   <button
                     key={p}
                     onClick={() => setCommentPage(p)}
@@ -678,9 +719,9 @@ export default function BlogDetailPage() {
                   </button>
                 ))}
                 <button
-                  onClick={() => setCommentPage(p => Math.min(Math.ceil(comments.length / COMMENTS_PER_PAGE), p + 1))}
-                  disabled={commentPage === Math.ceil(comments.length / COMMENTS_PER_PAGE)}
-                  style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: 'rgba(255,255,255,0.4)', cursor: commentPage === Math.ceil(comments.length / COMMENTS_PER_PAGE) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: commentPage === Math.ceil(comments.length / COMMENTS_PER_PAGE) ? 0.3 : 1 }}
+                  onClick={() => setCommentPage(p => Math.min(Math.ceil(sortedComments.length / COMMENTS_PER_PAGE), p + 1))}
+                  disabled={commentPage === Math.ceil(sortedComments.length / COMMENTS_PER_PAGE)}
+                  style={{ width: '28px', height: '28px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: 'rgba(255,255,255,0.4)', cursor: commentPage === Math.ceil(sortedComments.length / COMMENTS_PER_PAGE) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: commentPage === Math.ceil(sortedComments.length / COMMENTS_PER_PAGE) ? 0.3 : 1 }}
                 >
                   <svg width="6" height="10" viewBox="0 0 6 10" fill="none"><path d="M1 1L5 5L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </button>
@@ -775,7 +816,7 @@ export default function BlogDetailPage() {
               </div>
             ) : (
               <Link
-                href="/login"
+                href={`/login?next=${encodeURIComponent('/blog/' + id)}`}
                 style={{
                   marginTop: '20px',
                   padding: '14px',
@@ -824,7 +865,7 @@ export default function BlogDetailPage() {
           margin: 16px 0;
           display: block;
         }
-        .post-content p {
+        .post-content p, .post-content > div {
           margin: 0 0 14px 0;
         }
         .post-content h1, .post-content h2, .post-content h3 {
@@ -848,20 +889,59 @@ export default function BlogDetailPage() {
           padding: 8px 16px;
           color: rgba(255,255,255,0.6);
         }
-        .post-content code {
+        .post-content pre {
+          position: relative;
+          background: rgba(18,24,38,0.9);
+          border: 1px solid rgba(255,255,255,0.08);
+          padding: 16px;
+          border-radius: 8px;
+          overflow-x: auto;
+          margin: 16px 0;
+        }
+        .post-content pre[data-lang]::before {
+          content: attr(data-lang);
+          position: absolute;
+          top: 8px;
+          right: 12px;
+          font-size: 11px;
+          color: rgba(255,255,255,0.35);
+          font-family: monospace;
+          text-transform: lowercase;
+        }
+        .post-content pre code {
+          background: transparent;
+          padding: 0;
+          border-radius: 0;
+          font-size: 13px;
+          font-family: 'Fira Code', 'Consolas', monospace;
+          color: rgba(255,255,255,0.85);
+        }
+        .post-content code:not(pre code) {
           background: rgba(255,255,255,0.08);
           padding: 2px 6px;
           border-radius: 4px;
           font-size: 13px;
           font-family: monospace;
         }
-        .post-content pre {
-          background: rgba(255,255,255,0.06);
-          padding: 16px;
-          border-radius: 8px;
-          overflow-x: auto;
-          margin: 16px 0;
-        }
+        /* highlight.js token colors (github-dark-ish) */
+        .post-content .hljs-keyword   { color: #ff7b72; }
+        .post-content .hljs-string    { color: #a5d6ff; }
+        .post-content .hljs-comment   { color: rgba(255,255,255,0.35); font-style: italic; }
+        .post-content .hljs-number    { color: #79c0ff; }
+        .post-content .hljs-function  { color: #d2a8ff; }
+        .post-content .hljs-title     { color: #d2a8ff; }
+        .post-content .hljs-built_in  { color: #ffa657; }
+        .post-content .hljs-type      { color: #ffa657; }
+        .post-content .hljs-attr      { color: #79c0ff; }
+        .post-content .hljs-literal   { color: #79c0ff; }
+        .post-content .hljs-variable  { color: #fff; }
+        .post-content .hljs-tag       { color: #7ee787; }
+        .post-content .hljs-name      { color: #7ee787; }
+        .post-content .hljs-selector-class { color: #d2a8ff; }
+        .post-content .hljs-selector-id    { color: #ff7b72; }
+        .post-content .hljs-meta      { color: rgba(255,255,255,0.4); }
+        .post-content .hljs-operator  { color: #ff7b72; }
+        .post-content .hljs-punctuation { color: rgba(255,255,255,0.6); }
       `}</style>
 
       <HomeFooter />
