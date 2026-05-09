@@ -16,9 +16,9 @@ const GENERATION_OPTIONS = Array.from({ length: 9 }, (_, i) => {
 })
 
 const POLICIES = [
-  { label: '개인정보 처리방침', href: 'https://policy.pay1oad.kr/privacy-policy', external: true },
-  { label: '개인정보 수집 및 동의', href: 'https://policy.pay1oad.kr/personal-info-consent', external: true },
-  { label: '마케팅 및 수신 동의', href: 'https://policy.pay1oad.kr/marketing-consent', external: true },
+  { label: '개인정보 처리방침', href: '/policy/privacy-policy', external: false },
+  { label: '개인정보 수집 및 동의', href: '/policy/personal-info-consent', external: false },
+  { label: '마케팅 및 수신 동의', href: '/policy/marketing-consent', external: false },
   { label: '초상권', href: '/policy/portrait-rights', external: true },
 ]
 
