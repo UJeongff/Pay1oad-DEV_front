@@ -12,8 +12,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 interface Assignment {
   id: number
   title: string
-  authorId?: number | null
-  authorIsLeader: boolean
   dueAt?: string | null
 }
 
@@ -75,34 +73,36 @@ export default function AssignmentSubmissionWritePage() {
     }).finally(() => setLoading(false))
   }, [contentId, assignmentId])
 
-  const isOwnPostedAssignment = !!assignment && !assignment.authorIsLeader && assignment.authorId != null && String(assignment.authorId) === String(user?.id)
   const isClosed = !!assignment?.dueAt && new Date(assignment.dueAt).getTime() < Date.now()
 
   const handleSubmit = async () => {
-    if (isOwnPostedAssignment && !title.trim()) return setError('제목을 입력해주세요.')
-    if (!body.trim() && attachedFiles.length === 0 && !(mySubmission?.files?.length ?? 0)) return setError('본문이나 첨부 파일 중 하나는 필요합니다.')
+    if (!title.trim()) return setError('제목을 입력해주세요.')
+    if (!body.trim() && attachedFiles.length === 0 && !(mySubmission?.files?.length ?? 0)) {
+      return setError('본문이나 첨부 파일 중 하나는 필요합니다.')
+    }
 
     setError(null)
     setSubmitting(true)
     try {
-      if (isOwnPostedAssignment) {
-        const patchRes = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/assignments/${assignmentId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim() }),
-        })
-        if (!patchRes.ok) {
-          const json = await patchRes.json().catch(() => ({}))
-          setError(json?.message ?? '과제 수정에 실패했습니다.')
-          return
-        }
+      const patchRes = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/assignments/${assignmentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title.trim() }),
+      })
+      if (!patchRes.ok) {
+        const json = await patchRes.json().catch(() => ({}))
+        setError(json?.message ?? '과제 수정에 실패했습니다.')
+        return
       }
 
       const formData = new FormData()
       if (body.trim()) formData.append('body', body.trim())
       attachedFiles.forEach(file => formData.append('files', file))
 
-      const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/assignments/${assignmentId}/submissions`, { method: 'POST', body: formData })
+      const res = await fetchWithAuth(
+        `${API_URL}/v1/contents/${contentId}/assignments/${assignmentId}/submissions`,
+        { method: 'POST', body: formData }
+      )
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
         setError(json?.message ?? '저장에 실패했습니다.')
@@ -127,36 +127,89 @@ export default function AssignmentSubmissionWritePage() {
           <Link href={`/content/${contentId}`} style={{ color: 'inherit', textDecoration: 'none' }}>{contentTitle || '...'}</Link>
           <span>›</span>
           <Link href={`/content/${contentId}/assignments/${assignmentId}`} style={{ color: 'inherit', textDecoration: 'none' }}>{assignment?.title ?? '과제'}</Link>
+          <span>›</span>
+          <span style={{ color: 'rgba(255,255,255,0.75)' }}>수정</span>
         </div>
 
-        {loading ? <div style={{ height: '240px', borderRadius: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }} /> : (
+        {loading ? (
+          <div style={{ height: '240px', borderRadius: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }} />
+        ) : (
           <div style={{ borderRadius: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
             <div style={{ padding: '28px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-              {isOwnPostedAssignment ? (
-                <input value={title} onChange={e => setTitle(e.target.value)} placeholder="과제 제목" style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 'clamp(1.6rem,3vw,2.1rem)', fontWeight: 900 }} />
-              ) : (
-                <h1 style={{ margin: 0, color: '#fff', fontSize: 'clamp(1.6rem,3vw,2.1rem)', fontWeight: 900 }}>
-                  {assignment?.title ?? '과제'}
-                </h1>
+              <input
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="과제 제목"
+                style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 'clamp(1.6rem,3vw,2.1rem)', fontWeight: 900 }}
+              />
+              {assignment?.dueAt && (
+                <p style={{ margin: '12px 0 0', color: isClosed ? '#ff9a9a' : 'rgba(255,255,255,0.5)', fontSize: '12px' }}>
+                  마감 | {formatDate(assignment.dueAt)}
+                </p>
               )}
-              {assignment?.dueAt && <p style={{ margin: '12px 0 0', color: isClosed ? '#ff9a9a' : 'rgba(255,255,255,0.5)', fontSize: '12px' }}>마감 | {formatDate(assignment.dueAt)}</p>}
               {error && <p style={{ margin: '12px 0 0', color: '#f87171', fontSize: '12px' }}>{error}</p>}
             </div>
+
             <div style={{ padding: '28px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-              <p style={{ margin: '0 0 10px', color: 'rgba(255,255,255,0.55)', fontSize: '12px' }}>{isOwnPostedAssignment ? '과제 본문' : '제출 내용'}</p>
-              <textarea value={body} onChange={e => setBody(e.target.value)} rows={10} placeholder={isOwnPostedAssignment ? '과제 내용을 입력해주세요.' : '제출 내용을 입력해주세요.'} style={{ width: '100%', boxSizing: 'border-box', resize: 'none', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '14px', color: '#fff' }} />
+              <p style={{ margin: '0 0 10px', color: 'rgba(255,255,255,0.55)', fontSize: '12px' }}>제출 내용</p>
+              <textarea
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                rows={10}
+                placeholder="제출 내용을 입력해주세요."
+                style={{ width: '100%', boxSizing: 'border-box', resize: 'none', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '14px', color: '#fff' }}
+              />
             </div>
+
             <div style={{ padding: '28px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
                 <p style={{ margin: 0, color: 'rgba(255,255,255,0.55)', fontSize: '12px' }}>첨부 파일</p>
-                <label style={{ padding: '7px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', cursor: 'pointer' }}>파일 선택<input type="file" multiple style={{ display: 'none' }} onChange={e => { const files = Array.from(e.currentTarget.files ?? []); if (files.length) setAttachedFiles(prev => [...prev, ...files]); e.currentTarget.value = '' }} /></label>
+                <label style={{ padding: '7px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', cursor: 'pointer' }}>
+                  파일 선택
+                  <input
+                    type="file"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const files = Array.from(e.currentTarget.files ?? [])
+                      if (files.length) setAttachedFiles(prev => [...prev, ...files])
+                      e.currentTarget.value = ''
+                    }}
+                  />
+                </label>
               </div>
-              {(mySubmission?.files?.length ?? 0) > 0 && <div style={{ marginBottom: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>{mySubmission?.files.map(file => <a key={file.id} href={`${API_URL}${file.fileUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#7ba8ff', textDecoration: 'none', fontSize: '12px' }}>{file.originalName} ({formatFileSize(file.fileSize)})</a>)}</div>}
-              {attachedFiles.length > 0 ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>{attachedFiles.map((file, index) => <span key={`${file.name}-${index}`} style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', padding: '5px 10px', borderRadius: '999px', background: 'rgba(28,90,255,0.12)', color: '#a9c5ff', fontSize: '12px' }}>{file.name}<button type="button" onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer' }}>x</button></span>)}</div> : <p style={{ margin: 0, color: 'rgba(255,255,255,0.38)', fontSize: '12px' }}>선택된 새 파일이 없습니다.</p>}
+              {(mySubmission?.files?.length ?? 0) > 0 && (
+                <div style={{ marginBottom: '10px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {mySubmission?.files.map(file => (
+                    <a key={file.id} href={`${API_URL}${file.fileUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: '#7ba8ff', textDecoration: 'none', fontSize: '12px' }}>
+                      {file.originalName} ({formatFileSize(file.fileSize)})
+                    </a>
+                  ))}
+                </div>
+              )}
+              {attachedFiles.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {attachedFiles.map((file, index) => (
+                    <span key={`${file.name}-${index}`} style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', padding: '5px 10px', borderRadius: '999px', background: 'rgba(28,90,255,0.12)', color: '#a9c5ff', fontSize: '12px' }}>
+                      {file.name}
+                      <button type="button" onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer' }}>x</button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.38)', fontSize: '12px' }}>선택된 새 파일이 없습니다.</p>
+              )}
             </div>
+
             <div style={{ padding: '20px 28px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <Link href={`/content/${contentId}/assignments/${assignmentId}`} style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>취소</Link>
-              <button onClick={handleSubmit} disabled={submitting || (isClosed && !!assignment?.authorIsLeader)} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#1C5AFF', color: '#fff', cursor: 'pointer', opacity: submitting || (isClosed && !!assignment?.authorIsLeader) ? 0.6 : 1 }}>{submitting ? '저장 중...' : (isOwnPostedAssignment ? '과제 수정 저장' : '과제 제출하기')}</button>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting || isClosed}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#1C5AFF', color: '#fff', cursor: submitting || isClosed ? 'default' : 'pointer', opacity: submitting || isClosed ? 0.6 : 1 }}
+              >
+                {submitting ? '저장 중...' : '저장하기'}
+              </button>
             </div>
           </div>
         )}

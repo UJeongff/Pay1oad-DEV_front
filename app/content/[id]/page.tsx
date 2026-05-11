@@ -269,7 +269,8 @@ export default function StudyDetailPage() {
       setMembersFetched(true)
       if (contentJson) {
         const data = contentJson.data ?? contentJson
-        setContent({ ...data, memberCount: list.length })
+        const memberCount = membersJson != null ? list.length : (data.memberCount ?? 0)
+        setContent({ ...data, memberCount })
       }
     }).catch(() => {})
   }, [contentId])
@@ -856,22 +857,13 @@ export default function StudyDetailPage() {
             <span style={{ width: '3px', height: '16px', background: '#1C5AFF', borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
             <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>과제</h2>
           </div>
-          {user && (
-            isAdmin ? (
-              <Link href={`/content/${contentId}/assignments/create`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(28,90,255,0.35)', color: '#91CDFF', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
-                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                  <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-                과제 생성
-              </Link>
-            ) : !isCurrentUserLeader && (isCurrentUserMember || !!content?.isMember) ? (
-              <Link href={`/content/${contentId}/assignments/write`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
-                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                  <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-                과제 제출
-              </Link>
-            ) : null
+          {user && !isLeaderOrAdmin && (isCurrentUserMember || !!content?.isMember) && (
+            <Link href={`/content/${contentId}/assignments/write`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+              과제 제출
+            </Link>
           )}
         </div>
 

@@ -36,6 +36,9 @@ function typeToLabel(type: string) {
   if (type === 'ASSIGNMENT_GRADED') return 'Graded'
   if (type === 'COMMENT_CREATED') return 'Comment'
   if (type === 'MEMBER_INVITED') return 'Invite'
+  if (type === 'MEMBER_REMOVED') return 'Removed'
+  if (type === 'MEMBER_LEFT') return 'Member Left'
+  if (type === 'LEADER_DELEGATED') return 'Leader'
   return type.replace(/_/g, ' ')
 }
 
@@ -69,6 +72,15 @@ function getNotificationHref(notification: Notification) {
   }
 
   if (notification.type === 'MEMBER_INVITED' && notification.contentId) {
+    return `/content/${notification.contentId}`
+  }
+
+  if (
+    (notification.type === 'MEMBER_REMOVED' ||
+      notification.type === 'MEMBER_LEFT' ||
+      notification.type === 'LEADER_DELEGATED') &&
+    notification.contentId
+  ) {
     return `/content/${notification.contentId}`
   }
 
