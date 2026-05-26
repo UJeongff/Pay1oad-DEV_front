@@ -6,6 +6,7 @@ import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import DOMPurify from 'isomorphic-dompurify'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
@@ -46,7 +47,12 @@ function decodeBodyToHtml(bodyJson: string | null): string {
     const bytes = new Uint8Array(bin.length)
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
     const state = JSON.parse(new TextDecoder().decode(bytes))
-    return typeof state.body === 'string' ? state.body : ''
+    const rawBody = typeof state.body === 'string' ? state.body : ''
+    return rawBody ? DOMPurify.sanitize(rawBody, {
+      USE_PROFILES: { html: true },
+      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onanimationend', 'onanimationstart', 'onanimationiteration', 'formaction'],
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style'],
+    }) : ''
   } catch {
     return ''
   }

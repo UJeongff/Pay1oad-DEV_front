@@ -3,9 +3,18 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import DOMPurify from 'dompurify'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+
+const SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onanimationend', 'onanimationstart', 'onanimationiteration', 'formaction'],
+  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style'],
+}
+
+const sanitizeHtml = (html: string): string => DOMPurify.sanitize(html, SANITIZE_CONFIG) as unknown as string
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 const NOTICE_MAX_CHARS = 200
@@ -278,7 +287,7 @@ export default function ContentWritePage() {
 
       // ── 수정 모드: 기존 doc PATCH ──────────────
       if (isEdit && docId) {
-        const html = editorRef.current?.innerHTML ?? bodyHtml
+        const html = sanitizeHtml(editorRef.current?.innerHTML ?? bodyHtml)
         const jsonStr = JSON.stringify({ body: html })
         const bytes = new TextEncoder().encode(jsonStr)
         const binary = String.fromCharCode(...Array.from(bytes))
@@ -309,7 +318,7 @@ export default function ContentWritePage() {
         pendingFiles.push(new File([blob], `image_${idx}.${ext}`, { type: blob.type }))
         img.setAttribute('src', `__IMG_PLACEHOLDER_${idx}__`)
       })
-      const placeholderContent = doc.body.innerHTML
+      const placeholderContent = sanitizeHtml(doc.body.innerHTML)
 
       const createRes = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs`, {
         method: 'POST',

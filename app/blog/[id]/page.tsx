@@ -9,6 +9,7 @@ import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
 import hljs from 'highlight.js'
+import DOMPurify from 'isomorphic-dompurify'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
@@ -95,8 +96,14 @@ function normalizeUploadedFileUrl(url: string) {
 }
 
 function normalizePostContent(content: string) {
-  return content.replace(/(<img[^>]+src=["'])([^"']+)(["'])/gi, (_match, prefix: string, src: string, suffix: string) => {
+  const withNormalizedSrcs = content.replace(/(<img[^>]+src=["'])([^"']+)(["'])/gi, (_match, prefix: string, src: string, suffix: string) => {
     return `${prefix}${normalizeUploadedFileUrl(src)}${suffix}`
+  })
+  // 출력 시점 sanitize: 백엔드에서 한 번 거른 뒤에도 방어심층(defense-in-depth)으로 한 번 더.
+  return DOMPurify.sanitize(withNormalizedSrcs, {
+    USE_PROFILES: { html: true },
+    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onanimationend', 'onanimationstart', 'onanimationiteration', 'formaction'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style'],
   })
 }
 

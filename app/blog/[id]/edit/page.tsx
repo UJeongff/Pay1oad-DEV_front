@@ -3,10 +3,19 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import DOMPurify from 'dompurify'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 import { BlogEditorToolbar } from '@/app/components/BlogEditorToolbar'
+
+const SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onanimationend', 'onanimationstart', 'onanimationiteration', 'formaction'],
+  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style'],
+}
+
+const sanitizeHtml = (html: string): string => DOMPurify.sanitize(html, SANITIZE_CONFIG) as unknown as string
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
@@ -252,7 +261,7 @@ export default function BlogEditPage() {
         img.setAttribute('src', `__IMG_PLACEHOLDER_${idx}__`)
       })
 
-      let finalContent = doc.body.innerHTML
+      let finalContent = sanitizeHtml(doc.body.innerHTML)
 
       // 3. 새로운 에디터 이미지 업로드 및 URL 교체
       for (let i = 0; i < pendingFiles.length; i++) {
