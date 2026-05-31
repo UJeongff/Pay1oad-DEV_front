@@ -29,7 +29,6 @@ interface CtfEventCreateForm {
   startAt: string
   endAt: string
   ctfdUrl: string
-  description: string
 }
 
 const STATUS_LABEL: Record<CtfEvent['status'], string> = {
@@ -132,11 +131,15 @@ function CtfCard({
   onShortcutOpen,
   isLoggedIn,
   onLoginRedirect,
+  isAdmin,
+  onDelete,
 }: {
   event: CtfEvent
   onShortcutOpen: (id: number) => void
   isLoggedIn: boolean
   onLoginRedirect: () => void
+  isAdmin: boolean
+  onDelete: (event: CtfEvent) => void
 }) {
   const handleShortcutOpen = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
@@ -186,6 +189,27 @@ function CtfCard({
         >
           {STATUS_LABEL[event.status]}
         </span>
+
+        {/* Admin delete button */}
+        {isAdmin && (
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(event) }}
+            aria-label="CTF 삭제"
+            className="absolute top-3 right-3 flex items-center justify-center w-8 h-8 rounded-full transition-all"
+            style={{
+              background: 'rgba(0,0,0,0.55)',
+              border: '1px solid rgba(239,68,68,0.5)',
+              color: '#f87171',
+              backdropFilter: 'blur(4px)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.25)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.55)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M3 4h10M6.5 4V2.5h3V4M5 4l.5 9.5h5L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Content */}
@@ -273,13 +297,12 @@ function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated
     startAt: '',
     endAt: '',
     ctfdUrl: '',
-    description: '',
   })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setForm(prev => ({ ...prev, [name]: value }))
   }
@@ -317,7 +340,7 @@ function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated
         startAt: form.startAt ? form.startAt + ':00' : null,
         endAt: form.endAt ? form.endAt + ':00' : null,
         ctfdUrl: form.ctfdUrl,
-        description: form.description || null,
+        description: null,
       }
 
       const res = await fetchWithAuth(`${API_URL}/v1/admin/ctf/events`, {
@@ -428,19 +451,6 @@ function CreateCtfModal({ onClose, onCreated }: { onClose: () => void; onCreated
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-white/60 text-xs font-medium">설명</label>
-            <textarea
-              name="description"
-              value={form.description}
-              onChange={handleChange}
-              rows={3}
-              placeholder="대회 설명을 입력하세요"
-              className="rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 outline-none resize-none focus:border-blue-500"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
-            />
-          </div>
-
           {error && <p className="text-red-400 text-xs">{error}</p>}
 
           <div className="flex gap-3 pt-1">
@@ -521,6 +531,19 @@ export default function CTFPage() {
       })
       .catch(() => {})
   }, [])
+
+  const handleDeleteEvent = useCallback(async (target: CtfEvent) => {
+    const ok = window.confirm(`"${target.name}" 이벤트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)
+    if (!ok) return
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/admin/ctf/events/${target.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      setEvents(prev => prev.filter(e => e.id !== target.id))
+      setIndex(i => Math.max(0, Math.min(i, events.length - 2 - (perPage - 1))))
+    } catch {
+      alert('삭제에 실패했습니다.')
+    }
+  }, [events.length])
 
   const isAdmin = user?.role === 'ADMIN'
 
@@ -664,6 +687,8 @@ export default function CTFPage() {
                   onShortcutOpen={handleShortcutOpen}
                   isLoggedIn={!!user}
                   onLoginRedirect={() => router.push('/login?next=%2Fctf')}
+                  isAdmin={isAdmin}
+                  onDelete={handleDeleteEvent}
                 />
               ))}
             </div>

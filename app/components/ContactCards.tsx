@@ -26,7 +26,7 @@ export default function ContactCards() {
 
       {/* 홈페이지 */}
       <Link
-        href="https://www.pay1oad.com"
+        href="https://www.pay1oad.xyz"
         target="_blank"
         rel="noopener noreferrer"
         className="flex flex-col p-8 rounded-3xl transition-all duration-300"
@@ -39,7 +39,7 @@ export default function ContactCards() {
         </div>
         <div className="mt-8">
           <p className="text-white font-bold text-xl mb-2">홈페이지</p>
-          <p className="text-white/45 text-sm">https://www.pay1oad.com</p>
+          <p className="text-white/45 text-sm">https://www.pay1oad.xyz</p>
         </div>
       </Link>
 
