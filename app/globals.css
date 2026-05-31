@@ -152,6 +152,26 @@ body {
 .doc-content p:first-child { margin-top: 0; }
 .doc-content strong { font-weight: 700; }
 
+/* ── 하이퍼링크 스타일 (에디터 입력 영역 + 렌더 출력 영역) ── */
+.rich-editor a,
+.doc-content a,
+.post-content a,
+.ProseMirror a {
+  color: #91CDFF;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(145,205,255,0.5);
+  word-break: break-all;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+.rich-editor a:hover,
+.doc-content a:hover,
+.post-content a:hover,
+.ProseMirror a:hover {
+  color: #B8E0FF;
+  text-decoration-color: #B8E0FF;
+}
+
 .collaboration-cursor__label {
   border-radius: 3px 3px 3px 0;
   color: #fff;

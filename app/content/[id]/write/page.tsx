@@ -7,6 +7,7 @@ import DOMPurify from 'dompurify'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { BlogEditorToolbar } from '@/app/components/BlogEditorToolbar'
 
 const SANITIZE_CONFIG = {
   USE_PROFILES: { html: true },
@@ -654,15 +655,17 @@ export default function ContentWritePage() {
         ) : (
           /* 게시글: 리치 에디터 (이미지 지원) */
           <div style={{ marginTop: '20px', minHeight: '320px', padding: '20px 0', position: 'relative' }}>
+            <BlogEditorToolbar editorRef={editorRef} onContentChange={() => { if (editorRef.current) setBodyHtml(editorRef.current.innerHTML) }} />
             <div
               ref={editorRef}
+              className="rich-editor"
               contentEditable
               suppressContentEditableWarning
               onInput={() => { if (editorRef.current) setBodyHtml(editorRef.current.innerHTML) }}
               onPaste={handleEditorPaste}
               onDrop={handleEditorDrop}
               onDragOver={e => e.preventDefault()}
-              style={{ minHeight: '280px', outline: 'none', color: 'rgba(255,255,255,0.8)', fontSize: '15px', lineHeight: 1.75, caretColor: '#1C5AFF' }}
+              style={{ minHeight: '280px', outline: 'none', color: 'rgba(255,255,255,0.8)', fontSize: '15px', lineHeight: 1.75, caretColor: '#1C5AFF', marginTop: '12px' }}
             />
             {(!editorRef.current || !editorRef.current.textContent?.trim()) && (
               <div style={{ position: 'absolute', top: '20px', left: '0', color: 'rgba(255,255,255,0.2)', fontSize: '15px', lineHeight: 1.75, pointerEvents: 'none', userSelect: 'none' }}>

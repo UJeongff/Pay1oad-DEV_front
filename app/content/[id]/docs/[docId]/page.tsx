@@ -40,6 +40,24 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+let purifyHooksRegistered = false
+function ensurePurifyHooks() {
+  if (purifyHooksRegistered) return
+  purifyHooksRegistered = true
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    if (node.tagName !== 'A') return
+    const href = node.getAttribute('href') ?? ''
+    if (/^\s*(javascript|data|vbscript):/i.test(href)) {
+      node.removeAttribute('href')
+      return
+    }
+    if (/^https?:\/\//i.test(href)) {
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'noopener noreferrer')
+    }
+  })
+}
+
 function decodeBodyToHtml(bodyJson: string | null): string {
   if (!bodyJson) return ''
   try {
@@ -48,11 +66,13 @@ function decodeBodyToHtml(bodyJson: string | null): string {
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
     const state = JSON.parse(new TextDecoder().decode(bytes))
     const rawBody = typeof state.body === 'string' ? state.body : ''
-    return rawBody ? DOMPurify.sanitize(rawBody, {
+    if (!rawBody) return ''
+    ensurePurifyHooks()
+    return DOMPurify.sanitize(rawBody, {
       USE_PROFILES: { html: true },
       FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onanimationend', 'onanimationstart', 'onanimationiteration', 'formaction'],
       FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style'],
-    }) : ''
+    })
   } catch {
     return ''
   }

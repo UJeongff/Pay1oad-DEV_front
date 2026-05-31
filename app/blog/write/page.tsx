@@ -534,41 +534,43 @@ export default function BlogWritePage() {
             marginTop: '20px',
             minHeight: '320px',
             padding: '20px 0',
-            position: 'relative',
           }}
         >
           <BlogEditorToolbar editorRef={editorRef} onContentChange={() => { if (editorRef.current) setContent(editorRef.current.innerHTML) }} />
 
-          <div
-            ref={editorRef}
-            contentEditable
-            suppressContentEditableWarning
-            onInput={handleEditorInput}
-            onPaste={handleEditorPaste}
-            onDrop={handleEditorDrop}
-            onDragOver={e => e.preventDefault()}
-            style={{
-              minHeight: '280px',
-              outline: 'none',
-              color: 'rgba(255,255,255,0.8)',
-              fontSize: '15px',
-              lineHeight: 1.75,
-              caretColor: '#1C5AFF',
-            }}
-          />
-          {/* Placeholder */}
-          {(!editorRef.current || !editorRef.current.textContent?.trim()) && (
+          <div style={{ position: 'relative', marginTop: '12px' }}>
             <div
+              ref={editorRef}
+              className="rich-editor"
+              contentEditable
+              suppressContentEditableWarning
+              onInput={handleEditorInput}
+              onPaste={handleEditorPaste}
+              onDrop={handleEditorDrop}
+              onDragOver={e => e.preventDefault()}
               style={{
-                position: 'absolute', top: '20px', left: '20px',
-                color: 'rgba(255,255,255,0.2)', fontSize: '15px', lineHeight: 1.75,
-                pointerEvents: 'none', userSelect: 'none',
+                minHeight: '280px',
+                outline: 'none',
+                color: 'rgba(255,255,255,0.8)',
+                fontSize: '15px',
+                lineHeight: 1.75,
+                caretColor: '#1C5AFF',
               }}
-            >
-              <p>본문을 작성해 보세요.</p>
-              <p style={{ fontSize: '13px', marginTop: '4px' }}>*이미지는 드롭 다운/ 복사 붙여넣기로 첨부할 수 있습니다.</p>
-            </div>
-          )}
+            />
+            {/* Placeholder */}
+            {(!editorRef.current || !editorRef.current.textContent?.trim()) && (
+              <div
+                style={{
+                  position: 'absolute', top: 0, left: 0,
+                  color: 'rgba(255,255,255,0.2)', fontSize: '15px', lineHeight: 1.75,
+                  pointerEvents: 'none', userSelect: 'none',
+                }}
+              >
+                <p>본문을 작성해 보세요.</p>
+                <p style={{ fontSize: '13px', marginTop: '4px' }}>*이미지는 드롭 다운/ 복사 붙여넣기로 첨부할 수 있습니다.</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Error */}

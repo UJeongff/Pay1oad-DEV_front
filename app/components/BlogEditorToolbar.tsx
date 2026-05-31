@@ -7,11 +7,28 @@ interface BlogEditorToolbarProps {
   onContentChange: () => void
 }
 
+const DANGEROUS_SCHEME = /^(javascript|data|vbscript):/i
+const SAFE_PREFIX = /^(https?:\/\/|mailto:|tel:|\/|#)/i
+
+function normalizeUrl(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  if (DANGEROUS_SCHEME.test(trimmed)) return ''
+  if (SAFE_PREFIX.test(trimmed)) return trimmed
+  // bare domain → assume https
+  return `https://${trimmed}`
+}
+
 export function BlogEditorToolbar({ editorRef, onContentChange }: BlogEditorToolbarProps) {
   const [showLangInput, setShowLangInput] = useState(false)
   const [codeBlockLang, setCodeBlockLang] = useState('')
+  const [showLinkInput, setShowLinkInput] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkText, setLinkText] = useState('')
+  const [hadSelection, setHadSelection] = useState(false)
   const savedRangeRef = useRef<Range | null>(null)
   const langInputRef = useRef<HTMLInputElement>(null)
+  const linkUrlRef = useRef<HTMLInputElement>(null)
 
   const exec = (command: string, arg?: string) => {
     document.execCommand(command, false, arg ?? undefined)
@@ -70,6 +87,63 @@ export function BlogEditorToolbar({ editorRef, onContentChange }: BlogEditorTool
     if (!showLangInput) setTimeout(() => langInputRef.current?.focus(), 50)
   }
 
+  const handleLinkClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0)
+      savedRangeRef.current = range.cloneRange()
+      const selected = sel.toString()
+      setHadSelection(selected.length > 0)
+      setLinkText(selected)
+    } else {
+      savedRangeRef.current = null
+      setHadSelection(false)
+      setLinkText('')
+    }
+    setShowLinkInput(v => !v)
+    if (!showLinkInput) setTimeout(() => linkUrlRef.current?.focus(), 50)
+  }
+
+  const insertLink = () => {
+    const url = normalizeUrl(linkUrl)
+    setShowLinkInput(false)
+    setLinkUrl('')
+    const displayText = linkText
+    setLinkText('')
+    if (!url || !editorRef.current) return
+
+    if (savedRangeRef.current) {
+      const sel = window.getSelection()
+      if (sel) { sel.removeAllRanges(); sel.addRange(savedRangeRef.current) }
+    }
+    editorRef.current.focus()
+
+    const sel = window.getSelection()
+    const a = document.createElement('a')
+    a.href = url
+    a.textContent = (displayText.trim() || url)
+    if (/^https?:\/\//i.test(url)) {
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+    }
+
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0)
+      range.deleteContents()
+      range.insertNode(a)
+      const after = document.createRange()
+      after.setStartAfter(a)
+      after.collapse(true)
+      sel.removeAllRanges()
+      sel.addRange(after)
+    } else {
+      editorRef.current.appendChild(a)
+    }
+
+    onContentChange()
+  }
+
   const btn = (active = false): React.CSSProperties => ({
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     minWidth: '28px', height: '28px', padding: '0 6px', borderRadius: '4px',
@@ -105,6 +179,12 @@ export function BlogEditorToolbar({ editorRef, onContentChange }: BlogEditorTool
         {sep}
         <button onClick={handleCodeBlockClick} style={btn(showLangInput)} title="코드 블록">{`</>`}</button>
         <button onMouseDown={e => { e.preventDefault(); exec('formatBlock', 'blockquote') }} style={btn()} title="인용">&ldquo;</button>
+        <button onMouseDown={handleLinkClick} style={btn(showLinkInput)} title="링크 삽입" aria-label="링크 삽입">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
+        </button>
       </div>
 
       {showLangInput && (
@@ -137,6 +217,62 @@ export function BlogEditorToolbar({ editorRef, onContentChange }: BlogEditorTool
           </button>
           <button
             onClick={() => { setShowLangInput(false); setCodeBlockLang('') }}
+            style={{ padding: '4px 8px', borderRadius: '4px', background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)', fontSize: '12px', cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {showLinkInput && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+          padding: '8px 10px', marginTop: '4px', borderRadius: '6px',
+          background: 'rgba(28,90,255,0.08)', border: '1px solid rgba(28,90,255,0.25)',
+        }}>
+          <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', whiteSpace: 'nowrap' }}>URL:</span>
+          <input
+            ref={linkUrlRef}
+            type="url"
+            value={linkUrl}
+            onChange={e => setLinkUrl(e.target.value)}
+            placeholder="https://example.com"
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); insertLink() }
+              if (e.key === 'Escape') { setShowLinkInput(false); setLinkUrl(''); setLinkText('') }
+            }}
+            style={{
+              flex: 1, minWidth: '180px', background: 'transparent', border: 'none', outline: 'none',
+              color: '#fff', fontSize: '13px', caretColor: '#1C5AFF',
+            }}
+          />
+          {!hadSelection && (
+            <>
+              <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px', whiteSpace: 'nowrap' }}>표시:</span>
+              <input
+                type="text"
+                value={linkText}
+                onChange={e => setLinkText(e.target.value)}
+                placeholder="(비우면 URL 그대로)"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); insertLink() }
+                  if (e.key === 'Escape') { setShowLinkInput(false); setLinkUrl(''); setLinkText('') }
+                }}
+                style={{
+                  flex: 1, minWidth: '120px', background: 'transparent', border: 'none', outline: 'none',
+                  color: '#fff', fontSize: '13px', caretColor: '#1C5AFF',
+                }}
+              />
+            </>
+          )}
+          <button
+            onClick={insertLink}
+            style={{ padding: '4px 12px', borderRadius: '4px', background: 'rgba(28,90,255,0.4)', border: '1px solid rgba(28,90,255,0.6)', color: '#fff', fontSize: '12px', cursor: 'pointer' }}
+          >
+            삽입
+          </button>
+          <button
+            onClick={() => { setShowLinkInput(false); setLinkUrl(''); setLinkText('') }}
             style={{ padding: '4px 8px', borderRadius: '4px', background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)', fontSize: '12px', cursor: 'pointer' }}
           >
             ✕

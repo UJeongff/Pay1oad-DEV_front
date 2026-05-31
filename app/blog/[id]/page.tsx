@@ -95,7 +95,26 @@ function normalizeUploadedFileUrl(url: string) {
   return url
 }
 
+let purifyHooksRegistered = false
+function ensurePurifyHooks() {
+  if (purifyHooksRegistered) return
+  purifyHooksRegistered = true
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    if (node.tagName !== 'A') return
+    const href = node.getAttribute('href') ?? ''
+    if (/^\s*(javascript|data|vbscript):/i.test(href)) {
+      node.removeAttribute('href')
+      return
+    }
+    if (/^https?:\/\//i.test(href)) {
+      node.setAttribute('target', '_blank')
+      node.setAttribute('rel', 'noopener noreferrer')
+    }
+  })
+}
+
 function normalizePostContent(content: string) {
+  ensurePurifyHooks()
   const withNormalizedSrcs = content.replace(/(<img[^>]+src=["'])([^"']+)(["'])/gi, (_match, prefix: string, src: string, suffix: string) => {
     return `${prefix}${normalizeUploadedFileUrl(src)}${suffix}`
   })

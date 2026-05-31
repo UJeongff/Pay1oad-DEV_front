@@ -99,6 +99,7 @@ export default function BlogEditPage() {
   const [forbidden, setForbidden] = useState(false)
 
   const [title, setTitle] = useState('')
+  const [initialContent, setInitialContent] = useState('')
   const [category, setCategory] = useState<Category>('ACTIVITIES')
   const [categoryOpen, setCategoryOpen] = useState(false)
   const [visibility, setVisibility] = useState<'PUBLIC' | 'MEMBER'>('PUBLIC')
@@ -144,10 +145,7 @@ export default function BlogEditPage() {
       setVisibility((post.visibility as 'PUBLIC' | 'MEMBER') ?? 'PUBLIC')
       setAuthorDisplay((post.authorDisplay as 'NICKNAME' | 'ANONYMOUS') ?? 'NICKNAME')
       setExistingFiles(post.files ?? [])
-
-      if (editorRef.current) {
-        editorRef.current.innerHTML = normalizePostContent(post.content ?? '')
-      }
+      setInitialContent(normalizePostContent(post.content ?? ''))
     } catch {
       setNotFound(true)
     } finally {
@@ -168,12 +166,12 @@ export default function BlogEditPage() {
     }
   }, [loading, originalAuthorId, user])
 
-  // 에디터 콘텐츠를 상태에 초기화
+  // 로딩이 끝나 에디터 div가 DOM에 마운트된 뒤에 본문 주입
   useEffect(() => {
     if (!loading && editorRef.current) {
-      // 이미 innerHTML이 loadPost에서 설정됨
+      editorRef.current.innerHTML = initialContent
     }
-  }, [loading])
+  }, [loading, initialContent])
 
   const selectedLabel = CATEGORY_OPTIONS.find(o => o.value === category)?.label ?? category
 
@@ -651,40 +649,42 @@ export default function BlogEditPage() {
             marginTop: '20px',
             minHeight: '320px',
             padding: '20px 0',
-            position: 'relative',
           }}
         >
           <BlogEditorToolbar editorRef={editorRef} onContentChange={() => { /* no-op: edit page reads innerHTML on submit */ }} />
 
-          <div
-            ref={editorRef}
-            contentEditable
-            suppressContentEditableWarning
-            onPaste={handleEditorPaste}
-            onDrop={handleEditorDrop}
-            onDragOver={e => e.preventDefault()}
-            style={{
-              minHeight: '280px',
-              outline: 'none',
-              color: 'rgba(255,255,255,0.8)',
-              fontSize: '15px',
-              lineHeight: 1.75,
-              caretColor: '#1C5AFF',
-            }}
-          />
-          {/* Placeholder — editorRef가 비어 있을 때만 표시 */}
-          {!loading && editorRef.current && !editorRef.current.textContent?.trim() && (
+          <div style={{ position: 'relative', marginTop: '12px' }}>
             <div
+              ref={editorRef}
+              className="rich-editor"
+              contentEditable
+              suppressContentEditableWarning
+              onPaste={handleEditorPaste}
+              onDrop={handleEditorDrop}
+              onDragOver={e => e.preventDefault()}
               style={{
-                position: 'absolute', top: '20px', left: '20px',
-                color: 'rgba(255,255,255,0.2)', fontSize: '15px', lineHeight: 1.75,
-                pointerEvents: 'none', userSelect: 'none',
+                minHeight: '280px',
+                outline: 'none',
+                color: 'rgba(255,255,255,0.8)',
+                fontSize: '15px',
+                lineHeight: 1.75,
+                caretColor: '#1C5AFF',
               }}
-            >
-              <p>본문을 작성해 보세요.</p>
-              <p style={{ fontSize: '13px', marginTop: '4px' }}>*이미지는 드롭 다운/ 복사 붙여넣기로 첨부할 수 있습니다.</p>
-            </div>
-          )}
+            />
+            {/* Placeholder — editorRef가 비어 있을 때만 표시 */}
+            {!loading && editorRef.current && !editorRef.current.textContent?.trim() && (
+              <div
+                style={{
+                  position: 'absolute', top: 0, left: 0,
+                  color: 'rgba(255,255,255,0.2)', fontSize: '15px', lineHeight: 1.75,
+                  pointerEvents: 'none', userSelect: 'none',
+                }}
+              >
+                <p>본문을 작성해 보세요.</p>
+                <p style={{ fontSize: '13px', marginTop: '4px' }}>*이미지는 드롭 다운/ 복사 붙여넣기로 첨부할 수 있습니다.</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Error */}
