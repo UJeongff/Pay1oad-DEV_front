@@ -127,6 +127,23 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>(EMPTY_ERRORS)
 
+  // invite code (URL ?invite=)
+  const [inviteCode, setInviteCode] = useState<string | null>(null)
+  const [inviteState, setInviteState] = useState<'unchecked' | 'valid' | 'invalid'>('unchecked')
+
+  // URL에서 invite 코드 추출 + 유효성 사전 검증
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('invite')?.trim()
+    if (!code) return
+    setInviteCode(code)
+    fetch(`${API_URL}/v1/auth/invite/check?code=${encodeURIComponent(code)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => setInviteState(j?.data?.usable ? 'valid' : 'invalid'))
+      .catch(() => setInviteState('invalid'))
+  }, [])
+
   function clearField(key: keyof FieldErrors) {
     setFieldErrors((p) => ({ ...p, [key]: '' }))
   }
@@ -235,7 +252,14 @@ export default function RegisterPage() {
       }
       setEmailVerified(true)
       sessionStorage.removeItem('register_draft')
-      // 자동 로그인
+
+      // 초대 코드로 가입한 경우만 자동 승인 → 자동 로그인 시도
+      // 초대 없거나 무효였으면 승인 대기 페이지로
+      const isAutoApproved = inviteCode && inviteState === 'valid'
+      if (!isAutoApproved) {
+        setTimeout(() => router.push('/register/pending'), 1200)
+        return
+      }
       try {
         const loginRes = await fetch(`${API_URL}/v1/auth/login`, {
           method: 'POST',
@@ -324,6 +348,7 @@ export default function RegisterPage() {
         body: JSON.stringify({
           name, email, password, nickname,
           department, studentId, generation: generationYear,
+          ...(inviteCode ? { inviteCode } : {}),
         }),
       })
 
@@ -457,6 +482,47 @@ export default function RegisterPage() {
             ) : (
             <>
             <h1 className="text-white text-3xl font-bold mb-8">Sign up</h1>
+
+            {/* 초대 코드 배너 */}
+            {inviteCode && (
+              <div style={{
+                marginBottom: '20px', padding: '12px 16px', borderRadius: '8px',
+                background: inviteState === 'valid'
+                  ? 'rgba(34,197,94,0.08)'
+                  : inviteState === 'invalid'
+                    ? 'rgba(250,204,21,0.08)'
+                    : 'rgba(255,255,255,0.05)',
+                border: inviteState === 'valid'
+                  ? '1px solid rgba(34,197,94,0.35)'
+                  : inviteState === 'invalid'
+                    ? '1px solid rgba(250,204,21,0.35)'
+                    : '1px solid rgba(255,255,255,0.1)',
+                display: 'flex', alignItems: 'flex-start', gap: '10px',
+              }}>
+                <span style={{ fontSize: '16px', lineHeight: 1 }}>
+                  {inviteState === 'valid' ? '🔑' : inviteState === 'invalid' ? '⚠️' : '⌛'}
+                </span>
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
+                  {inviteState === 'valid' && (
+                    <>
+                      <strong>초대 코드가 확인되었습니다.</strong><br />
+                      <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
+                        가입 완료 시 별도 승인 없이 바로 로그인할 수 있습니다.
+                      </span>
+                    </>
+                  )}
+                  {inviteState === 'invalid' && (
+                    <>
+                      <strong>초대 코드가 만료되었거나 유효하지 않습니다.</strong><br />
+                      <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
+                        일반 가입으로 진행되며, 가입 후 관리자 승인이 필요합니다.
+                      </span>
+                    </>
+                  )}
+                  {inviteState === 'unchecked' && '초대 코드 확인 중...'}
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} noValidate>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">

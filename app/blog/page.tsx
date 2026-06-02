@@ -252,21 +252,26 @@ export default function BlogPage() {
       </section>
 
       {/* ── Section Header ──────────────────────────── */}
-      <div className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 rounded-t-[100px]"
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <div
+        className="w-full flex flex-col sm:flex-row sm:items-center px-5 sm:px-10 lg:px-20 rounded-t-[40px] sm:rounded-t-[100px] gap-2 py-3 sm:py-0 sm:h-[49px]"
         style={{ background: 'rgba(0, 65, 239, 0.4)' }}
       >
-        {/* Tabs */}
-        <div className="flex items-center flex-1 gap-1">
+        {/* Tabs — 모바일에선 가로 스크롤 */}
+        <div
+          className="flex items-center gap-1 sm:flex-1 overflow-x-auto -mx-1 px-1"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
+        >
           {(['blog', 'activities', 'knowledge', 'qna'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               style={{
-                padding: '5px 16px', borderRadius: '6px', fontSize: '13px', fontWeight: 600,
+                padding: '5px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 600,
                 border: 'none', cursor: 'pointer', transition: 'all 0.15s',
                 background: activeTab === tab ? 'rgba(255,255,255,0.15)' : 'transparent',
                 color: activeTab === tab ? '#fff' : 'rgba(255,255,255,0.45)',
-                letterSpacing: '0.02em',
+                letterSpacing: '0.02em', whiteSpace: 'nowrap', flexShrink: 0,
               }}
             >
               {tab === 'blog' ? 'Blog' : tab === 'activities' ? 'Activities' : tab === 'knowledge' ? 'Knowledge' : 'QnA'}
@@ -274,7 +279,7 @@ export default function BlogPage() {
           ))}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0 self-end sm:self-auto">
           {/* Sort dropdown */}
           <div ref={sortRef} style={{ position: 'relative' }}>
             <button

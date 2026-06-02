@@ -213,15 +213,15 @@ export default function MypagePage() {
     detectLeaderContents()
   }, [authLoading, user, isAdmin])
 
-  const canManageNotices = isAdmin || ledContents.length > 0
+  // ADMIN은 /admin 콘솔에서 공지/부원/지원 관리 → mypage에서는 숨김
+  // 팀장(team_leader)만 mypage에서 공지 관리 유지
+  const canManageNotices = !isAdmin && ledContents.length > 0
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'posts',       label: '내 게시글' },
     { key: 'comments',    label: '내 댓글' },
     { key: 'likes',       label: '좋아요한 게시글' },
     ...(canManageNotices  ? [{ key: 'notices'     as Tab, label: '공지 관리' }] : []),
-    ...(isAdmin           ? [{ key: 'members'     as Tab, label: '부원 관리' }] : []),
-    ...(isAdmin           ? [{ key: 'recruitment' as Tab, label: '지원하기 관리' }] : []),
   ]
 
   // ─── 기본 탭 fetch ────────────────────────────────────────────────────────

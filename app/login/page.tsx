@@ -212,6 +212,16 @@ function LoginContent() {
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
+        // 가입 승인 대기 → 안내 페이지로
+        if (data?.code === 'AWAITING_APPROVAL') {
+          router.push('/register/pending')
+          return
+        }
+        // 가입 거부 → 메시지 노출 (관리자 안내 받은 상태)
+        if (data?.code === 'ACCOUNT_REJECTED') {
+          setError(data?.message ?? '가입이 거부되었습니다. 운영진에게 문의해주세요.')
+          return
+        }
         setError(data?.message ?? '이메일 또는 비밀번호가 올바르지 않습니다.')
         return
       }

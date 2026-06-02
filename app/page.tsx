@@ -93,16 +93,16 @@ export default async function Home() {
                 textShadow: '0 0 10px rgba(255,255,255,0.2), 0 0 20px rgba(80,140,255,0.3)',
               }}
             >
-              <span className="block text-white" style={{ fontSize: 'clamp(2rem, 4.8vw, 5.2rem)' }}>
+              <span className="block text-white" style={{ fontSize: 'clamp(1.5rem, 6vw, 5.2rem)' }}>
                 GACHON UNIV.
               </span>
 
               <span
-                className="flex items-center gap-3"
-                style={{ fontSize: 'clamp(2rem, 4.8vw, 5.2rem)', marginTop: '0.04em' }}
+                className="flex items-center flex-wrap gap-x-3 gap-y-2"
+                style={{ fontSize: 'clamp(1.5rem, 6vw, 5.2rem)', marginTop: '0.04em' }}
               >
                 <span
-                  className="inline-flex items-center flex-shrink-0 text-white px-4"
+                  className="inline-flex items-center flex-shrink-0 text-white px-3 sm:px-4"
                   style={{
                     background: 'linear-gradient(135deg, rgba(80,120,255,0.55) 0%, rgba(40,80,220,0.45) 100%)',
                     backdropFilter: 'blur(16px)',
@@ -123,7 +123,7 @@ export default async function Home() {
 
               <span
                 className="block text-white"
-                style={{ fontSize: 'clamp(2rem, 4.8vw, 5.2rem)', marginTop: '0.04em' }}
+                style={{ fontSize: 'clamp(1.5rem, 6vw, 5.2rem)', marginTop: '0.04em' }}
               >
                 SECURITY CLUB
               </span>

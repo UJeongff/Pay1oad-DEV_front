@@ -33,9 +33,11 @@ export default function Navbar() {
     setMobileOpen(false)
   }, [pathname])
 
-  const navBg = scrolled || mobileOpen ? 'rgba(4, 13, 31, 0.95)' : 'transparent'
-  const navBlur = scrolled || mobileOpen ? 'blur(16px)' : 'none'
-  const navBorder = scrolled || mobileOpen ? '1px solid rgba(255,255,255,0.06)' : '1px solid transparent'
+  // /admin 경로는 사이드바 영역과 겹치므로 항상 불투명
+  const forceSolid = scrolled || mobileOpen || pathname.startsWith('/admin')
+  const navBg = forceSolid ? 'rgba(4, 13, 31, 0.95)' : 'transparent'
+  const navBlur = forceSolid ? 'blur(16px)' : 'none'
+  const navBorder = forceSolid ? '1px solid rgba(255,255,255,0.06)' : '1px solid transparent'
 
   const visibleLinks = navLinks.filter((link) => link.href !== '/content' || !!user)
 
@@ -87,6 +89,23 @@ export default function Navbar() {
             {user ? (
               <>
                 <NotificationBell />
+                {user.role === 'ADMIN' && (
+                  <Link
+                    href="/admin"
+                    className="flex items-center gap-2 px-3 py-2 rounded-full border transition-all"
+                    style={{
+                      borderColor: 'rgba(245,158,11,0.4)',
+                      background: 'rgba(245,158,11,0.08)',
+                      color: '#fbbf24',
+                    }}
+                    title="관리자 콘솔"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2 4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5l-8-3z" />
+                    </svg>
+                    <span className="text-xs font-bold tracking-wider">CONSOLE</span>
+                  </Link>
+                )}
                 <Link
                   href="/mypage"
                   className="flex items-center gap-3 px-4 py-2 rounded-full border border-white/20 hover:border-white/40 hover:bg-white/5 transition-all"
@@ -159,6 +178,18 @@ export default function Navbar() {
 
           {/* 모바일 유저 영역 */}
           <div className="pt-3">
+            {user?.role === 'ADMIN' && (
+              <Link
+                href="/admin"
+                className="flex items-center gap-2 py-3 mb-1 border-b border-white/5"
+                style={{ color: '#fbbf24' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2 4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5l-8-3z" />
+                </svg>
+                <span className="text-xs font-bold tracking-wider">CONSOLE — 관리자 콘솔</span>
+              </Link>
+            )}
             {user ? (
               <div className="flex items-center justify-between">
                 <Link

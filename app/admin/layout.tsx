@@ -2,8 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthContext } from '@/app/context/AuthContext'
+import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const NAVBAR_HEIGHT = 68 // Navbar.tsx의 py-3 + 로고 44px 기준
 
 const NAV = [
   {
@@ -13,6 +17,58 @@ const NAV = [
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
         <circle cx="12" cy="7" r="4" />
         <path d="M2 21c0-5 4-8 10-8s10 3 10 8" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/approvals',
+    label: '가입 승인',
+    badgeKey: 'pending' as const,
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/invites',
+    label: '초대 코드',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/notices',
+    label: '공지 관리',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 11l18-5v12L3 14v-3z" />
+        <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/recruitment',
+    label: '지원하기 관리',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="9" y1="13" x2="15" y2="13" />
+        <line x1="9" y1="17" x2="15" y2="17" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/history',
+    label: 'History 관리',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
       </svg>
     ),
   },
@@ -42,12 +98,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { user, loading } = useAuthContext()
   const router = useRouter()
   const pathname = usePathname()
+  const [pendingCount, setPendingCount] = useState<number>(0)
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'ADMIN')) {
       router.replace('/')
     }
   }, [loading, user, router])
+
+  useEffect(() => {
+    if (loading || !user || user.role !== 'ADMIN') return
+    let cancelled = false
+    const fetchCount = async () => {
+      try {
+        const res = await fetchWithAuth(`${API_URL}/v1/admin/approvals/pending/count`, { cache: 'no-store' })
+        if (!res.ok) return
+        const json = await res.json()
+        if (!cancelled) setPendingCount(json?.data?.count ?? 0)
+      } catch {}
+    }
+    fetchCount()
+    const interval = setInterval(fetchCount, 30_000) // 30초마다 갱신
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [loading, user, pathname])
 
   if (loading || !user || user.role !== 'ADMIN') {
     return (
@@ -58,7 +131,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#040d1f', display: 'flex' }}>
+    <div style={{ minHeight: '100vh', background: '#040d1f', display: 'flex', paddingTop: NAVBAR_HEIGHT }}>
       {/* Sidebar */}
       <aside style={{
         width: '220px',
@@ -68,8 +141,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         flexDirection: 'column',
         padding: '28px 16px',
         position: 'sticky',
-        top: 0,
-        height: '100vh',
+        top: NAVBAR_HEIGHT,
+        height: `calc(100vh - ${NAVBAR_HEIGHT}px)`,
       }}>
         <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '32px', textDecoration: 'none' }}>
           <span style={{
@@ -88,8 +161,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </Link>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
-          {NAV.map(({ href, label, icon }) => {
+          {NAV.map((item) => {
+            const { href, label, icon } = item
+            const badgeKey = 'badgeKey' in item ? item.badgeKey : undefined
             const active = pathname.startsWith(href)
+            const badgeValue = badgeKey === 'pending' && pendingCount > 0 ? pendingCount : 0
             return (
               <Link
                 key={href}
@@ -105,7 +181,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 }}
               >
                 <span style={{ color: active ? '#7aa3ff' : 'rgba(255,255,255,0.3)' }}>{icon}</span>
-                {label}
+                <span style={{ flex: 1 }}>{label}</span>
+                {badgeValue > 0 && (
+                  <span style={{
+                    minWidth: '20px', height: '18px', padding: '0 6px',
+                    borderRadius: '9px', fontSize: '11px', fontWeight: 700,
+                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 0 0 1px rgba(239,68,68,0.25)',
+                  }}>
+                    {badgeValue > 99 ? '99+' : badgeValue}
+                  </span>
+                )}
               </Link>
             )
           })}

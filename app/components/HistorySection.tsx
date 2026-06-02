@@ -2,6 +2,26 @@
 
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+
+type HistoryCategory = 'SELECTION' | 'EDUCATION' | 'PRESENTATION' | 'ACHIEVEMENT'
+
+interface HistoryItemDto {
+  id: number
+  year: number
+  category: HistoryCategory
+  summary: string
+  detail: string
+  displayOrder: number
+}
+
+const CATEGORY_TO_KO: Record<HistoryCategory, '선정' | '교육' | '발표' | '성과'> = {
+  SELECTION: '선정',
+  EDUCATION: '교육',
+  PRESENTATION: '발표',
+  ACHIEVEMENT: '성과',
+}
+
 type HistoryItem = {
   summary: string
   detail: string
@@ -14,70 +34,31 @@ type YearData = {
   성과: HistoryItem[]
 }
 
-const years = [2018, 2022, 2023, 2024, 2025]
+const EMPTY_YEAR: YearData = {
+  선정: [{ summary: '-', detail: '-' }],
+  교육: [{ summary: '-', detail: '-' }],
+  발표: [{ summary: '-', detail: '-' }],
+  성과: [{ summary: '-', detail: '-' }],
+}
 
-const historyData: Record<number, YearData> = {
-  2018: {
-    선정: [{ summary: '동아리 창립', detail: '동아리 창립' }],
-    교육: [{ summary: '-', detail: '-' }],
-    발표: [{ summary: '-', detail: '-' }],
-    성과: [{ summary: '-', detail: '-' }],
-  },
-  2022: {
-    선정: [{ summary: '-', detail: '-' }],
-    교육: [{ summary: 'BoB 수료', detail: 'BoB 수료' }],
-    발표: [{ summary: '-', detail: '-' }],
-    성과: [{ summary: '-', detail: '-' }],
-  },
-  2023: {
-    선정: [
-      { summary: 'KUSIC 지원 사업 선정', detail: 'KUSIC 지원 사업 동아리 선정' },
-      { summary: 'Dreamhack Education Plan 선정', detail: 'Dreamhack Education Plan 선정' },
-    ],
-    교육: [
-      { summary: 'BoB 수료', detail: 'BoB 12기 수료: *기 김지성, *기 원신영' },
-      { summary: 'WhiteHat School 수료', detail: 'WhiteHat School 1기 수료' },
-      { summary: 'P4C 수료', detail: 'P4C 수료' },
-    ],
-    발표: [
-      { summary: '스마트보안학과 세미나', detail: '스마트보안학과 세미나: 7기 이동하' },
-    ],
-    성과: [
-      { summary: 'CVE 발급', detail: 'Zero Pointer(이동하, 박우진, 전우진, 정지민) CVE 발급 (CVE-2023-50245)' },
-      { summary: '정보보호학회장상', detail: '정보보호학회장상' },
-      { summary: '정보보호학회 참가', detail: '2023 하계/추계 정보보호학회' },
-    ],
-  },
-  2024: {
-    선정: [
-      { summary: 'KUSIC 선정', detail: 'KUSIC 선정' },
-    ],
-    교육: [
-      { summary: 'BoB 수료', detail: 'BoB 13기 수료: *기 고재훈, 2기 김대훈, *기 김용진, *기 박우진, *기 이지수' },
-      { summary: 'WhiteHat School 수료', detail: 'WhiteHat School 2기 수료' },
-      { summary: 'P4C 수료', detail: 'P4C 수료' },
-    ],
-    발표: [
-      { summary: 'OB 특강', detail: 'OB 특강' },
-      { summary: 'KUSIC 권역별 세미나', detail: '2024 KUSIC 권역별 세미나' },
-      { summary: '제 1회 스보인의 날', detail: '제 1회 스보인의 날' },
-    ],
-    성과: [
-      { summary: '한국통신학회', detail: '2024 동계 한국통신학회' },
-    ],
-  },
-  2025: {
-    선정: [{ summary: '-', detail: '-' }],
-    교육: [
-      { summary: 'K-shield 주니어 수료', detail: 'K-shield 주니어 기초과정 수료' },
-      { summary: 'KISA Academy 수료', detail: 'KISA Academy 침해사고 대응훈련 수료' },
-      { summary: 'P4C 수료', detail: 'P4C 시스템 해킹 12기 수료' },
-    ],
-    발표: [{ summary: '-', detail: '-' }],
-    성과: [
-      { summary: '핵테온 세종 12위', detail: '2025 핵테온 세종: 초급 국내 부문 최고 기록 12등' },
-    ],
-  },
+// API 응답 → 연도/카테고리별 그룹핑 + 빈 카테고리 placeholder
+function groupByYear(items: HistoryItemDto[]): { years: number[]; data: Record<number, YearData> } {
+  const data: Record<number, YearData> = {}
+  for (const it of items) {
+    if (!data[it.year]) {
+      data[it.year] = { 선정: [], 교육: [], 발표: [], 성과: [] }
+    }
+    const koCat = CATEGORY_TO_KO[it.category]
+    if (koCat) data[it.year][koCat].push({ summary: it.summary, detail: it.detail })
+  }
+  for (const y of Object.keys(data)) {
+    const yd = data[Number(y)]
+    for (const c of ['선정', '교육', '발표', '성과'] as const) {
+      if (yd[c].length === 0) yd[c] = [{ summary: '-', detail: '-' }]
+    }
+  }
+  const years = Object.keys(data).map(Number).sort((a, b) => a - b)
+  return { years, data }
 }
 
 const cardStyles: { gradient: string; rounded: string }[] = [
@@ -90,18 +71,41 @@ const cardStyles: { gradient: string; rounded: string }[] = [
 const cardTitles: (keyof YearData)[] = ['선정', '교육', '발표', '성과']
 
 export default function HistorySection() {
-  const [selectedYear, setSelectedYear] = useState(2025)
+  const [years, setYears] = useState<number[]>([])
+  const [yearData, setYearData] = useState<Record<number, YearData>>({})
+  const [selectedYear, setSelectedYear] = useState<number | null>(null)
   const [lineX, setLineX] = useState(0)
   const [cardMargin, setCardMargin] = useState(0)
   const [cardHeight, setCardHeight] = useState(0)
   const [ready, setReady] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const yearRefs = useRef<(HTMLButtonElement | null)[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
   const cardGridRef = useRef<HTMLDivElement>(null)
   const cardRefs = useRef<(HTMLDivElement | null)[]>([])
 
+  // ── 데이터 로드 ────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API_URL}/v1/about/history`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (cancelled) return
+        const items: HistoryItemDto[] = j?.data ?? []
+        const { years: ys, data } = groupByYear(items)
+        setYears(ys)
+        setYearData(data)
+        if (ys.length > 0) setSelectedYear(ys[ys.length - 1]) // 최신 연도 기본 선택
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  // ── 레이아웃 계산 (연도 선택 시) ───────────────────────
   const updateLayout = useCallback(() => {
+    if (selectedYear == null) return
     const idx = years.indexOf(selectedYear)
     const btn = yearRefs.current[idx]
     const container = containerRef.current
@@ -130,7 +134,7 @@ export default function HistorySection() {
 
     setCardHeight(heights.length > 0 ? Math.max(...heights) : 0)
     setReady(true)
-  }, [selectedYear])
+  }, [selectedYear, years])
 
   useLayoutEffect(() => {
     updateLayout()
@@ -141,7 +145,38 @@ export default function HistorySection() {
     return () => window.removeEventListener('resize', updateLayout)
   }, [updateLayout])
 
-  const data = historyData[selectedYear]
+  // ── 렌더 가드 ─────────────────────────────────────────
+  if (loading) {
+    return (
+      <section className="pb-32 px-[5vw]">
+        <div className="max-w-3xl mx-auto">
+          <div className="flex justify-center mb-16">
+            <span className="border border-white/30 text-white text-sm font-bold tracking-[0.35em] px-8 py-2.5 rounded-full">
+              HISTORY
+            </span>
+          </div>
+          <p className="text-center text-white/30 text-sm py-16">불러오는 중...</p>
+        </div>
+      </section>
+    )
+  }
+
+  if (years.length === 0 || selectedYear == null) {
+    return (
+      <section className="pb-32 px-[5vw]">
+        <div className="max-w-3xl mx-auto">
+          <div className="flex justify-center mb-16">
+            <span className="border border-white/30 text-white text-sm font-bold tracking-[0.35em] px-8 py-2.5 rounded-full">
+              HISTORY
+            </span>
+          </div>
+          <p className="text-center text-white/30 text-sm py-16">등록된 히스토리가 없습니다.</p>
+        </div>
+      </section>
+    )
+  }
+
+  const data = yearData[selectedYear] ?? EMPTY_YEAR
 
   return (
     <section className="pb-32 px-[5vw]">
@@ -223,7 +258,6 @@ export default function HistorySection() {
           >
             {cardTitles.map((title, i) => {
               const isRightCol = i % 2 === 1  // 교육(1), 성과(3) → 우측에 tooltip
-              const isTopRow = i < 2           // 선정(0), 교육(1) → 아래 정렬
               return (
                 <div key={title} className="group relative h-full">
                   {/* 카드 */}
