@@ -8,12 +8,15 @@ import { useAuthContext } from '@/app/context/AuthContext'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
 
-// 1기 = 2018, 9기 = 2026
-const GENERATION_OPTIONS = Array.from({ length: 9 }, (_, i) => {
-  const gen = 9 - i
-  const year = 2017 + gen
-  return { value: gen, label: `${year}년 - ${gen}기` }
-})
+// 1기 = 2018. 현재 년도 기준으로 최고 기수 자동 산출 (2027년 → 10기, 2028년 → 11기 ...)
+const GENERATION_OPTIONS = (() => {
+  const maxGen = Math.max(1, new Date().getFullYear() - 2017)
+  return Array.from({ length: maxGen }, (_, i) => {
+    const gen = maxGen - i
+    const year = 2017 + gen
+    return { value: gen, label: `${year}년 - ${gen}기` }
+  })
+})()
 
 const POLICIES = [
   { label: '개인정보 처리방침', href: 'https://policy.pay1oad.kr/privacy-policy', external: true },
