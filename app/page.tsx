@@ -3,10 +3,11 @@ import ScrollArrow from '@/app/components/ScrollArrow'
 import HomePosts from '@/app/components/HomePosts'
 import HomeFaq from '@/app/components/HomeFaq'
 import HomeFooter from '@/app/components/HomeFooter'
-import { Suspense } from 'react'
-import GoogleLinkedToast from '@/app/components/GoogleLinkedToast'
 import StatCounters from '@/app/components/StatCounters'
 import ActivityFields from '@/app/components/ActivityFields'
+import HeroTypingText from '@/app/components/HeroTypingText'
+import SectionLabel from '@/app/components/SectionLabel'
+import Reveal from '@/app/components/Reveal'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
@@ -45,25 +46,44 @@ const stats = [
 
 export default async function Home() {
   const recruitment = await getActiveRecruitment()
+
+  // 히어로 버튼: 모집 기간엔 지원서로, 평소엔 About Us 로 보낸다.
+  // - ACTIVE: systemctl 의 active 처럼 초록, 점은 고정
+  // - RECRUITING: 파란 글로우의 보색인 앰버로 눈에 띄게, 점이 퍼지는 펄스(live-dot)로 "지금 열려 있음"을 강조
+  const cta = recruitment
+    ? {
+        href: recruitment.applyUrl ?? '/recruitment',
+        status: 'RECRUITING',
+        label: recruitment.generation ? `${recruitment.generation}기 지원하기` : `${recruitment.title} 지원하기`,
+        statusClass: 'text-[#FCD34D]',
+        dotClass: 'live-dot bg-[#FBBF24] shadow-[0_0_8px_rgba(251,191,36,0.8)]',
+      }
+    : {
+        href: '/about',
+        status: 'ACTIVE',
+        label: '둘러보기',
+        statusClass: 'text-[#86EFAC]',
+        dotClass: 'bg-[#4ADE80] shadow-[0_0_8px_rgba(74,222,128,0.8)]',
+      }
+
   return (
     <main className="relative select-none overflow-x-hidden">
-      <Suspense>
-        <GoogleLinkedToast />
-      </Suspense>
-
       {/* ── Hero Section ─────────────────────────────── */}
       <section className="relative min-h-screen overflow-hidden flex flex-col">
 
-        {/* Background image */}
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: 'url(/home_background.png)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center top',
-            backgroundRepeat: 'no-repeat',
-          }}
-        />
+        {/* Background image — 원본 PNG(2.1MB)를 화질 차이 없이 AVIF(188KB)로 변환했다.
+            CSS image-set 은 빌드 때 WebP 폴백이 지워져 구형 Safari 에서 배경이 사라지므로
+            <picture> 로 포맷을 고르게 한다. cover + center top 은 기존 background 지정과 같다. */}
+        <picture className="absolute inset-0">
+          <source srcSet="/home_background.avif" type="image/avif" />
+          <img
+            src="/home_background.webp"
+            alt=""
+            aria-hidden="true"
+            fetchPriority="high"
+            className="h-full w-full object-cover object-top"
+          />
+        </picture>
 
         {/* Edge gradient overlays — fade image into page background on all sides */}
         <div className="absolute inset-0 pointer-events-none" style={{
@@ -77,11 +97,13 @@ export default async function Home() {
         <div className="relative z-10 flex flex-col min-h-screen px-[5vw] pt-28 pb-10">
 
           <div className="flex-1 flex flex-col justify-center">
-            <p className="text-white/60 text-sm font-medium tracking-[0.22em] mb-3 uppercase">
+            <p className="text-fg-subtle text-sm font-medium tracking-[0.22em] mb-3 uppercase">
               Pay1oad | HACKING &amp; SECURITY
             </p>
 
+            {/* 마지막 줄은 타이핑 중에 일부가 숨겨지므로, 스크린리더에는 제목 전체를 라벨로 준다 */}
             <h1
+              aria-label="Gachon Univ. No.1 Information Security Club"
               className="leading-[1.0] uppercase"
               style={{
                 fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif",
@@ -120,20 +142,28 @@ export default async function Home() {
 
               <span
                 className="block text-white"
-                style={{ fontSize: 'clamp(1.5rem, 6vw, 5.2rem)', marginTop: '0.04em' }}
+                style={{ fontSize: 'clamp(1.5rem, 6vw, 5.2rem)', marginTop: '0.04em', whiteSpace: 'pre-wrap' }}
               >
-                SECURITY CLUB
+                <HeroTypingText text="SECURITY CLUB" />
               </span>
             </h1>
 
-            {recruitment && (
-              <div className="mt-10">
-                <Link
-                  href={recruitment.applyUrl ?? '/recruitment'}
-                  className="inline-flex items-center gap-3 border border-white/80 text-white rounded-full px-7 py-3.5 text-sm font-semibold tracking-wider hover-brand transition-all duration-200"
-                >
-                  {recruitment.generation ? `${recruitment.generation}기 지원하기` : `${recruitment.title} 지원하기`}
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            {/* 상태 + 행동을 한 버튼에 담는다 (systemctl status 의 상태 표기를 빌렸다)
+                - 모집 기간: ● RECRUITING | N기 지원하기 → 지원서
+                - 평소:     ● ACTIVE     | 둘러보기     → About Us */}
+            <div className="mt-10">
+              <Link
+                href={cta.href}
+                className="group inline-flex flex-wrap items-center border border-fg-muted bg-[#040d1f]/35 backdrop-blur-sm text-white rounded-full text-sm hover-brand transition-all duration-200"
+              >
+                <span className={`inline-flex items-center gap-2.5 py-3.5 pl-[22px] pr-5 font-mono text-[13px] font-medium tracking-[0.04em] group-hover:text-white transition-colors duration-200 ${cta.statusClass}`}>
+                  <span aria-hidden="true" className={`w-2 h-2 rounded-full ${cta.dotClass}`} />
+                  {cta.status}
+                </span>
+                <span aria-hidden="true" className="w-px h-[18px] bg-line-strong" />
+                <span className="inline-flex items-center gap-2.5 py-3.5 pl-5 pr-[26px] font-bold tracking-[0.05em]">
+                  {cta.label}
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path
                       d="M2.5 8H13.5M13.5 8L8 2.5M13.5 8L8 13.5"
                       stroke="currentColor"
@@ -142,9 +172,9 @@ export default async function Home() {
                       strokeLinejoin="round"
                     />
                   </svg>
-                </Link>
-              </div>
-            )}
+                </span>
+              </Link>
+            </div>
           </div>
 
           <div className="flex justify-center pb-2">
@@ -152,42 +182,35 @@ export default async function Home() {
           </div>
         </div>
 
-        {/* Bottom fade into next section */}
+        {/* Bottom fade into next section — 히어로 좌우와 같은 네이비로 녹여서 경계를 없앤다 */}
         <div
           className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none"
           style={{
-            background: 'linear-gradient(to bottom, transparent, #0F0F0F)',
+            background: 'linear-gradient(to bottom, transparent, #040d1f)',
           }}
         />
       </section>
 
-      {/* ── Gradient background wrapper (About + Stats) ── */}
-      <div style={{ background: 'linear-gradient(to bottom, #0F0F0F 0%, #0E1323 100%)' }}>
+      {/* ── 아래 섹션 전체 배경: 히어로 네이비에서 시작해 페이지 끝으로 갈수록 회색 검정으로.
+            한 방향으로만 바뀌어서 중간에 톤이 꺾이지 않는다 ── */}
+      <div style={{ background: 'linear-gradient(to bottom, #040d1f 0%, #0F0F0F 100%)' }}>
 
       {/* ── About Us Section ─────────────────────────── */}
       <section className="py-28 px-[5vw]">
         <div className="max-w-2xl mx-auto text-center">
 
-          {/* Label */}
-          <div className="flex items-center justify-center gap-2 mb-6">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path
-                d="M10 1.5V18.5M2.5 5.75L17.5 14.25M17.5 5.75L2.5 14.25"
-                stroke="#1C5AFF"
-                strokeWidth="2.8"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className="text-white text-base font-bold tracking-widest uppercase">
-              About us
-            </span>
-          </div>
+          {/* 라벨 → 본문 순서로 떠오른다 */}
+          <Reveal>
+            <SectionLabel label="About us" className="mb-6" />
+          </Reveal>
 
           {/* Body */}
-          <p className="text-white/80 text-base leading-[1.9] tracking-wide">
-            Pay1oad는 정보보호 전문가를 꿈꾸는 사람들이 함께 모여 성장하는 공간입니다.<br />
-            CTF, 보안 프로젝트, 세미나, 스터디 등 다양한 활동을 통해 실력을 쌓아갑니다.
-          </p>
+          <Reveal delay={100}>
+            <p className="text-fg-muted text-base leading-[1.9] tracking-wide">
+              Pay1oad는 정보보호 전문가를 꿈꾸는 사람들이 함께 모여 성장하는 공간입니다.<br />
+              CTF, 보안 프로젝트, 세미나, 스터디 등 다양한 활동을 통해 실력을 쌓아갑니다.
+            </p>
+          </Reveal>
         </div>
       </section>
 

@@ -1,23 +1,8 @@
 @import "tailwindcss";
 
-/* ── Eurostile Extended Bold
-   1. public/fonts/eurostile-extended-bold.woff2 파일을 추가하면 자동으로 적용됩니다.
-   2. 파일이 없을 경우 Exo 2 (Google Fonts) 폴백이 적용됩니다.
-   ──────────────────────────────────────────────── */
-@font-face {
-  font-family: 'EurostileExtended';
-  src: url('/fonts/eurostile-extended-bold.woff2') format('woff2'),
-       url('/fonts/eurostile-extended-bold.woff') format('woff'),
-       url('/fonts/eurostile-extended-bold.ttf') format('truetype');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
 :root {
   --background: #040d1f;
   --foreground: #ffffff;
-  --font-eurostile: 'EurostileExtended', 'Exo 2', 'Rajdhani', sans-serif;
 }
 
 @theme inline {
@@ -25,7 +10,20 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-eurostile);
+
+  /* ── 흰색 투명도 단계 ──
+     흩어져 있던 30/40/45/50/60/75/80/85% 등을 역할별로 묶었다. 새 값을 만들지 말고 여기서 고른다.
+     글자: 본문 강조는 text-white, 그 아래로 muted(본문) → subtle(보조) → faint(장식·비활성, 작은 글씨엔 쓰지 않음)
+     subtle(60%) 이상이어야 작은 글씨도 네이비 배경에서 대비 4.5:1 을 넘는다 */
+  --color-fg-muted: rgb(255 255 255 / 0.8);
+  --color-fg-subtle: rgb(255 255 255 / 0.6);
+  --color-fg-faint: rgb(255 255 255 / 0.4);
+  /* 선: 기본 구분선·테두리 / 강조 테두리 */
+  --color-line: rgb(255 255 255 / 0.1);
+  --color-line-strong: rgb(255 255 255 / 0.25);
+  /* 면: 카드·패널 바탕 / 선택·hover 처럼 한 단계 올라온 바탕 */
+  --color-surface: rgb(255 255 255 / 0.03);
+  --color-surface-raised: rgb(255 255 255 / 0.06);
 }
 
 html {
@@ -52,7 +50,7 @@ body {
 }
 
 .animate-bounce-arrow {
-  animation: bounce-arrow 1s linear infinite;
+  animation: bounce-arrow 1s ease-in-out infinite;
 }
 
 /* ── Brand blue hover utilities ── */
@@ -60,6 +58,90 @@ body {
   background-color: #1C5AFF;
   border-color: #1C5AFF;
   color: #ffffff;
+}
+
+/* ── 홈 히어로 타이핑 커서 (HeroTypingText) ──
+   제목 글자와 같은 흰색 + 같은 글로우라 마지막 글자처럼 이어 보인다.
+   타이핑 중엔 켜져 있고, 다 친 뒤부터 깜빡인다. */
+.hero-caret {
+  display: inline-block;
+  width: 0.07em;
+  height: 0.8em;
+  margin-left: 0.06em;
+  vertical-align: -0.04em;
+  background: #ffffff;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.25), 0 0 20px rgba(80, 140, 255, 0.35);
+}
+
+.hero-caret-blink {
+  animation: hero-caret-blink 1.06s steps(1) infinite;
+}
+
+@keyframes hero-caret-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* 아직 안 친 글자: 자리만 지킨다 */
+.hero-typing-rest {
+  visibility: hidden;
+}
+
+/* ── 모집 중 표시 점: 바깥으로 퍼지는 펄스 ── */
+.live-dot {
+  position: relative;
+}
+
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  /* 점 자신의 색을 그대로 써서 상태 색이 바뀌어도 펄스 색이 따라간다 */
+  background: inherit;
+  animation: live-pulse 1.8s ease-out infinite;
+}
+
+@keyframes live-pulse {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+
+/* ── 홈 활동 분야 패널 (ActivityFields) ── */
+/* 자동 전환 진행 막대: 5초 동안 차오르고, 끝나면 컴포넌트가 다음 분야로 넘긴다 */
+.fields-progress-fill {
+  width: 0;
+  animation: fields-progress 5s linear forwards;
+}
+
+/* 마우스를 올리거나 키보드로 들어오면 자동 전환을 멈춘다 */
+.fields-panel:hover .fields-progress-fill,
+.fields-panel:focus-within .fields-progress-fill {
+  animation-play-state: paused;
+}
+
+@keyframes fields-progress {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+/* 분야가 바뀔 때 상세 내용이 살짝 떠오르며 나타난다 */
+.fields-detail-in {
+  animation: fields-detail-in 400ms ease-out;
+}
+
+@keyframes fields-detail-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 동작 줄이기: 타이핑·깜빡임·펄스·자동 전환 없이 정적으로 보여준다 */
+@media (prefers-reduced-motion: reduce) {
+  .hero-typing-rest { visibility: visible; }
+  .hero-caret { display: none; }
+  .live-dot::after { display: none; }
+  .fields-progress-fill { display: none; }
+  .fields-detail-in { animation: none; }
 }
 
 /* ── Collaboration Cursor ── */

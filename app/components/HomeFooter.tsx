@@ -58,13 +58,7 @@ const socials = [
 
 export default function HomeFooter() {
   return (
-    <footer
-      className="px-[5vw] py-8"
-      style={{
-        background: 'transparent',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
-      }}
-    >
+    <footer className="px-[5vw] py-8 border-t border-line">
       <div className="max-w-5xl mx-auto flex items-center justify-between">
 
         {/* Logo */}
@@ -81,7 +75,7 @@ export default function HomeFooter() {
               </Link>
             ))}
           </div>
-          <p className="text-white/30 text-xs">© 2026. Pay1oad All rights reserved.</p>
+          <p className="text-fg-subtle text-xs">© 2026. Pay1oad All rights reserved.</p>
         </div>
 
       </div>

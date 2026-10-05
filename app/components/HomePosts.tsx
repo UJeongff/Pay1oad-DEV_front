@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
+import SectionLabel from '@/app/components/SectionLabel'
+import Reveal from '@/app/components/Reveal'
 
 interface Post {
   id: number
@@ -43,14 +45,30 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-const PLACEHOLDER_POSTS: Post[] = [
-  { id: 1, title: '게시글 제목', category: 'ACTIVITIES', authorName: 'Pay1oad', publishedAt: new Date().toISOString() },
-  { id: 2, title: '게시글 제목', category: 'KNOWLEDGE', authorName: 'Pay1oad', publishedAt: new Date().toISOString() },
-  { id: 3, title: '게시글 제목', category: 'QNA',        authorName: 'Pay1oad', publishedAt: new Date().toISOString() },
-]
+const CARD_COUNT = 3
+
+/** 실제 카드와 같은 골격(16:10 썸네일 + 본문 줄)이라 로딩이 끝나도 레이아웃이 튀지 않는다. */
+function PostCardSkeleton() {
+  return (
+    <div
+      aria-hidden="true"
+      className="h-full rounded-2xl overflow-hidden flex flex-col bg-surface border border-line motion-safe:animate-pulse"
+    >
+      <div className="w-full aspect-[16/10] bg-surface-raised" />
+      <div className="p-5 flex flex-col gap-3">
+        <div className="h-3 w-10 rounded bg-line" />
+        <div className="h-4 w-4/5 rounded bg-line" />
+        <div className="h-3 w-full rounded bg-surface-raised" />
+        <div className="h-3 w-2/3 rounded bg-surface-raised" />
+        <div className="h-3 w-1/3 rounded bg-surface-raised mt-2" />
+      </div>
+    </div>
+  )
+}
 
 export default function HomePosts() {
-  const [posts, setPosts] = useState<Post[]>(PLACEHOLDER_POSTS)
+  // null = 아직 불러오는 중. 가짜 글을 먼저 보여주면 실제 글로 바뀌는 순간이 그대로 노출된다.
+  const [posts, setPosts] = useState<Post[] | null>(null)
   const [hoveredId, setHoveredId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -71,21 +89,25 @@ export default function HomePosts() {
             }
             return new Date(b.createdAt ?? b.publishedAt).getTime() - new Date(a.createdAt ?? a.publishedAt).getTime()
           })
-          setPosts(sorted.slice(0, 3))
+          setPosts(sorted.slice(0, CARD_COUNT))
+        } else {
+          setPosts([])
         }
       })
-      .catch(() => {})
+      .catch(() => setPosts([]))
   }, [])
 
   return (
     <section className="pt-20 pb-20 px-[5vw]">
       <div className="max-w-5xl mx-auto">
 
-        {/* Header */}
-        <div className="flex justify-end mb-6">
+        {/* Header — 라벨은 가운데, 더보기 링크는 오른쪽. 모바일에선 라벨 아래 오른쪽으로 내려간다 */}
+        <Reveal className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 mb-7">
+          <span className="hidden sm:block" />
+          <SectionLabel label="Blog" />
           <Link
             href="/blog"
-            className="flex items-center gap-1 text-sm text-white/50 hover:text-white transition-colors"
+            className="justify-self-end flex items-center gap-1 whitespace-nowrap text-sm text-fg-subtle hover:text-white transition-colors"
           >
             게시글 더 보러가기
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -98,22 +120,26 @@ export default function HomePosts() {
               />
             </svg>
           </Link>
-        </div>
+        </Reveal>
 
-        {/* Cards */}
-        <div className="grid grid-cols-3 gap-5">
-          {posts.map((post) => {
+        {/* Cards — 카드마다 Reveal 로 감싸 차례로 등장시킨다. 감싸는 div 에서만 움직이므로 카드 hover 효과는 그대로다 */}
+        {posts !== null && posts.length === 0 ? (
+          <p className="py-16 text-center text-sm text-fg-subtle">아직 게시글이 없습니다.</p>
+        ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {posts === null && Array.from({ length: CARD_COUNT }, (_, i) => (
+            <Reveal key={i} delay={(i + 1) * 90} className="h-full"><PostCardSkeleton /></Reveal>
+          ))}
+          {posts?.map((post, i) => {
             const isHovered = hoveredId === post.id
             const isDimmed = hoveredId !== null && !isHovered
 
             return (
+              <Reveal key={post.id} delay={(i + 1) * 90} className="h-full">
               <Link
-                key={post.id}
                 href={`/blog/${post.id}`}
-                className="rounded-2xl overflow-hidden flex flex-col cursor-pointer"
+                className="h-full rounded-2xl overflow-hidden flex flex-col cursor-pointer bg-surface border border-line"
                 style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
                   transition: 'transform 0.3s ease, filter 0.3s ease, opacity 0.3s ease',
                   transform: isHovered ? 'scale(1.04)' : 'scale(1)',
                   filter: isDimmed ? 'grayscale(0.7) brightness(0.5)' : 'none',
@@ -160,18 +186,20 @@ export default function HomePosts() {
                     {post.title}
                   </p>
                   {post.summary && stripHtml(post.summary) && (
-                    <p className="text-white/45 text-sm leading-relaxed line-clamp-3">
+                    <p className="text-fg-subtle text-sm leading-relaxed line-clamp-3">
                       {stripHtml(post.summary)}
                     </p>
                   )}
-                  <p className="text-white/30 text-xs mt-auto pt-2" suppressHydrationWarning>
+                  <p className="text-fg-subtle text-xs mt-auto pt-2" suppressHydrationWarning>
                     {post.authorName} · {new Date(post.publishedAt).toLocaleDateString('ko-KR')}
                   </p>
                 </div>
               </Link>
+              </Reveal>
             )
           })}
         </div>
+        )}
 
       </div>
     </section>

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
-import { Geist, Geist_Mono, Rajdhani, Archivo_Black } from 'next/font/google'
+import { Geist, Geist_Mono, Archivo_Black } from 'next/font/google'
 import './globals.css'
 import Navbar from '@/app/components/Navbar'
 import GoogleLinkedToast from '@/app/components/GoogleLinkedToast'
@@ -14,13 +14,6 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
-})
-
-const rajdhani = Rajdhani({
-  variable: '--font-heading',
-  subsets: ['latin'],
-  weight: ['600', '700'],
-  display: 'swap',
 })
 
 const archivoBlack = Archivo_Black({
@@ -49,7 +42,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${rajdhani.variable} ${archivoBlack.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${archivoBlack.variable} antialiased`}
       >
         <AuthProvider>
           <Navbar />

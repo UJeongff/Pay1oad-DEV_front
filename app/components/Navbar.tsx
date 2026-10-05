@@ -43,7 +43,8 @@ export default function Navbar() {
   const forceSolid = scrolled || mobileOpen || pathname.startsWith('/admin')
   const navBg = forceSolid ? 'rgba(4, 13, 31, 0.95)' : 'transparent'
   const navBlur = forceSolid ? 'blur(16px)' : 'none'
-  const navBorder = forceSolid ? '1px solid rgba(255,255,255,0.06)' : '1px solid transparent'
+  // 테두리 값은 globals.css 의 --color-line(흰색 10%)과 같다
+  const navBorder = forceSolid ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent'
 
   const visibleLinks = navLinks.filter((link) => link.href !== '/content' || !!user)
 
@@ -80,7 +81,7 @@ export default function Navbar() {
               className={`text-sm font-light tracking-widest transition-colors ${
                 pathname === link.href
                   ? 'text-white'
-                  : 'text-white/40 hover:text-white/80'
+                  : 'text-fg-subtle hover:text-fg-muted'
               }`}
             >
               {link.label}
@@ -127,7 +128,7 @@ export default function Navbar() {
                 )}
                 <Link
                   href="/mypage"
-                  className="flex items-center gap-3 px-4 py-2 rounded-full border border-white/20 hover:border-white/40 hover:bg-white/5 transition-all"
+                  className="flex items-center gap-3 px-4 py-2 rounded-full border border-line-strong hover:border-fg-faint hover:bg-surface-raised transition-all"
                 >
                   <span
                     className="w-3 h-3 rounded-full flex-shrink-0"
@@ -149,7 +150,7 @@ export default function Navbar() {
                 href={`/login?next=${encodeURIComponent(pathname)}`}
                 className="flex items-center gap-2 text-sm font-light tracking-widest text-white hover:text-blue-300 transition-colors"
               >
-                <span className="w-2.5 h-2.5 rounded-full border border-white/60 flex-shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full border border-fg-subtle flex-shrink-0" />
                 LOGIN
               </Link>
             )}
@@ -182,13 +183,13 @@ export default function Navbar() {
         className="md:hidden overflow-hidden transition-all duration-300"
         style={{ maxHeight: mobileOpen ? '400px' : '0' }}
       >
-        <div className="flex flex-col px-6 pb-5 pt-1 gap-1 border-t border-white/5">
+        <div className="flex flex-col px-6 pb-5 pt-1 gap-1 border-t border-line">
           {visibleLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className={`py-3 text-sm font-light tracking-widest transition-colors border-b border-white/5 ${
-                pathname === link.href ? 'text-white' : 'text-white/50 hover:text-white'
+              className={`py-3 text-sm font-light tracking-widest transition-colors border-b border-line ${
+                pathname === link.href ? 'text-white' : 'text-fg-subtle hover:text-white'
               }`}
             >
               {link.label}
@@ -200,7 +201,7 @@ export default function Navbar() {
             {user?.role === 'ADMIN' && (
               <Link
                 href="/admin"
-                className="flex items-center gap-2 py-3 mb-1 border-b border-white/5"
+                className="flex items-center gap-2 py-3 mb-1 border-b border-line"
                 style={{ color: '#fbbf24' }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -246,9 +247,9 @@ export default function Navbar() {
             ) : (
               <Link
                 href={`/login?next=${encodeURIComponent(pathname)}`}
-                className="flex items-center gap-2 text-sm font-light tracking-widest text-white/70 hover:text-white transition-colors py-2"
+                className="flex items-center gap-2 text-sm font-light tracking-widest text-fg-muted hover:text-white transition-colors py-2"
               >
-                <span className="w-2.5 h-2.5 rounded-full border border-white/60 flex-shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full border border-fg-subtle flex-shrink-0" />
                 LOGIN
               </Link>
             )}

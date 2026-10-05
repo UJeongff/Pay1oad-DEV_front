@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Reveal from '@/app/components/Reveal'
 
 export type Stat = { value: string; label: string; sub: string }
 
@@ -57,19 +58,19 @@ export default function StatCounters({ stats }: { stats: Stat[] }) {
   const eased = easeOut(progress)
 
   return (
-    <div ref={containerRef} className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-30 mt-5">
-      {stats.map((s) => {
+    // 카드 3장 대신 구분선으로 나뉜 패널 하나 — 모바일에선 세로로 쌓이며 구분선도 가로로 바뀐다
+    <div
+      ref={containerRef}
+      className="grid grid-cols-1 sm:grid-cols-3 mb-30 mt-5 rounded-2xl border border-line bg-surface overflow-hidden divide-y divide-line sm:divide-y-0 sm:divide-x"
+    >
+      {stats.map((s, i) => {
         const { target, suffix } = parse(s.value)
         const shown = target === null
           ? s.value
           : `${Math.round(target * eased)}${suffix}`
 
         return (
-          <div
-            key={s.label}
-            className="rounded-2xl border border-white/10 px-8 py-10 text-center transition-all duration-200 hover-brand cursor-default"
-            style={{ background: 'rgba(255,255,255,0.03)' }}
-          >
+          <Reveal key={s.label} delay={i * 90} className="px-8 py-10 text-center">
             <p
               className="font-bold mb-2"
               style={{
@@ -82,8 +83,8 @@ export default function StatCounters({ stats }: { stats: Stat[] }) {
               {shown}
             </p>
             <p className="text-white text-lg font-semibold mb-1">{s.label}</p>
-            <p className="text-white/40 text-sm">{s.sub}</p>
-          </div>
+            <p className="text-fg-subtle text-sm">{s.sub}</p>
+          </Reveal>
         )
       })}
     </div>
