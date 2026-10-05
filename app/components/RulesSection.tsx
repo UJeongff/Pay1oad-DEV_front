@@ -101,12 +101,13 @@ function ChevronIcon({ open }: { open: boolean }) {
       height="16"
       viewBox="0 0 16 16"
       fill="none"
-      className="flex-shrink-0 transition-transform duration-300"
+      aria-hidden="true"
+      className="flex-shrink-0 text-fg-subtle transition-transform duration-300"
       style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
     >
       <path
         d="M6 3l5 5-5 5"
-        stroke="rgba(255,255,255,0.5)"
+        stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -125,18 +126,18 @@ export default function RulesSection() {
   }
 
   return (
-    <section className="pb-32 px-[5vw]">
+    <section className="pb-28 px-[5vw]">
       <div className="max-w-3xl mx-auto">
 
         {/* Title badge */}
-        <div className="flex justify-center mb-8">
-          <span className="border border-white/30 text-white text-sm font-bold tracking-[0.35em] px-8 py-2.5 rounded-full">
+        <div className="flex justify-center mb-6">
+          <span className="border border-line-strong text-white text-sm font-bold tracking-[0.35em] px-8 py-2.5 rounded-full">
             RULES
           </span>
         </div>
 
         {/* Subtitle */}
-        <p className="text-center text-white/50 text-sm mb-12">
+        <p className="text-center text-fg-subtle text-base mb-12">
           Pay1oad 회칙 / 운영 원칙
         </p>
 
@@ -145,15 +146,19 @@ export default function RulesSection() {
           {chapters.map((chapter) => {
             const isOpen = openChapters.includes(chapter.num)
             return (
-              <div key={chapter.num} className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.12)' }}>
+              <div key={chapter.num} className="rounded-xl overflow-hidden border border-line">
 
                 {/* Chapter header */}
                 <button
+                  type="button"
                   onClick={() => toggle(chapter.num)}
-                  className="w-full flex items-center justify-between px-5 py-4 text-left transition-colors duration-200 hover:bg-white/5"
-                  style={{ background: isOpen ? 'rgba(28,90,255,0.08)' : 'rgba(255,255,255,0.03)' }}
+                  aria-expanded={isOpen}
+                  aria-controls={`rules-chapter-${chapter.num}`}
+                  className={`w-full flex items-center justify-between px-5 py-4 text-left transition-colors duration-200 ${
+                    isOpen ? 'bg-[#1C5AFF]/8' : 'bg-surface hover:bg-surface-raised'
+                  }`}
                 >
-                  <span className="text-white text-sm font-semibold tracking-wide">
+                  <span className="text-white text-base font-semibold tracking-wide">
                     [제 {chapter.num}장]&nbsp; {chapter.title}
                   </span>
                   <ChevronIcon open={isOpen} />
@@ -162,16 +167,17 @@ export default function RulesSection() {
                 {/* Articles */}
                 {isOpen && (
                   <div
-                    className="px-5 py-4 flex flex-col gap-4"
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.2)' }}
+                    id={`rules-chapter-${chapter.num}`}
+                    className="px-5 py-4 flex flex-col gap-4 border-t border-line bg-black/20"
                   >
                     {chapter.articles.map((article) => (
                       <div key={article.num}>
-                        <p className="text-white/90 text-sm font-medium mb-1">
+                        <p className="text-white text-[15px] font-medium mb-1">
                           제 {article.num}조 ({article.title})
                         </p>
-                        <p className="text-white/50 text-sm leading-relaxed" style={{ wordBreak: 'keep-all' }}>
-                          {article.content}
+                        {/* 원문의 줄바꿈·"- " 목록을 그대로 살린다 (앞뒤 빈 줄은 trim) */}
+                        <p className="text-fg-subtle text-[15px] leading-relaxed whitespace-pre-line" style={{ wordBreak: 'keep-all' }}>
+                          {article.content.trim()}
                         </p>
                       </div>
                     ))}

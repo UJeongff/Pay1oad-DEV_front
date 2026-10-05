@@ -1,62 +1,49 @@
-'use client'
-
 import Image from 'next/image'
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 
-const cardBase: React.CSSProperties = {
-  background: 'linear-gradient(145deg, #020810 0%, #061535 55%, #0d2460 100%)',
-  border: '0.5px solid rgba(191,191,191,0.5)',
-  boxShadow: '0 0 10px rgba(28,90,255,0.12)',
-  minHeight: '220px',
-}
+/** 카드마다 네온 색만 다르다 — 실제 hover·포커스 효과는 globals.css 의 .contact-card */
+const neon = (rgb: string) => ({ '--neon': rgb }) as CSSProperties
 
-function neonEnter(el: HTMLElement, color: string) {
-  el.style.border = `0.5px solid ${color}`
-  el.style.boxShadow = `0 0 18px ${color.replace('0.8', '0.55')}, inset 0 0 18px ${color.replace('0.8', '0.08')}`
-}
+const cardClass = 'contact-card flex items-center gap-4 px-6 py-5 rounded-[20px] text-left'
 
-function neonLeave(el: HTMLElement) {
-  el.style.border = '0.5px solid rgba(191,191,191,0.5)'
-  el.style.boxShadow = '0 0 10px rgba(28,90,255,0.12)'
+/** 바깥으로 나가는 링크 표시 */
+const ExternalIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="flex-shrink-0 text-fg-subtle">
+    <path d="M5 11 11 5M6 5h5v5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+function CardText({ name, handle }: { name: string; handle?: string }) {
+  return (
+    <span className="flex-1 min-w-0 flex flex-col gap-0.5">
+      <span className="text-white font-bold text-[17px]">{name}</span>
+      {handle && <span className="text-fg-subtle text-sm truncate">{handle}</span>}
+    </span>
+  )
 }
 
 export default function ContactCards() {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-4">
 
       {/* 홈페이지 */}
       <Link
-        href="https://www.pay1oad.com"
+        href="https://pay1oad.com"
         target="_blank"
         rel="noopener noreferrer"
-        className="flex flex-col p-8 rounded-3xl transition-all duration-300"
-        style={cardBase}
-        onMouseEnter={e => neonEnter(e.currentTarget, 'rgba(28,90,255,0.8)')}
-        onMouseLeave={e => neonLeave(e.currentTarget)}
+        className={cardClass}
+        style={neon('28 90 255')}
       >
-        <div className="w-12 h-12 flex items-center justify-start">
-          <Image src="/aboutus_web.svg" alt="홈페이지" width={48} height={48} />
-        </div>
-        <div className="mt-8">
-          <p className="text-white font-bold text-xl mb-2">홈페이지</p>
-          <p className="text-white/45 text-sm">https://www.pay1oad.com</p>
-        </div>
+        <Image src="/aboutus_web.svg" alt="" width={40} height={40} className="flex-shrink-0" />
+        <CardText name="홈페이지" handle="pay1oad.com" />
+        <ExternalIcon />
       </Link>
 
-      {/* 블로그 */}
-      <div
-        className="flex flex-col p-8 rounded-3xl transition-all duration-300 cursor-default"
-        style={{ ...cardBase }}
-        onMouseEnter={e => neonEnter(e.currentTarget, 'rgba(34,197,94,0.8)')}
-        onMouseLeave={e => neonLeave(e.currentTarget)}
-      >
-        <div className="w-12 h-12 flex items-center justify-start">
-          <Image src="/aboutus_blog.svg" alt="블로그" width={48} height={48} />
-        </div>
-        <div className="mt-8">
-          <p className="text-white font-bold text-xl mb-2">블로그</p>
-          <p className="text-white/45 text-sm">https://blog.pay1oad.com</p>
-        </div>
+      {/* 블로그 — 아직 블로그가 없어 링크를 걸지 않는다 */}
+      <div className={`${cardClass} cursor-default`} style={neon('34 197 94')}>
+        <Image src="/aboutus_blog.svg" alt="" width={40} height={40} className="flex-shrink-0" />
+        <CardText name="블로그" />
       </div>
 
       {/* 인스타그램 */}
@@ -64,22 +51,16 @@ export default function ContactCards() {
         href="https://www.instagram.com/pay1oad_gc"
         target="_blank"
         rel="noopener noreferrer"
-        className="flex flex-col p-8 rounded-3xl transition-all duration-300"
-        style={{ ...cardBase }}
-        onMouseEnter={e => neonEnter(e.currentTarget, 'rgba(236,72,153,0.8)')}
-        onMouseLeave={e => neonLeave(e.currentTarget)}
+        className={cardClass}
+        style={neon('236 72 153')}
       >
-        <div className="w-12 h-12 flex items-center justify-start">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-            <rect x="2" y="2" width="20" height="20" rx="5.5" stroke="white" strokeWidth="1.6"/>
-            <circle cx="12" cy="12" r="4.5" stroke="white" strokeWidth="1.6"/>
-            <circle cx="17.5" cy="6.5" r="1.1" fill="white"/>
-          </svg>
-        </div>
-        <div className="mt-8">
-          <p className="text-white font-bold text-xl mb-2">인스타</p>
-          <p className="text-white/45 text-sm">@pay1oad_gc</p>
-        </div>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="flex-shrink-0">
+          <rect x="2" y="2" width="20" height="20" rx="5.5" stroke="white" strokeWidth="1.6"/>
+          <circle cx="12" cy="12" r="4.5" stroke="white" strokeWidth="1.6"/>
+          <circle cx="17.5" cy="6.5" r="1.1" fill="white"/>
+        </svg>
+        <CardText name="인스타" handle="@pay1oad_gc" />
+        <ExternalIcon />
       </Link>
 
     </div>

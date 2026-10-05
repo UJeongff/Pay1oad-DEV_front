@@ -37,6 +37,29 @@ export function revealClass(revealed: boolean) {
   }`
 }
 
+/**
+ * 화면에 들어오면 onClass 를 붙이기만 한다. 움직임은 그 클래스를 받는 CSS 가 맡는다
+ * (예: About 목표 아이콘 선 그리기 — globals.css 의 .goal-draw).
+ */
+export function RevealToggle({
+  children,
+  className = '',
+  onClass,
+  threshold = 0.3,
+}: {
+  children: ReactNode
+  className?: string
+  onClass: string
+  threshold?: number
+}) {
+  const { ref, revealed } = useRevealOnce<HTMLDivElement>(threshold)
+  return (
+    <div ref={ref} className={`${className} ${revealed ? onClass : ''}`}>
+      {children}
+    </div>
+  )
+}
+
 /** 감싼 내용을 화면에 들어올 때 떠오르게 한다. 목록은 항목마다 delay 를 조금씩 늘려 차례로 등장시킨다. */
 export default function Reveal({
   children,

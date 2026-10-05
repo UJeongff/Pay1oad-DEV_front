@@ -58,11 +58,14 @@ export default function Navbar() {
         borderBottom: navBorder,
       }}
     >
-      {/* ── 상단 바 ── */}
-      <div className="flex items-center justify-between px-6 md:px-10 py-3">
+      {/* ── 상단 바 ──
+          데스크톱은 [로고 | 메뉴 | 오른쪽] 3칸 그리드. 양옆 칸을 같은 1fr 로 두어
+          오른쪽 영역(관리자 CONSOLE 등)이 넓어져도 메뉴가 화면 정가운데에 남는다.
+          메뉴 칸은 minmax(0, max-content) 라 공간이 모자랄 때만 줄어든다. */}
+      <div className="flex items-center justify-between md:grid md:grid-cols-[1fr_minmax(0,max-content)_1fr] px-6 md:px-10 py-3">
 
         {/* Logo */}
-        <Link href="/" className="flex-shrink-0">
+        <Link href="/" className="flex-shrink-0 justify-self-start">
           <Image
             src="/main_logo.png"
             alt="Pay1oad"
@@ -73,7 +76,7 @@ export default function Navbar() {
         </Link>
 
         {/* Nav Links — 데스크톱 */}
-        <div className="hidden md:flex flex-1 justify-center items-center gap-7 min-w-0 mx-4 overflow-hidden">
+        <div className="hidden md:flex justify-center items-center gap-7 min-w-0 mx-4 overflow-hidden">
           {visibleLinks.map((link) => (
             <Link
               key={link.href}
@@ -90,7 +93,7 @@ export default function Navbar() {
         </div>
 
         {/* 오른쪽 영역 */}
-        <div className="flex-shrink-0 flex items-center gap-2">
+        <div className="flex-shrink-0 justify-self-end flex items-center gap-2">
           {/* User — 데스크톱 */}
           <div className="hidden md:flex items-center gap-2">
             {user ? (

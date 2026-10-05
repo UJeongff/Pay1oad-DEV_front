@@ -114,9 +114,11 @@ body {
   animation: fields-progress 5s linear forwards;
 }
 
-/* 마우스를 올리거나 키보드로 들어오면 자동 전환을 멈춘다 */
+/* 마우스를 올리거나 키보드로 들어오면 자동 전환을 멈춘다.
+   focus-within 이 아니라 :focus-visible 인 이유: 마우스로 클릭한 탭에도 포커스가 남아서,
+   마우스를 치운 뒤에도 계속 멈춰 있게 된다. 키보드 포커스일 때만 멈춘다 */
 .fields-panel:hover .fields-progress-fill,
-.fields-panel:focus-within .fields-progress-fill {
+.fields-panel:has(:focus-visible) .fields-progress-fill {
   animation-play-state: paused;
 }
 
@@ -135,6 +137,134 @@ body {
   to { opacity: 1; transform: none; }
 }
 
+/* ── About 연락처 카드 (ContactCards) ──
+   카드마다 style 로 --neon(R G B)을 주면, 마우스를 올리거나 키보드로 포커스했을 때
+   그 색의 빛 한 줄기가 테두리를 따라 돈다. 테두리는 투명하게 두고 배경을 두 겹으로 깐다:
+   안쪽(padding-box)은 카드 그라데이션, 바깥(border-box)은 평소 회색 선 / hover 땐 회전하는 conic-gradient */
+@property --contact-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.contact-card {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(145deg, #020810 0%, #061535 55%, #0d2460 100%) padding-box,
+    linear-gradient(rgba(191, 191, 191, 0.35), rgba(191, 191, 191, 0.35)) border-box;
+  box-shadow: 0 0 10px rgba(28, 90, 255, 0.12);
+  transition: box-shadow 300ms;
+}
+
+.contact-card:hover,
+.contact-card:focus-visible {
+  outline: none;
+  background:
+    linear-gradient(145deg, #020810 0%, #061535 55%, #0d2460 100%) padding-box,
+    conic-gradient(
+      from var(--contact-angle),
+      rgb(var(--neon) / 0) 0deg,
+      rgb(var(--neon)) 60deg,
+      rgb(var(--neon) / 0) 120deg,
+      rgb(var(--neon) / 0) 360deg
+    ) border-box;
+  box-shadow: 0 0 24px rgb(var(--neon) / 0.25);
+  animation: contact-trace 2.4s linear infinite;
+}
+
+@keyframes contact-trace {
+  to { --contact-angle: 360deg; }
+}
+
+/* ── About 목표 아이콘 선 그리기 (RevealToggle className="goal-draw") ──
+   pathLength=100 인 선을 100 만큼 밀어 두었다가, 화면에 들어오면(is-drawn) 0 으로 당겨 그린다.
+   선택자를 [pathLength] 로 쓰면 Chrome 이 나중에 붙은 is-drawn 에 반응하지 않아(대소문자 섞인 SVG 속성) 요소 이름으로 고른다.
+   채운 점(.fill-in)은 선이 반쯤 그려졌을 때 나타난다. 아이콘마다 --draw-delay 로 차례를 준다 */
+.goal-draw svg :is(line, rect, path, circle:not(.fill-in)) {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset 1s ease-out var(--draw-delay, 0ms);
+}
+
+.goal-draw svg .fill-in {
+  opacity: 0;
+  transition: opacity 400ms ease-out calc(var(--draw-delay, 0ms) + 500ms);
+}
+
+.goal-draw.is-drawn svg :is(line, rect, path, circle:not(.fill-in)) {
+  stroke-dashoffset: 0;
+}
+
+.goal-draw.is-drawn svg .fill-in {
+  opacity: 1;
+}
+
+/* ── 제목 와이프 막대 (WipeHeading) ──
+   글자가 열리는 clip-path 전환과 같은 시간·곡선으로 왼쪽 끝에서 오른쪽 끝까지 지나가고 사라진다 */
+.heading-wipe-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  background: #1C5AFF;
+  box-shadow: 0 0 16px #1C5AFF;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.heading-wipe-bar.is-on {
+  animation: heading-wipe-bar 800ms cubic-bezier(.7, 0, .2, 1) 200ms both;
+}
+
+@keyframes heading-wipe-bar {
+  from { left: 0; opacity: 1; }
+  90% { opacity: 1; }
+  to { left: 100%; opacity: 0; }
+}
+
+/* ── About 연혁 타임라인 그리기 (HistorySection) ── */
+@keyframes history-star-in {
+  from { transform: rotate(-90deg) scale(0.4); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.history-star-in {
+  animation: history-star-in 500ms ease-out;
+}
+
+/* ── About 연혁 카드 안 스크롤 (HistorySection) ──
+   카드의 네이비 그라데이션 위에 얹히도록 트랙은 비우고, 손잡이만 브랜드 블루를 옅게 */
+.history-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(110, 149, 255, 0.45) transparent;
+}
+
+.history-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.history-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-scroll::-webkit-scrollbar-thumb {
+  background: rgba(110, 149, 255, 0.45);
+  border-radius: 9999px;
+}
+
+.history-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(110, 149, 255, 0.75);
+}
+
+/* 목록 아래 끝을 흐리게 해 스크롤할 내용이 더 있음을 알린다.
+   흐려지는 24px 만큼 아래 여백을 줘서, 끝까지 내리면 마지막 항목은 선명하게 보인다 */
+.history-fade {
+  padding-bottom: 24px;
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent);
+}
+
 /* 동작 줄이기: 타이핑·깜빡임·펄스·자동 전환 없이 정적으로 보여준다 */
 @media (prefers-reduced-motion: reduce) {
   .hero-typing-rest { visibility: visible; }
@@ -142,6 +272,16 @@ body {
   .live-dot::after { display: none; }
   .fields-progress-fill { display: none; }
   .fields-detail-in { animation: none; }
+  .contact-card:hover, .contact-card:focus-visible {
+    animation: none;
+    background:
+      linear-gradient(145deg, #020810 0%, #061535 55%, #0d2460 100%) padding-box,
+      linear-gradient(rgb(var(--neon) / 0.8), rgb(var(--neon) / 0.8)) border-box;
+  }
+  .goal-draw svg :is(line, rect, path, circle:not(.fill-in)) { stroke-dasharray: none; transition: none; }
+  .goal-draw svg .fill-in { opacity: 1; transition: none; }
+  .history-star-in { animation: none; }
+  .heading-wipe-bar { display: none; }
 }
 
 /* ── Collaboration Cursor ── */

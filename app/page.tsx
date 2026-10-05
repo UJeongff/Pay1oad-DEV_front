@@ -50,9 +50,10 @@ export default async function Home() {
   // 히어로 버튼: 모집 기간엔 지원서로, 평소엔 About Us 로 보낸다.
   // - ACTIVE: systemctl 의 active 처럼 초록, 점은 고정
   // - RECRUITING: 파란 글로우의 보색인 앰버로 눈에 띄게, 점이 퍼지는 펄스(live-dot)로 "지금 열려 있음"을 강조
-  const cta = recruitment
+  // 지원 링크가 비어 있으면 보낼 곳이 없으므로(/recruitment 페이지는 없다) 평소 버튼을 보여준다
+  const cta = recruitment?.applyUrl
     ? {
-        href: recruitment.applyUrl ?? '/recruitment',
+        href: recruitment.applyUrl,
         status: 'RECRUITING',
         label: recruitment.generation ? `${recruitment.generation}기 지원하기` : `${recruitment.title} 지원하기`,
         statusClass: 'text-[#FCD34D]',

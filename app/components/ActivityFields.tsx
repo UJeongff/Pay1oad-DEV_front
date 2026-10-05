@@ -61,20 +61,17 @@ const pad = (n: number) => String(n).padStart(2, '0')
  *
  * - 화면에 들어오면 목록이 위에서부터 차례로 떠오르고, 그 뒤 상세 영역이 나타난다.
  * - 등장이 끝나면 5초마다 다음 분야로 넘어간다. 진행 막대(CSS 애니메이션)가 다 차면 onAnimationEnd 로 넘긴다.
- *   마우스를 올리거나 키보드 포커스가 들어오면 멈추고(globals.css), 사용자가 직접 고르면 자동 전환을 끈다.
+ *   직접 골라도 자동 전환은 계속되고, 고른 분야부터 막대가 다시 찬다(막대가 새 탭 아래 새로 그려지므로).
+ *   멈춰서 읽고 싶으면 마우스를 올리거나 키보드 포커스를 두면 된다(globals.css 에서 일시정지).
  * - 동작 줄이기 사용자는 진행 막대가 숨겨져 자동 전환도 일어나지 않는다.
  */
 export default function ActivityFields() {
   const [selected, setSelected] = useState(0)
-  const [autoplay, setAutoplay] = useState(true)
   // 진행 막대도 등장이 끝난 뒤에 시작해야 해서, Reveal 컴포넌트 대신 같은 훅을 직접 쓴다
   const { ref: containerRef, revealed } = useRevealOnce<HTMLDivElement>(0.2)
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
 
-  const choose = (i: number) => {
-    setSelected(i)
-    setAutoplay(false)
-  }
+  const choose = (i: number) => setSelected(i)
 
   // 탭 목록 키보드 이동: 위/아래(좌/우) 화살표, Home/End
   const onTabKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -128,7 +125,7 @@ export default function ActivityFields() {
                     <span>{f.name}</span>
 
                     {/* 자동 전환 진행 막대: 다 차면 다음 분야로 */}
-                    {isSelected && autoplay && revealed && (
+                    {isSelected && revealed && (
                       <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 bg-line">
                         <span
                           className="fields-progress-fill block h-full bg-[#1C5AFF]"
