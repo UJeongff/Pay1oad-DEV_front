@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/app/hooks/useAuth'
 import { useEffect, useState } from 'react'
+import { usePendingApprovals } from '@/app/lib/usePendingApprovals'
 import NotificationBell from '@/app/components/NotificationBell'
 
 const navLinks = [
@@ -21,6 +22,9 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  // 승인 대기자가 있으면 콘솔 버튼에 숫자를 띄운다 — 관리자 페이지에 들어가 봐야 아는 건 늦다
+  const pendingApprovals = usePendingApprovals(user?.role === 'ADMIN')
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10)
     onScroll()
@@ -28,10 +32,12 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // 라우트 변경 시 모바일 메뉴 닫기
-  useEffect(() => {
+  // 라우트 변경 시 모바일 메뉴 닫기 (렌더 중 이전 값과 비교해 조정)
+  const [lastPath, setLastPath] = useState(pathname)
+  if (lastPath !== pathname) {
+    setLastPath(pathname)
     setMobileOpen(false)
-  }, [pathname])
+  }
 
   // /admin 경로는 사이드바 영역과 겹치므로 항상 불투명
   const forceSolid = scrolled || mobileOpen || pathname.startsWith('/admin')
@@ -104,6 +110,19 @@ export default function Navbar() {
                       <path d="M12 2 4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5l-8-3z" />
                     </svg>
                     <span className="text-xs font-bold tracking-wider">CONSOLE</span>
+                    {pendingApprovals > 0 && (
+                      <span
+                        className="flex items-center justify-center text-[10px] font-bold rounded-full"
+                        style={{
+                          minWidth: '18px', height: '18px', padding: '0 5px',
+                          background: '#ef4444', color: '#fff',
+                        }}
+                        title={`승인 대기 ${pendingApprovals}명`}
+                        aria-label={`승인 대기 ${pendingApprovals}명`}
+                      >
+                        {pendingApprovals > 99 ? '99+' : pendingApprovals}
+                      </span>
+                    )}
                   </Link>
                 )}
                 <Link
@@ -188,6 +207,18 @@ export default function Navbar() {
                   <path d="M12 2 4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5l-8-3z" />
                 </svg>
                 <span className="text-xs font-bold tracking-wider">CONSOLE — 관리자 콘솔</span>
+                {pendingApprovals > 0 && (
+                  <span
+                    className="flex items-center justify-center text-[10px] font-bold rounded-full"
+                    style={{
+                      minWidth: '18px', height: '18px', padding: '0 5px',
+                      background: '#ef4444', color: '#fff',
+                    }}
+                    aria-label={`승인 대기 ${pendingApprovals}명`}
+                  >
+                    {pendingApprovals > 99 ? '99+' : pendingApprovals}
+                  </span>
+                )}
               </Link>
             )}
             {user ? (

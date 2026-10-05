@@ -3,9 +3,28 @@
 import { useEffect, useState, useCallback } from 'react'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 type RecruitStatus = 'RECRUITING' | 'UPCOMING' | 'CLOSED'
+
+/**
+ * 모집 기간으로부터 상태를 정한다.
+ *
+ * 홈/어바웃의 "지원하기" 버튼은 isActive 와 기간을 함께 보기 때문에,
+ * 상태를 손으로 고르게 두면 "모집중으로 해놨는데 버튼이 안 뜬다" 같은 어긋남이 생긴다.
+ * 날짜에서 유도하는 것을 기본값으로 삼는다.
+ */
+function deriveStatus(startAt: string, endAt: string): RecruitStatus | null {
+  if (!startAt || !endAt) return null
+
+  // 날짜 문자열끼리 비교한다 (YYYY-MM-DD 는 사전순 = 시간순)
+  const today = new Date()
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+  if (todayStr < startAt) return 'UPCOMING'
+  if (todayStr > endAt) return 'CLOSED'
+  return 'RECRUITING'
+}
 
 interface Recruitment {
   id: number
@@ -84,6 +103,16 @@ export default function AdminRecruitmentPage() {
 
   useEffect(() => { load() }, [load])
 
+  /**
+   * 서버가 왜 거절했는지 그대로 보여준다.
+   * "등록에 실패했습니다" 한 줄이면 지원서 URL 이 허용 도메인이 아니라는 걸 알 길이 없다.
+   */
+  async function failureReason(res: Response, fallback: string): Promise<string> {
+    const data = await res.json().catch(() => null)
+    const fieldMsg = data?.errors?.[0]?.message
+    return fieldMsg ?? data?.message ?? `${fallback} (HTTP ${res.status})`
+  }
+
   function buildBody() {
     return JSON.stringify({
       title: form.title,
@@ -111,7 +140,7 @@ export default function AdminRecruitmentPage() {
         showToast('모집이 등록되었습니다.')
         await load()
       } else {
-        showToast('등록에 실패했습니다.')
+        showToast(await failureReason(res, '등록에 실패했습니다.'))
       }
     } finally {
       setActionLoading(false)
@@ -132,7 +161,7 @@ export default function AdminRecruitmentPage() {
         showToast('모집이 수정되었습니다.')
         await load()
       } else {
-        showToast('수정에 실패했습니다.')
+        showToast(await failureReason(res, '수정에 실패했습니다.'))
       }
     } finally {
       setActionLoading(false)
@@ -148,7 +177,7 @@ export default function AdminRecruitmentPage() {
         showToast('모집이 삭제되었습니다.')
         await load()
       } else {
-        showToast('삭제에 실패했습니다.')
+        showToast(await failureReason(res, '삭제에 실패했습니다.'))
       }
     } finally {
       setActionLoading(false)
@@ -351,6 +380,16 @@ function RecruitFormFields({ form, onChange }: { form: RecruitForm; onChange: (f
     { value: 'UPCOMING', label: '모집예정', color: '#ca8a04' },
     { value: 'CLOSED', label: '모집마감', color: 'rgba(255,255,255,0.15)' },
   ]
+
+  // 날짜를 바꾸면 상태도 같이 맞춘다. 직접 고른 값은 덮어쓰지 않는다(조기 마감 같은 경우가 있으므로).
+  const setDates = (next: { startAt?: string; endAt?: string }) => {
+    const merged = { ...form, ...next }
+    const derived = deriveStatus(merged.startAt, merged.endAt)
+    onChange(derived ? { ...merged, status: derived } : merged)
+  }
+
+  const derived = deriveStatus(form.startAt, form.endAt)
+  const overridden = derived !== null && derived !== form.status
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       <div>
@@ -392,7 +431,7 @@ function RecruitFormFields({ form, onChange }: { form: RecruitForm; onChange: (f
           <input
             type="date"
             value={form.startAt}
-            onChange={e => onChange({ ...form, startAt: e.target.value })}
+            onChange={e => setDates({ startAt: e.target.value })}
             style={inputStyleObj}
           />
         </div>
@@ -401,13 +440,18 @@ function RecruitFormFields({ form, onChange }: { form: RecruitForm; onChange: (f
           <input
             type="date"
             value={form.endAt}
-            onChange={e => onChange({ ...form, endAt: e.target.value })}
+            onChange={e => setDates({ endAt: e.target.value })}
             style={inputStyleObj}
           />
         </div>
       </div>
       <div>
-        <label style={fieldLabelStyle}>모집 상태</label>
+        <label style={fieldLabelStyle}>
+          모집 상태
+          <span style={{ marginLeft: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.35)', fontWeight: 400 }}>
+            날짜를 넣으면 자동으로 정해집니다
+          </span>
+        </label>
         <div style={{ display: 'flex', gap: '8px' }}>
           {statusOptions.map(({ value, label, color }) => {
             const active = form.status === value
@@ -427,6 +471,15 @@ function RecruitFormFields({ form, onChange }: { form: RecruitForm; onChange: (f
             )
           })}
         </div>
+        {overridden && (
+          <p style={{ marginTop: '6px', fontSize: '11px', color: '#fbbf24', lineHeight: 1.5 }}>
+            입력한 기간으로는 &lsquo;{statusOptions.find(o => o.value === derived)?.label}&rsquo;입니다.
+            직접 고른 상태를 유지하면 홈·어바웃의 지원 버튼 노출과 어긋날 수 있습니다.
+          </p>
+        )}
+        <p style={{ marginTop: '6px', fontSize: '11px', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>
+          홈과 어바웃의 지원 버튼은 <strong>모집중</strong>이면서 오늘이 모집 기간 안일 때만 나타납니다.
+        </p>
       </div>
     </div>
   )

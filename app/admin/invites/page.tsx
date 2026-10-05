@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://pay1oad.com'
 
 interface InviteToken {
   id: number
@@ -105,7 +105,7 @@ export default function AdminInvitesPage() {
   }
 
   const copyLink = async (code: string) => {
-    const link = `${SITE_URL}/signup?invite=${encodeURIComponent(code)}`
+    const link = `${SITE_URL}/register?invite=${encodeURIComponent(code)}`
     try {
       await navigator.clipboard.writeText(link)
       showToast('초대 링크가 복사되었습니다.')

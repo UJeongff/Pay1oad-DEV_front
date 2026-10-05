@@ -6,7 +6,10 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthContext } from '@/app/context/AuthContext'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
+/** 화면 전환으로 이미 처리한 오류 — 에러 메시지를 띄우지 않는다 */
+const HANDLED_BY_REDIRECT = 'HANDLED_BY_REDIRECT'
+
 const GOOGLE_CLIENT_ID = '496361331951-viefkapmkdapsgtge3icep02jkrdmsfi.apps.googleusercontent.com'
 
 const RED_BORDER = '1px solid rgba(255,60,60,0.85)'
@@ -106,6 +109,11 @@ function LoginContent() {
     const data = await res.json().catch(() => null)
 
     if (!res.ok) {
+      // 비밀번호 로그인과 같은 처리 — 승인 대기/거부는 에러가 아니라 안내 화면으로
+      if (data?.code === 'AWAITING_APPROVAL') {
+        router.push('/register/pending')
+        throw new Error(HANDLED_BY_REDIRECT)
+      }
       throw new Error(data?.message ?? 'Google 로그인에 실패했습니다.')
     }
 
@@ -145,7 +153,8 @@ function LoginContent() {
       const loginData = await requestGoogleLogin(response.credential)
       await finishGoogleLogin(loginData)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google 로그인에 실패했습니다.')
+      const message = err instanceof Error ? err.message : 'Google 로그인에 실패했습니다.'
+      if (message !== HANDLED_BY_REDIRECT) setError(message)
     } finally {
       setGoogleLoading(false)
     }
@@ -164,7 +173,8 @@ function LoginContent() {
       setPendingGoogleEmail('')
       await finishGoogleLogin(loginData)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Google 로그인에 실패했습니다.')
+      const message = err instanceof Error ? err.message : 'Google 로그인에 실패했습니다.'
+      if (message !== HANDLED_BY_REDIRECT) setError(message)
     } finally {
       setGoogleLoading(false)
     }

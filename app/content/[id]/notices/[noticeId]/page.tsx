@@ -7,7 +7,7 @@ import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 interface NoticeDetail {
   id: number
@@ -47,9 +47,6 @@ export default function NoticeDetailPage() {
   }, [contentId])
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
-
     fetchWithAuth(`${API_URL}/v1/contents/${contentId}/notices/${noticeId}`)
       .then(async r => {
         if (!r.ok) throw new Error('공지를 불러오지 못했습니다.')

@@ -2,11 +2,12 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { mapServerErrors, summarize } from '@/app/lib/formErrors'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthContext } from '@/app/context/AuthContext'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 // 1기 = 2018. 현재 년도 기준으로 최고 기수 자동 산출 (2027년 → 10기, 2028년 → 11기 ...)
 const GENERATION_OPTIONS = (() => {
@@ -22,7 +23,7 @@ const POLICIES = [
   { label: '개인정보 처리방침', href: 'https://policy.pay1oad.kr/privacy-policy', external: true },
   { label: '개인정보 수집 및 동의', href: 'https://policy.pay1oad.kr/personal-info-consent', external: true },
   { label: '마케팅 및 수신 동의', href: 'https://policy.pay1oad.kr/marketing-consent', external: true },
-  { label: '초상권', href: '/policy/portrait-rights', external: false },
+  { label: '초상권', href: '/policy/portrait-rights', external: true },
 ]
 
 const RED_BORDER = '1px solid rgba(255,60,60,0.85)'
@@ -43,6 +44,17 @@ type FieldErrors = {
 const EMPTY_ERRORS: FieldErrors = {
   name: '', nickname: '', department: '', studentId: '', joinYear: '', agreed: '',
 }
+
+// 서버가 쓰는 필드명 → 이 폼의 필드명 (generation 만 이름이 다르다)
+const SERVER_FIELD_MAP = {
+  name: 'name', nickname: 'nickname',
+  department: 'department', studentId: 'studentId', generation: 'joinYear',
+} as const
+
+// errors 배열 없이 코드만 오는 오류도 해당 칸 밑에 붙인다
+const SERVER_CODE_MAP = {
+  NICKNAME_ALREADY_EXISTS: 'nickname',
+} as const
 
 const baseInput: React.CSSProperties = {
   height: '42px',
@@ -183,9 +195,20 @@ export default function CompleteProfilePage() {
         }),
       })
 
+      const data = await res.json().catch(() => null)
+
       if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        setApiError(data?.message ?? '프로필 등록에 실패했습니다. 다시 시도해주세요.')
+        // 서버는 어느 필드가 왜 틀렸는지 알려준다. 그 칸 밑에 바로 보여줘야
+        // 사용자가 무엇을 고쳐야 할지 알 수 있다.
+        const mapped = mapServerErrors(data, SERVER_FIELD_MAP, SERVER_CODE_MAP)
+        setFieldErrors({ ...EMPTY_ERRORS, ...mapped.fieldErrors })
+        setApiError(summarize(mapped, data, '프로필 등록에 실패했습니다. 다시 시도해주세요.'))
+        return
+      }
+
+      // 프로필 입력까지만 끝났고 로그인은 관리자 승인 후다 (서버가 토큰을 주지 않는다)
+      if ((data?.data ?? data)?.approvalStatus === 'AWAITING_APPROVAL') {
+        router.push('/register/pending')
         return
       }
 

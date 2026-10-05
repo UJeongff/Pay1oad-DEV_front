@@ -26,7 +26,7 @@ const AuthContext = createContext<AuthContextValue>({
   clearUser: () => {},
 })
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 // 액세스 토큰 만료(15분) 전에 미리 갱신 — 10분 간격
 const REFRESH_INTERVAL_MS = 10 * 60 * 1000

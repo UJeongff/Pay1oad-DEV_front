@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
-import { useAuthContext } from '@/app/context/AuthContext'
+import DocCollabEditor from '@/app/components/DocCollabEditor'
+import DocAttachments from '@/app/components/DocAttachments'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 import DOMPurify from 'isomorphic-dompurify'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 interface DocFile {
   id: number
@@ -20,6 +21,9 @@ interface DocFile {
 
 interface DocDetail {
   id: number
+  docType?: string
+  submittedAt?: string | null
+  submittedByName?: string | null
   title: string
   bodyJson: string | null
   authorName: string
@@ -34,11 +38,6 @@ function formatDate(dateStr: string) {
   return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
 }
 
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 let purifyHooksRegistered = false
 function ensurePurifyHooks() {
@@ -81,7 +80,6 @@ function decodeBodyToHtml(bodyJson: string | null): string {
 export default function DocDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const { user } = useAuthContext()
   const contentId = params.id as string
   const docId = params.docId as string
 
@@ -98,7 +96,6 @@ export default function DocDetailPage() {
   }, [contentId])
 
   useEffect(() => {
-    setLoading(true)
     fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}`)
       .then(r => {
         if (!r.ok) throw new Error('게시글을 불러올 수 없습니다.')
@@ -109,10 +106,59 @@ export default function DocDetailPage() {
       .finally(() => setLoading(false))
   }, [contentId, docId])
 
+  /** 제출된 보고서는 실시간 동기화가 끝나고 "편집하기"를 누른 사람만 편집하는 일반 문서가 된다 */
+  const submitted = !!doc?.submittedAt
+  const isReport = doc?.docType === 'REPORT'
+  const [soloEditing, setSoloEditing] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const reload = useCallback(() => {
+    fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(json => { if (json) setDoc(json.data ?? json) })
+      .catch(() => {})
+  }, [contentId, docId])
+
+  const submitReport = useCallback(async () => {
+    if (!window.confirm('보고서를 제출하시겠습니까? 제출하면 실시간 공동 편집이 종료됩니다.')) return
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}/submit`, { method: 'POST' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.message ?? '제출에 실패했습니다.')
+      }
+      setSoloEditing(false)
+      reload()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : '제출 오류')
+    } finally {
+      setSubmitting(false)
+    }
+  }, [contentId, docId, reload])
+
+  const cancelSubmit = useCallback(async () => {
+    if (!window.confirm('제출을 취소하고 다시 공동 편집 상태로 되돌리시겠습니까?')) return
+    setSubmitting(true)
+    setActionError(null)
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}/submit`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json?.message ?? '제출 취소에 실패했습니다.')
+      }
+      setSoloEditing(false)
+      reload()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : '제출 취소 오류')
+    } finally {
+      setSubmitting(false)
+    }
+  }, [contentId, docId, reload])
+
   const bodyHtml = doc ? decodeBodyToHtml(doc.bodyJson) : ''
-  const isOwner = user != null && doc != null && doc.authorName === (user.name ?? user.nickname)
-  const isAdmin = user?.role === 'ADMIN'
-  const canEdit = isOwner || isAdmin
 
   return (
     <main className="relative min-h-screen" style={{ background: '#040d1f' }}>
@@ -147,19 +193,6 @@ export default function DocDetailPage() {
         >{contentTitle || '...'}</Link>
         <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
         <span style={{ color: '#fff' }}>{doc?.title ?? '...'}</span>
-
-        {canEdit && (
-          <div style={{ marginLeft: 'auto' }}>
-            <Link
-              href={`/content/${contentId}/docs/${docId}/write`}
-              style={{ padding: '5px 14px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.6)', fontSize: '12px', textDecoration: 'none', transition: 'all 0.15s' }}
-              onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.5)'; el.style.color = '#fff' }}
-              onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = 'rgba(255,255,255,0.2)'; el.style.color = 'rgba(255,255,255,0.6)' }}
-            >
-              편집하기
-            </Link>
-          </div>
-        )}
       </div>
 
       <div className="relative max-w-4xl mx-auto px-[5vw] py-12">
@@ -171,73 +204,53 @@ export default function DocDetailPage() {
         )}
         {!loading && !error && doc && (
           <>
-            {/* Title */}
-            <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#fff', marginBottom: '24px', lineHeight: 1.3 }}>
-              {doc.title}
-            </h1>
-
-            {/* Meta */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-              {[
-                { label: '작성자', value: doc.authorName },
-                { label: '작성일', value: formatDate(doc.createdAt) },
-                ...(doc.updatedAt ? [{ label: '최종 수정', value: `${formatDate(doc.updatedAt)}${doc.updatedByName ? ` (${doc.updatedByName})` : ''}` }] : []),
-              ].map(row => (
-                <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', fontSize: '14px' }}>
-                  <span style={{ width: '72px', flexShrink: 0, color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{row.label}</span>
-                  <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.2)', flexShrink: 0 }} />
-                  <span style={{ color: 'rgba(255,255,255,0.65)' }}>{row.value}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Divider */}
-            <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.1)', margin: '20px 0' }} />
-
-            {/* Body */}
-            {bodyHtml ? (
-              <div
-                className="doc-content"
-                dangerouslySetInnerHTML={{ __html: bodyHtml }}
-                style={{ color: 'rgba(255,255,255,0.8)', fontSize: '15px', lineHeight: 1.8, wordBreak: 'break-word' }}
-              />
-            ) : (
-              <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '15px', fontStyle: 'italic' }}>내용이 없습니다.</p>
-            )}
-
-            {/* Attached files */}
-            {doc.files.length > 0 && (
-              <div style={{ marginTop: '40px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                  <span style={{ width: '3px', height: '14px', background: '#1C5AFF', borderRadius: '2px', display: 'inline-block' }} />
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>첨부파일</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {doc.files.map(f => (
-                    <a
-                      key={f.id}
-                      href={f.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.03)', textDecoration: 'none', transition: 'border-color 0.15s' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.25)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)' }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-                        </svg>
-                        <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>{f.fileName}</span>
-                      </div>
-                      <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>{formatFileSize(f.fileSize)}</span>
-                    </a>
+            {/*
+              상세 페이지가 곧 편집 화면이다. 별도의 "편집하기" 버튼 없이 본문을 클릭하면
+              바로 편집되고, 같은 글을 열어둔 다른 사람에게 실시간으로 반영된다.
+            */}
+            <DocCollabEditor
+              key={`${submitted ? 'solo' : 'collab'}-${doc.updatedAt ?? ''}`}
+              contentId={contentId}
+              docId={docId}
+              initialTitle={doc.title}
+              initialHtml={bodyHtml}
+              mode={submitted ? 'solo' : 'collaborative'}
+              readOnly={submitted && !soloEditing}
+              onSessionEnded={reload}
+              onSaved={() => { setSoloEditing(false); reload() }}
+              metaSlot={
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                  {[
+                    { label: '작성자', value: doc.authorName },
+                    { label: '작성일', value: formatDate(doc.createdAt) },
+                    ...(doc.updatedAt ? [{ label: '최종 수정', value: `${formatDate(doc.updatedAt)}${doc.updatedByName ? ` (${doc.updatedByName})` : ''}` }] : []),
+                    ...(doc.submittedAt ? [{ label: '제출', value: `${formatDate(doc.submittedAt)}${doc.submittedByName ? ` (${doc.submittedByName})` : ''}` }] : []),
+                  ].map(row => (
+                    <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', fontSize: '14px' }}>
+                      <span style={{ width: '72px', flexShrink: 0, color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>{row.label}</span>
+                      <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.2)', flexShrink: 0 }} />
+                      <span style={{ color: 'rgba(255,255,255,0.65)' }}>{row.value}</span>
+                    </div>
                   ))}
                 </div>
-              </div>
+              }
+              footerSlot={
+                <DocAttachments
+                  contentId={contentId}
+                  docId={docId}
+                  files={doc.files}
+                  readOnly={submitted && !soloEditing}
+                  onChanged={reload}
+                />
+              }
+              onFileUploaded={reload}
+            />
+
+            {actionError && (
+              <p style={{ color: '#FF6060', fontSize: '13px', marginTop: '12px' }}>{actionError}</p>
             )}
 
-            {/* Bottom buttons */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '48px', marginBottom: '48px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px', marginBottom: '48px' }}>
               <button
                 onClick={() => router.back()}
                 style={{ padding: '9px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: 'rgba(255,255,255,0.55)', fontSize: '13px', cursor: 'pointer', transition: 'all 0.15s' }}
@@ -246,15 +259,36 @@ export default function DocDetailPage() {
               >
                 목록으로
               </button>
-              {canEdit && (
-                <Link
-                  href={`/content/${contentId}/docs/${docId}/write`}
-                  style={{ padding: '9px 22px', borderRadius: '8px', border: '0.734px solid rgba(0, 65, 239, 0.6)', background: 'rgba(0, 65, 239, 0.35)', color: '#fff', fontSize: '13px', fontWeight: 600, textDecoration: 'none', transition: 'background 0.15s' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0, 65, 239, 0.55)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(0, 65, 239, 0.35)' }}
-                >
-                  편집하기
-                </Link>
+
+              {isReport && (
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px' }}>
+                  {!submitted && (
+                    <button
+                      onClick={submitReport}
+                      disabled={submitting}
+                      style={{ padding: '9px 22px', borderRadius: '8px', border: '0.734px solid rgba(0,65,239,0.6)', background: 'rgba(0,65,239,0.4)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+                    >
+                      {submitting ? '제출 중...' : '제출하기'}
+                    </button>
+                  )}
+                  {submitted && !soloEditing && (
+                    <button
+                      onClick={() => setSoloEditing(true)}
+                      style={{ padding: '9px 22px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.25)', background: 'transparent', color: 'rgba(255,255,255,0.8)', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      편집하기
+                    </button>
+                  )}
+                  {submitted && (
+                    <button
+                      onClick={cancelSubmit}
+                      disabled={submitting}
+                      style={{ padding: '9px 18px', borderRadius: '8px', border: '1px solid rgba(255,184,107,0.35)', background: 'transparent', color: '#FFB86B', fontSize: '13px', fontWeight: 500, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+                    >
+                      제출 취소
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </>

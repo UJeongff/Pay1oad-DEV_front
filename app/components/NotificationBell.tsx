@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -17,7 +17,7 @@ interface Notification {
   createdAt: string
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 const EmptyState = () => (
   <div className="flex flex-col items-center justify-center py-10 gap-2">
@@ -153,11 +153,12 @@ export default function NotificationBell() {
   const [tab, setTab] = useState<'notice' | 'alert'>('notice')
   const [all, setAll] = useState<Notification[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [mounted, setMounted] = useState(false)
+
   const bellRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { setMounted(true) }, [])
+  // createPortal은 클라이언트에서만 가능하다. SSR에서는 false, 하이드레이션 후 true.
+  const mounted = useSyncExternalStore(() => () => {}, () => true, () => false)
 
   const fetchNotifications = () => {
     fetchWithAuth(`${API_URL}/v1/notifications`)
@@ -165,7 +166,8 @@ export default function NotificationBell() {
       .then((data) => {
         if (!data) return
         const list: Notification[] = data.data ?? data.content ?? data
-        if (Array.isArray(list)) setAll(list)
+        // 읽은 알림은 목록에 남기지 않는다 — 회색으로 쌓여 있으면 새 알림이 묻힌다
+        if (Array.isArray(list)) setAll(list.filter((n) => !n.isRead))
       })
       .catch(() => {})
   }
@@ -179,7 +181,8 @@ export default function NotificationBell() {
     es.addEventListener('notification', (e) => {
       try {
         const newNotif: Notification = JSON.parse(e.data)
-        setAll((prev) => [newNotif, ...prev])
+        if (newNotif.isRead) return
+        setAll((prev) => prev.some((n) => n.id === newNotif.id) ? prev : [newNotif, ...prev])
       } catch {}
     })
     es.onerror = () => { es.close() }
@@ -202,10 +205,23 @@ export default function NotificationBell() {
   const unread = all.filter((n) => !n.isRead).length
   const list = tab === 'notice' ? notices : alerts
 
-  useEffect(() => { setCurrentIndex(0) }, [tab])
+  // 탭이 바뀌면 첫 항목부터 (렌더 중 조정)
+  const [lastTab, setLastTab] = useState(tab)
+  if (lastTab !== tab) {
+    setLastTab(tab)
+    setCurrentIndex(0)
+  }
 
   function markAsRead(id: number) {
-    setAll((prev) => prev.map((n) => n.id === id ? { ...n, isRead: true } : n))
+    // 읽은 항목은 목록에서 빼낸다. 마지막 항목을 읽었으면 한 칸 앞으로 당긴다.
+    setAll((prev) => {
+      const next = prev.filter((n) => n.id !== id)
+      const remaining = tab === 'notice'
+        ? next.filter((n) => n.type === 'NOTICE_CREATED').length
+        : next.filter((n) => n.type !== 'NOTICE_CREATED').length
+      setCurrentIndex((i) => Math.max(0, Math.min(i, remaining - 1)))
+      return next
+    })
     fetchWithAuth(`${API_URL}/v1/notifications/${id}/read`, { method: 'PATCH' }).catch(() => {})
   }
 

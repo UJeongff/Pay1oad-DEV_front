@@ -2,11 +2,12 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { mapServerErrors, summarize } from '@/app/lib/formErrors'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthContext } from '@/app/context/AuthContext'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 // 1기 = 2018. 현재 년도 기준으로 최고 기수 자동 산출 (2027년 → 10기, 2028년 → 11기 ...)
 const GENERATION_OPTIONS = (() => {
@@ -22,8 +23,21 @@ const POLICIES = [
   { label: '개인정보 처리방침', href: '/policy/privacy-policy', external: false },
   { label: '개인정보 수집 및 동의', href: '/policy/personal-info-consent', external: false },
   { label: '마케팅 및 수신 동의', href: '/policy/marketing-consent', external: false },
-  { label: '초상권', href: '/policy/portrait-rights', external: true },
+  { label: '초상권', href: '/policy/portrait-rights', external: false },
 ]
+
+// 서버가 쓰는 필드명 → 이 폼의 필드명 (generation 만 이름이 다르다)
+const SERVER_FIELD_MAP = {
+  name: 'name', email: 'email', password: 'password', nickname: 'nickname',
+  department: 'department', studentId: 'studentId', generation: 'joinYear',
+} as const
+
+// errors 배열 없이 코드만 오는 오류도 해당 칸 밑에 붙인다
+const SERVER_CODE_MAP = {
+  EMAIL_ALREADY_EXISTS: 'email',
+  OAUTH_ACCOUNT_EXISTS: 'email',
+  NICKNAME_ALREADY_EXISTS: 'nickname',
+} as const
 
 const RED_BORDER = '1px solid rgba(255,60,60,0.85)'
 const RED_SHADOW = '0 0 8px rgba(255,40,40,0.45)'
@@ -132,7 +146,10 @@ export default function RegisterPage() {
 
   // invite code (URL ?invite=)
   const [inviteCode, setInviteCode] = useState<string | null>(null)
-  const [inviteState, setInviteState] = useState<'unchecked' | 'valid' | 'invalid'>('unchecked')
+  // 'error' 는 "코드가 무효"가 아니라 "확인을 못 했다"는 뜻이다. 둘을 섞으면
+  // 서버가 잠깐 느린 것만으로 멀쩡한 초대 코드가 만료된 것처럼 보인다.
+  const [inviteState, setInviteState] = useState<'unchecked' | 'valid' | 'invalid' | 'error'>('unchecked')
+  const [inviteRetry, setInviteRetry] = useState(0)
 
   // URL에서 invite 코드 추출 + 유효성 사전 검증
   useEffect(() => {
@@ -141,11 +158,28 @@ export default function RegisterPage() {
     const code = params.get('invite')?.trim()
     if (!code) return
     setInviteCode(code)
-    fetch(`${API_URL}/v1/auth/invite/check?code=${encodeURIComponent(code)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(j => setInviteState(j?.data?.usable ? 'valid' : 'invalid'))
-      .catch(() => setInviteState('invalid'))
-  }, [])
+
+    // 응답이 안 오면 배너가 "확인 중..."에 영영 갇힌다. 8초면 끊는다.
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 8000)
+    let done = false
+
+    fetch(`${API_URL}/v1/auth/invite/check?code=${encodeURIComponent(code)}`, { signal: ctrl.signal })
+      .then(async r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then(j => {
+        done = true
+        // usable 이 응답에 아예 없으면 확인한 게 아니다
+        const usable = j?.data?.usable
+        setInviteState(usable === true ? 'valid' : usable === false ? 'invalid' : 'error')
+      })
+      .catch(() => { done = true; setInviteState('error') })
+      .finally(() => { clearTimeout(timer); if (!done) setInviteState('error') })
+
+    return () => { clearTimeout(timer); ctrl.abort() }
+  }, [inviteRetry])
 
   function clearField(key: keyof FieldErrors) {
     setFieldErrors((p) => ({ ...p, [key]: '' }))
@@ -357,7 +391,11 @@ export default function RegisterPage() {
 
       const data = await res.json().catch(() => null)
       if (!res.ok) {
-        setApiError(data?.message ?? '회원가입에 실패했습니다. 다시 시도해주세요.')
+        // 서버는 어느 필드가 왜 틀렸는지 알려준다. 그 칸 밑에 바로 보여줘야
+        // 사용자가 무엇을 고쳐야 할지 알 수 있다.
+        const mapped = mapServerErrors(data, SERVER_FIELD_MAP, SERVER_CODE_MAP)
+        setFieldErrors({ ...EMPTY_ERRORS, ...mapped.fieldErrors })
+        setApiError(summarize(mapped, data, '회원가입에 실패했습니다. 다시 시도해주세요.'))
         return
       }
 
@@ -492,18 +530,18 @@ export default function RegisterPage() {
                 marginBottom: '20px', padding: '12px 16px', borderRadius: '8px',
                 background: inviteState === 'valid'
                   ? 'rgba(34,197,94,0.08)'
-                  : inviteState === 'invalid'
+                  : (inviteState === 'invalid' || inviteState === 'error')
                     ? 'rgba(250,204,21,0.08)'
                     : 'rgba(255,255,255,0.05)',
                 border: inviteState === 'valid'
                   ? '1px solid rgba(34,197,94,0.35)'
-                  : inviteState === 'invalid'
+                  : (inviteState === 'invalid' || inviteState === 'error')
                     ? '1px solid rgba(250,204,21,0.35)'
                     : '1px solid rgba(255,255,255,0.1)',
                 display: 'flex', alignItems: 'flex-start', gap: '10px',
               }}>
                 <span style={{ fontSize: '16px', lineHeight: 1 }}>
-                  {inviteState === 'valid' ? '🔑' : inviteState === 'invalid' ? '⚠️' : '⌛'}
+                  {inviteState === 'valid' ? '🔑' : (inviteState === 'invalid' || inviteState === 'error') ? '⚠️' : '⌛'}
                 </span>
                 <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
                   {inviteState === 'valid' && (
@@ -520,6 +558,27 @@ export default function RegisterPage() {
                       <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
                         일반 가입으로 진행되며, 가입 후 관리자 승인이 필요합니다.
                       </span>
+                    </>
+                  )}
+                  {inviteState === 'error' && (
+                    <>
+                      <strong>초대 코드를 확인하지 못했습니다.</strong><br />
+                      <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
+                        일시적인 네트워크 문제일 수 있습니다. 코드는 가입할 때 서버에서 다시 확인하므로
+                        그대로 진행하셔도 됩니다.
+                      </span>
+                      <br />
+                      <button
+                        type="button"
+                        onClick={() => { setInviteState('unchecked'); setInviteRetry(n => n + 1) }}
+                        style={{
+                          marginTop: '6px', padding: '4px 10px', borderRadius: '6px', fontSize: '12px',
+                          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+                          color: 'rgba(255,255,255,0.8)', cursor: 'pointer',
+                        }}
+                      >
+                        다시 확인
+                      </button>
                     </>
                   )}
                   {inviteState === 'unchecked' && '초대 코드 확인 중...'}

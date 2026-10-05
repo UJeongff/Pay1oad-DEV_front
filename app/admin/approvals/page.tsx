@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { notifyPendingApprovalsChanged } from '@/app/lib/usePendingApprovals'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 interface PendingUser {
   id: number
@@ -62,6 +63,8 @@ export default function AdminApprovalsPage() {
       if (res.ok) {
         showToast(type === 'approve' ? '승인 완료' : '거부 완료')
         await load()
+        // 헤더의 CONSOLE 뱃지를 즉시 갱신한다 (다음 폴링까지 기다리지 않도록)
+        notifyPendingApprovalsChanged()
       } else {
         showToast('처리에 실패했습니다.')
       }

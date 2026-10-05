@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 function YearInput({
   value,
@@ -156,14 +156,25 @@ export default function AdminArchivePage() {
     }
   }
 
+  const [deleteError, setDeleteError] = useState('')
+
   async function handleDelete() {
     if (!deletingYear) return
     setDeleteLoading(true)
+    setDeleteError('')
     try {
-      await fetchWithAuth(`${API_URL}/v1/archive/years/${deletingYear}`, { method: 'DELETE' })
+      const res = await fetchWithAuth(`${API_URL}/v1/archive/years/${deletingYear}`, { method: 'DELETE' })
+      if (!res.ok) {
+        // 응답을 안 보고 넘어가면 실패해도 성공한 것처럼 보인다
+        const data = await res.json().catch(() => null)
+        setDeleteError(data?.message ?? `삭제에 실패했습니다. (HTTP ${res.status})`)
+        return
+      }
       setDeletingYear(null)
       load()
-    } catch {} finally {
+    } catch {
+      setDeleteError('네트워크 오류')
+    } finally {
       setDeleteLoading(false)
     }
   }
@@ -289,8 +300,14 @@ export default function AdminArchivePage() {
           }}>
             <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
               <strong style={{ color: '#fff' }}>{deletingYear}</strong> 아카이브를 삭제합니다.
-              해당 연도의 모든 데이터가 삭제될 수 있습니다.
+              이 연도로 보관된 글과 content 는 <strong style={{ color: '#fff' }}>삭제되지 않고</strong>{' '}
+              아카이브에서 해제되어 원래 목록으로 돌아갑니다.
             </p>
+            {deleteError && (
+              <p style={{ color: '#f87171', fontSize: '12px', marginTop: '-12px', marginBottom: '16px' }}>
+                {deleteError}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button onClick={() => setDeletingYear(null)} style={{
                 padding: '8px 18px', borderRadius: '8px', fontSize: '13px',

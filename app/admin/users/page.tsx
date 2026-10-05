@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 type UserStatus = 'ACTIVE' | 'BREAK' | 'OB' | 'LEAVE'
 
@@ -201,8 +201,12 @@ function StatusModal({
             background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
           }}>
             <div>
-              <p style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>관리자 권한</p>
-              <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginTop: '2px' }}>전체 관리 기능에 접근 가능</p>
+              <p style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>
+                이 회원에게 관리자 권한 부여
+              </p>
+              <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginTop: '2px' }}>
+                켜면 이 회원도 관리자 콘솔에 들어와 가입 승인·회원 관리를 할 수 있습니다
+              </p>
             </div>
             <button
               onClick={() => setGrantAdmin(v => !v)}

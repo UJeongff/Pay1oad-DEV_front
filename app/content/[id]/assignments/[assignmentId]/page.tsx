@@ -6,8 +6,10 @@ import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import SubmissionModal from './SubmissionModal'
+import SubmissionComments from './SubmissionComments'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 interface ContentInfo {
   id: number
@@ -77,11 +79,13 @@ export default function AssignmentDetailPage() {
   const [gradeStatus, setGradeStatus] = useState<'O' | 'LATE' | 'X'>('O')
   const [gradeFeedback, setGradeFeedback] = useState('')
   const [grading, setGrading] = useState(false)
+  // 제출은 페이지를 떠나지 않고 이 자리에서 한다
+  const [submitOpen, setSubmitOpen] = useState(false)
+  const [assignmentFiles, setAssignmentFiles] = useState<{ id: number; originalName: string; fileUrl: string; fileSize: number }[]>([])
 
   const isAdmin = user?.role === 'ADMIN'
   const isLeaderOrAdmin = !!content?.isLeader || isAdmin
   const isOwnAssignment = assignment?.authorId != null && String(assignment.authorId) === String(user?.id)
-  const submissionWriteHref = `/content/${contentId}/assignments/${assignmentId}/write`
 
   const statusStyle = useMemo(() => STATUS_STYLE[mySubmission?.status ?? 'PENDING'] ?? STATUS_STYLE.PENDING, [mySubmission?.status])
 
@@ -97,16 +101,27 @@ export default function AssignmentDetailPage() {
 
   useEffect(() => {
     if (!assignment) return
-    if (isLeaderOrAdmin) {
-      fetchWithAuth(`${API_URL}/v1/contents/${contentId}/assignments/${assignmentId}/submissions`)
-        .then(r => r.ok ? r.json() : null)
-        .then(json => setSubmissions(json?.data ?? []))
-      return
-    }
-    fetchWithAuth(`${API_URL}/v1/contents/${contentId}/assignments/${assignmentId}/submissions/me`)
-      .then(r => r.ok ? r.json() : null)
+    const base = `${API_URL}/v1/contents/${contentId}/assignments/${assignmentId}`
+
+    // 과제 첨부와 "내 제출"은 팀장이든 팀원이든 똑같이 필요하다.
+    // (팀장도 자기가 내지 않은 과제에는 제출할 수 있다)
+    fetchWithAuth(`${base}/files`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(json => { if (Array.isArray(json?.data)) setAssignmentFiles(json.data) })
+      .catch(() => {})
+
+    fetchWithAuth(`${base}/submissions/me`)
+      .then(r => (r.ok ? r.json() : null))
       .then(json => setMySubmission(json?.data ?? null))
       .catch(() => setMySubmission(null))
+
+    // 전원 제출물은 팀장/관리자만 볼 수 있다
+    if (isLeaderOrAdmin) {
+      fetchWithAuth(`${base}/submissions`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(json => setSubmissions(json?.data ?? []))
+        .catch(() => {})
+    }
   }, [assignment, contentId, assignmentId, isLeaderOrAdmin])
 
   const handleDeleteAssignment = async () => {
@@ -183,19 +198,35 @@ export default function AssignmentDetailPage() {
             </div>
             {(isLeaderOrAdmin || isOwnAssignment) && (
               <div style={{ display: 'flex', gap: '8px' }}>
-                {isOwnAssignment && !isLeaderOrAdmin && (
-                  <Link href={submissionWriteHref} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', textDecoration: 'none' }}>수정</Link>
-                )}
                 {(isLeaderOrAdmin || isOwnAssignment) && (
                   <button onClick={handleDeleteAssignment} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid rgba(255,80,80,0.25)', background: 'rgba(255,80,80,0.08)', color: '#ff9a9a', cursor: 'pointer' }}>삭제</button>
                 )}
               </div>
             )}
           </div>
+
+          {assignmentFiles.length > 0 && (
+            <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+              <p style={{ margin: '0 0 10px', color: 'rgba(255,255,255,0.5)', fontSize: '12px' }}>첨부 파일</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {assignmentFiles.map(file => (
+                  <a
+                    key={file.id}
+                    href={`${API_URL}${file.fileUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ padding: '6px 12px', borderRadius: '999px', background: 'rgba(28,90,255,0.12)', color: '#a9c5ff', textDecoration: 'none', fontSize: '12px' }}
+                  >
+                    {file.originalName} ({formatFileSize(file.fileSize)})
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* 팀장: 제출 현황 + 채점 */}
-        {isLeaderOrAdmin ? (
+        {isLeaderOrAdmin && (
           <section style={{ display: 'grid', gap: '12px' }}>
             <h2 style={{ margin: 0, color: '#fff', fontSize: '15px' }}>제출 현황</h2>
             {submissions.length === 0 && (
@@ -231,6 +262,13 @@ export default function AssignmentDetailPage() {
                       ))}
                     </div>
                   )}
+                  <SubmissionComments
+                    contentId={contentId}
+                    assignmentId={assignmentId}
+                    submissionId={submission.id}
+                    currentUserId={user?.id ?? null}
+                    canModerate
+                  />
                   {isOpen && (
                     <div style={{ marginTop: '16px', display: 'grid', gap: '10px' }}>
                       <div style={{ display: 'flex', gap: '8px' }}>
@@ -250,9 +288,14 @@ export default function AssignmentDetailPage() {
               )
             })}
           </section>
-        ) : (
-          /* 팀원: 자신의 제출 상태 */
-          <section style={{ borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', padding: '24px' }}>
+        )}
+
+        {/* 내 제출 — 과제를 낸 본인(팀장)만 빼고 모두에게 보인다.
+            관리자가 팀원으로 참여한 경우에도 제출할 수 있어야 한다. */}
+        {!isOwnAssignment && (
+          <section style={{ marginTop: isLeaderOrAdmin ? 28 : 0, borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', padding: '24px' }}>
+            <h2 style={{ margin: '0 0 16px', color: '#fff', fontSize: '15px' }}>내 제출</h2>
+
             {error && <p style={{ color: '#f87171', marginTop: 0 }}>{error}</p>}
             {mySubmission ? (
               <>
@@ -262,7 +305,12 @@ export default function AssignmentDetailPage() {
                     <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>제출일 | {formatDate(mySubmission.submittedAt)}</span>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <Link href={submissionWriteHref} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)', textDecoration: 'none' }}>수정하기</Link>
+                    <button
+                      onClick={() => setSubmitOpen(true)}
+                      style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'rgba(255,255,255,0.7)', cursor: 'pointer' }}
+                    >
+                      다시 제출
+                    </button>
                     <button onClick={handleDeleteSubmission} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid rgba(255,80,80,0.25)', background: 'rgba(255,80,80,0.08)', color: '#ff9a9a', cursor: 'pointer' }}>삭제하기</button>
                   </div>
                 </div>
@@ -281,18 +329,45 @@ export default function AssignmentDetailPage() {
                     <p style={{ margin: 0, color: 'rgba(255,255,255,0.78)', whiteSpace: 'pre-wrap' }}>{mySubmission.feedback}</p>
                   </div>
                 )}
+                <SubmissionComments
+                  contentId={contentId}
+                  assignmentId={assignmentId}
+                  submissionId={mySubmission.id}
+                  currentUserId={user?.id ?? null}
+                  canModerate={false}
+                />
               </>
             ) : (
               <div style={{ display: 'grid', gap: '14px' }}>
                 <p style={{ margin: 0, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7 }}>아직 제출한 과제가 없습니다.</p>
                 <div>
-                  <Link href={submissionWriteHref} style={{ display: 'inline-flex', padding: '8px 18px', borderRadius: '8px', background: '#1C5AFF', color: '#fff', textDecoration: 'none' }}>과제 제출하기</Link>
+                  <button
+                    onClick={() => setSubmitOpen(true)}
+                    style={{ display: 'inline-flex', padding: '8px 18px', borderRadius: '8px', border: 'none', background: '#1C5AFF', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    과제 제출하기
+                  </button>
                 </div>
               </div>
             )}
           </section>
         )}
       </div>
+
+      {submitOpen && (
+        <SubmissionModal
+          contentId={contentId}
+          assignmentId={assignmentId}
+          existing={mySubmission ? { body: mySubmission.body, files: mySubmission.files } : null}
+          onClose={() => setSubmitOpen(false)}
+          onSubmitted={() => {
+            fetchWithAuth(`${API_URL}/v1/contents/${contentId}/assignments/${assignmentId}/submissions/me`)
+              .then(r => (r.ok ? r.json() : null))
+              .then(json => setMySubmission(json?.data ?? null))
+              .catch(() => {})
+          }}
+        />
+      )}
       <HomeFooter />
     </main>
   )

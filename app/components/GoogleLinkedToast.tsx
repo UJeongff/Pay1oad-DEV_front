@@ -7,16 +7,15 @@ export default function GoogleLinkedToast() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
-  const [visible, setVisible] = useState(false)
+  // 쿼리 파라미터는 최초 렌더 시점에 이미 알 수 있다 — effect에서 켜지 않고 초기값으로 받는다
+  const [visible, setVisible] = useState(() => searchParams.get('googleLinked') === 'true')
 
   useEffect(() => {
-    if (searchParams.get('googleLinked') === 'true') {
-      setVisible(true)
-      router.replace(pathname)
-      const timer = setTimeout(() => setVisible(false), 4000)
-      return () => clearTimeout(timer)
-    }
-  }, [searchParams, router, pathname])
+    if (!visible) return
+    router.replace(pathname)
+    const timer = setTimeout(() => setVisible(false), 4000)
+    return () => clearTimeout(timer)
+  }, [visible, router, pathname])
 
   if (!visible) return null
 

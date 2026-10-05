@@ -5,8 +5,10 @@ import HomeFaq from '@/app/components/HomeFaq'
 import HomeFooter from '@/app/components/HomeFooter'
 import { Suspense } from 'react'
 import GoogleLinkedToast from '@/app/components/GoogleLinkedToast'
+import StatCounters from '@/app/components/StatCounters'
+import ActivityFields from '@/app/components/ActivityFields'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 interface Recruitment {
   id: number
@@ -39,11 +41,6 @@ const stats = [
   { value: '24+', label: '참가 대회', sub: '국내외 CTF 대회 참가' },
   { value: '12+', label: '수상 실적', sub: '입상 및 CVE 획득 기록' },
   { value: '70+', label: '팀원', sub: '활동 중인 멤버' },
-]
-
-const fields = [
-  'Web Hacking', 'Pwnable', 'Reverse Engineering', 'Cryptography',
-  'Forensics', 'Development',
 ]
 
 export default async function Home() {
@@ -198,43 +195,11 @@ export default async function Home() {
       <section className="pb-28 px-[5vw]">
         <div className="max-w-5xl mx-auto">
 
-          {/* Stats cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-30 mt-5">
-            {stats.map((s) => (
-              <div
-                key={s.label}
-                className="rounded-2xl border border-white/10 px-8 py-10 text-center transition-all duration-200 hover-brand cursor-default"
-                style={{ background: 'rgba(255,255,255,0.03)' }}
-              >
-                <p
-                  className="font-bold mb-2"
-                  style={{ fontSize: 'clamp(2.4rem, 4vw, 3.5rem)', color: '#1C5AFF' }}
-                >
-                  {s.value}
-                </p>
-                <p className="text-white text-lg font-semibold mb-1">{s.label}</p>
-                <p className="text-white/40 text-sm">{s.sub}</p>
-              </div>
-            ))}
-          </div>
+          {/* Stats cards — 화면에 들어오면 숫자가 빠르게 올라가 멈춘다 */}
+          <StatCounters stats={stats} />
 
-          {/* Activity fields */}
-          <div className="mt-25">
-            <h3 className="text-xl font-bold mb-6" style={{ color: '#1C5AFF' }}>
-              주요 활동 분야
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              {fields.map((f) => (
-                <span
-                  key={f}
-                  className="border border-white/15 text-white/75 text-sm rounded-xl py-2.5 text-center transition-all duration-200 hover-brand cursor-default"
-                  style={{ background: 'rgba(255,255,255,0.03)' }}
-                >
-                  {f}
-                </span>
-              ))}
-            </div>
-          </div>
+          {/* Activity fields — 누르면 설명이 펼쳐진다 */}
+          <ActivityFields />
         </div>
       </section>
 

@@ -17,7 +17,7 @@ const SANITIZE_CONFIG = {
 
 const sanitizeHtml = (html: string): string => DOMPurify.sanitize(html, SANITIZE_CONFIG) as unknown as string
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 const CATEGORY_OPTIONS = [
   { value: 'ACTIVITIES', label: 'Activities', color: '#FF9193' },

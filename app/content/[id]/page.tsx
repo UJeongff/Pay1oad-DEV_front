@@ -8,7 +8,7 @@ import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 const POST_PAGE_SIZE = 5
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -158,6 +158,8 @@ export default function StudyDetailPage() {
   const isCurrentUserLeader = currentMember?.role === 'team_leader'
   const isLeaderOrAdmin = !!content?.isLeader || isCurrentUserLeader || isAdmin
   const isArchivedContent = !!content?.isArchived
+  // 보관된 페이지는 기록 보존용이라 새로 쓰거나 고칠 수 없다
+  const canWriteHere = !isArchivedContent
   const canViewFull = isArchivedContent
     ? isAdmin
     : (isAdmin || !!content?.isLeader || isCurrentUserLeader || !!content?.isMember || isCurrentUserMember || (content?.visibility === 'MEMBER' && !!user))
@@ -752,7 +754,7 @@ export default function StudyDetailPage() {
           </div>
 
           {/* Write buttons */}
-          {user && (!!content?.isMember || isCurrentUserMember || isLeaderOrAdmin) && (
+          {canWriteHere && user && (!!content?.isMember || isCurrentUserMember || isLeaderOrAdmin) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               {isLeaderOrAdmin && (
                 <Link
@@ -835,7 +837,7 @@ export default function StudyDetailPage() {
             </button>
           </div>
 
-          {user && (!!content?.isMember || isLeaderOrAdmin) && (
+          {canWriteHere && user && (!!content?.isMember || isLeaderOrAdmin) && (
             <button
               onClick={() => handleCreateDoc('REPORT')}
               style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s' }}
@@ -857,32 +859,33 @@ export default function StudyDetailPage() {
             <span style={{ width: '3px', height: '16px', background: '#1C5AFF', borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
             <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#fff', margin: 0 }}>과제</h2>
           </div>
-          {user && !isLeaderOrAdmin && (isCurrentUserMember || !!content?.isMember) && (
-            <Link href={`/content/${contentId}/assignments/write`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.65)', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
+          {/* 과제 생성은 팀장/관리자, 과제 제출은 초대받은 팀원 */}
+          {canWriteHere && user && isLeaderOrAdmin && (
+            <Link href={`/content/${contentId}/assignments/create`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 16px', borderRadius: '7px', background: 'transparent', border: '1px solid rgba(28,90,255,0.35)', color: '#91CDFF', fontSize: '13px', fontWeight: 500, textDecoration: 'none' }}>
               <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                 <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
               </svg>
-              과제 제출
+              과제 생성
             </Link>
           )}
+          {/* 제출은 과제 상세 페이지 안에서 팝업으로 한다 — 여기서 새 과제가 만들어지면 안 된다 */}
         </div>
 
-        {!isLeaderOrAdmin && (
-          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-            {assignments.map(a => (
-              <MemberAssignmentCard
-                key={a.id}
-                assignment={a}
-                myStatus={mySubmissionStatuses[a.id]}
-                contentId={contentId}
-                currentUserId={user?.id}
-              />
-            ))}
-            {assignments.length === 0 && (
-              <EmptyAssignmentCard message='아직 등록된 과제가 없습니다.' />
-            )}
-          </div>
-        )}
+        {/* 과제 목록은 팀장·팀원 모두에게 보인다. 팀원에게는 자기 제출 상태가 함께 표시된다. */}
+        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+          {assignments.map(a => (
+            <MemberAssignmentCard
+              key={a.id}
+              assignment={a}
+              myStatus={isLeaderOrAdmin ? undefined : mySubmissionStatuses[a.id]}
+              contentId={contentId}
+              currentUserId={user?.id}
+            />
+          ))}
+          {assignments.length === 0 && (
+            <EmptyAssignmentCard message='아직 등록된 과제가 없습니다.' />
+          )}
+        </div>
 
         {isLeaderOrAdmin && (
           <div style={{ marginTop: '28px' }}>
@@ -890,7 +893,8 @@ export default function StudyDetailPage() {
               <span style={{ width: '3px', height: '16px', background: 'rgba(255,255,255,0.35)', borderRadius: '2px', display: 'inline-block', flexShrink: 0 }} />
               <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'rgba(255,255,255,0.82)', margin: 0 }}>제출 현황</h3>
             </div>
-            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+            {/* 제출물이 늘어나도 한 줄로 훑어볼 수 있게 좌우 스크롤 */}
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'nowrap', overflowX: 'auto', paddingBottom: '10px', scrollbarWidth: 'thin' }}>
               {leaderSubmissions.map(s => (
                 <LeaderSubmissionCard key={`${s.assignmentId}-${s.id}`} submission={s} onSelect={() => setSelectedSub(s)} />
               ))}
@@ -955,6 +959,13 @@ export default function StudyDetailPage() {
 
       {selectedSub && (
         <SubmissionDetailModal
+          index={leaderSubmissions.findIndex(x => x.id === selectedSub.id && x.assignmentId === selectedSub.assignmentId)}
+          total={leaderSubmissions.length}
+          onStep={(delta: number) => {
+            const i = leaderSubmissions.findIndex(x => x.id === selectedSub.id && x.assignmentId === selectedSub.assignmentId)
+            const next = leaderSubmissions[i + delta]
+            if (next) setSelectedSub(next)
+          }}
           submission={selectedSub}
           contentId={contentId}
           onClose={() => setSelectedSub(null)}
@@ -987,14 +998,18 @@ function PostRow({
 
   const isAdmin = user?.role === 'ADMIN'
   const isOwner = user != null && post.authorName === (user.name ?? user.nickname)
-  const showMenu = post.kind === 'notice' ? isLeaderOrAdmin : isAdmin || isOwner
+  // 게시글·보고서는 실시간 공동 편집 대상이라 접근 권한이 있으면 누구나 편집할 수 있다.
+  // 삭제는 되돌릴 수 없으므로 작성자·팀장·관리자로 유지한다.
+  const canEditPost = post.kind === 'notice' ? isLeaderOrAdmin : user != null
+  const canDeletePost = post.kind === 'notice' ? isLeaderOrAdmin : (isOwner || isAdmin || isLeaderOrAdmin)
+  const showMenu = canEditPost || canDeletePost
 
   const detailHref = post.kind === 'notice'
     ? `/content/${contentId}/notices/${post.id}`
     : `/content/${contentId}/docs/${post.id}`
   const editHref = post.kind === 'notice'
     ? `/content/${contentId}/notices/${post.id}/edit`
-    : `/content/${contentId}/docs/${post.id}/edit`
+    : `/content/${contentId}/docs/${post.id}`
   const deleteApiUrl = post.kind === 'notice'
     ? `${API_URL}/v1/contents/${contentId}/notices/${post.id}`
     : `${API_URL}/v1/contents/${contentId}/docs/${post.id}`
@@ -1077,7 +1092,7 @@ function PostRow({
                 ref={menuRef}
                 style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999, minWidth: '110px', display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px', borderRadius: '8px', background: 'rgba(8,12,28,0.97)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
               >
-                {isOwner && (
+                {canEditPost && (
                   <button
                     style={{ background: 'rgba(36,36,36,0.8)', border: 'none', color: 'rgba(255,255,255,0.82)', fontSize: '12px', fontWeight: 500, padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '6px', width: '100%' }}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
@@ -1087,19 +1102,21 @@ function PostRow({
                     수정하기
                   </button>
                 )}
-                <button
-                  style={{ background: 'rgba(36,36,36,0.8)', border: 'none', color: '#f87171', fontSize: '12px', fontWeight: 500, padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '6px', width: '100%' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
-                  onClick={async () => {
-                    setMenuOpen(false)
-                    if (!window.confirm('게시글을 삭제하시겠습니까?')) return
-                    await fetchWithAuth(deleteApiUrl, { method: 'DELETE' })
-                    window.location.reload()
-                  }}
-                >
-                  삭제하기
-                </button>
+                {canDeletePost && (
+                  <button
+                    style={{ background: 'rgba(36,36,36,0.8)', border: 'none', color: '#f87171', fontSize: '12px', fontWeight: 500, padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '6px', width: '100%' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
+                    onClick={async () => {
+                      setMenuOpen(false)
+                      if (!window.confirm('게시글을 삭제하시겠습니까?')) return
+                      await fetchWithAuth(deleteApiUrl, { method: 'DELETE' })
+                      window.location.reload()
+                    }}
+                  >
+                    삭제하기
+                  </button>
+                )}
               </div>,
               document.body
             )}
@@ -1124,7 +1141,7 @@ const STATUS_STYLE: Record<string, { label: string; bg: string; color: string; b
 function MemberAssignmentCard({ assignment, myStatus, contentId, currentUserId }: { assignment: Assignment; myStatus?: string | null; contentId: string; currentUserId?: number }) {
   const s = myStatus ? (STATUS_STYLE[myStatus] ?? STATUS_STYLE.PENDING) : null
   const detailHref = `/content/${contentId}/assignments/${assignment.id}`
-  const submitHref = `/content/${contentId}/assignments/${assignment.id}/write`
+
   const isAuthor = assignment.authorId != null && String(assignment.authorId) === String(currentUserId)
   const canSubmit = !isAuthor
   const metaLabel = canSubmit ? (s ? s.label : '미제출') : (isAuthor ? (s ? s.label : '내 과제') : assignment.authorName)
@@ -1147,7 +1164,7 @@ function MemberAssignmentCard({ assignment, myStatus, contentId, currentUserId }
         <span style={{ fontSize: '11px', fontWeight: 600, padding: '4px 10px', borderRadius: '100px', ...metaStyle }}>{metaLabel}</span>
       </div>
       <div style={{ marginTop: '10px' }}>
-        <Link href={canSubmit ? submitHref : detailHref} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '8px 12px', borderRadius: '8px', background: canSubmit ? 'rgba(28,90,255,0.18)' : 'rgba(255,255,255,0.05)', border: canSubmit ? '1px solid rgba(28,90,255,0.35)' : '1px solid rgba(255,255,255,0.12)', color: canSubmit ? '#A9C5FF' : 'rgba(255,255,255,0.72)', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}>
+        <Link href={detailHref} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '8px 12px', borderRadius: '8px', background: canSubmit ? 'rgba(28,90,255,0.18)' : 'rgba(255,255,255,0.05)', border: canSubmit ? '1px solid rgba(28,90,255,0.35)' : '1px solid rgba(255,255,255,0.12)', color: canSubmit ? '#A9C5FF' : 'rgba(255,255,255,0.72)', fontSize: '12px', fontWeight: 700, textDecoration: 'none' }}>
           {canSubmit ? (myStatus ? '제출 수정하기' : '과제 제출하기') : '과제 보기'}
         </Link>
       </div>
@@ -1201,11 +1218,18 @@ interface SubmissionFull {
 function SubmissionDetailModal({
   submission,
   contentId,
+  index,
+  total,
+  onStep,
   onClose,
   onGraded,
 }: {
   submission: LeaderSubmission
   contentId: string
+  /** 제출물 목록에서의 위치 — 모달 안에서 좌우로 넘겨볼 수 있게 한다 */
+  index: number
+  total: number
+  onStep: (delta: number) => void
   onClose: () => void
   onGraded: (submissionId: number, status: string) => void
 }) {
@@ -1226,10 +1250,14 @@ function SubmissionDetailModal({
 
   // ESC 닫기
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft') onStep(-1)
+      if (e.key === 'ArrowRight') onStep(1)
+    }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  }, [onClose, onStep])
 
   // 상세 데이터 페치
   useEffect(() => {
@@ -1300,6 +1328,27 @@ function SubmissionDetailModal({
                 {st.label}
               </span>
             </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+            <button
+              onClick={() => onStep(-1)}
+              disabled={index <= 0}
+              title="이전 제출물 (←)"
+              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', cursor: index <= 0 ? 'not-allowed' : 'pointer', color: 'rgba(255,255,255,0.55)', width: '26px', height: '26px', lineHeight: 1, fontSize: '13px', opacity: index <= 0 ? 0.3 : 1 }}
+            >
+              ‹
+            </button>
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', minWidth: '38px', textAlign: 'center' }}>
+              {index + 1} / {total}
+            </span>
+            <button
+              onClick={() => onStep(1)}
+              disabled={index >= total - 1}
+              title="다음 제출물 (→)"
+              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', cursor: index >= total - 1 ? 'not-allowed' : 'pointer', color: 'rgba(255,255,255,0.55)', width: '26px', height: '26px', lineHeight: 1, fontSize: '13px', opacity: index >= total - 1 ? 0.3 : 1 }}
+            >
+              ›
+            </button>
           </div>
           <button
             onClick={onClose}

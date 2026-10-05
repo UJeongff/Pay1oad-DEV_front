@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 const NAVBAR_HEIGHT = 68 // Navbar.tsx의 py-3 + 로고 44px 기준
 
 const NAV = [

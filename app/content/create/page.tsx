@@ -6,7 +6,7 @@ import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 type ContentType = 'STUDY' | 'PROJECT'
 type ContentVisibility = 'TEAM' | 'MEMBER'

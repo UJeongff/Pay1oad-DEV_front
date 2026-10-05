@@ -11,7 +11,7 @@ import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 import hljs from 'highlight.js'
 import DOMPurify from 'isomorphic-dompurify'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 const CATEGORY_LABEL: Record<string, string> = {
   KNOWLEDGE: 'Knowledge',
@@ -43,6 +43,7 @@ interface PostDetail {
   liked: boolean
   commentCount: number
   isFeatured: boolean
+  isArchived?: boolean
   publishedAt: string | null
   createdAt: string
   updatedAt: string | null
@@ -754,8 +755,12 @@ export default function BlogDetailPage() {
               </div>
             )}
 
-            {/* Comment input */}
-            {user ? (
+            {/* Comment input — 아카이브된 글은 읽기 전용이라 입력창을 띄우지 않는다 */}
+            {post?.isArchived ? (
+              <div style={{ marginTop: '24px', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(10,13,22,0.4)', textAlign: 'center' }}>
+                <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>보관된 글에는 댓글을 쓸 수 없습니다.</p>
+              </div>
+            ) : user ? (
               <div style={{ marginTop: '24px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', background: 'rgba(10,13,22,0.4)' }}>
                 {replyTo && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: 'rgba(28,90,255,0.08)', borderBottom: '1px solid rgba(28,90,255,0.15)' }}>

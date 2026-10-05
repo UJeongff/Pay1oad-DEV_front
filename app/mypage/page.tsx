@@ -4,9 +4,10 @@ import Link from 'next/link'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthContext } from '@/app/context/AuthContext'
+import AccountPanel from '@/app/mypage/AccountPanel'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ interface Recruitment {
   createdAt: string
 }
 
-type Tab = 'posts' | 'comments' | 'likes' | 'notices' | 'members' | 'recruitment'
+type Tab = 'posts' | 'comments' | 'likes' | 'notices' | 'members' | 'recruitment' | 'account'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -116,7 +117,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function MypagePage() {
-  const { user, loading: authLoading, clearUser } = useAuthContext()
+  const { user, loading: authLoading, clearUser, refetch } = useAuthContext()
   const router = useRouter()
   const isAdmin = user?.role === 'ADMIN'
 
@@ -129,6 +130,19 @@ export default function MypagePage() {
   const [likes, setLikes]       = useState<MyPost[]>([])
   const [tabLoading, setTabLoading] = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
+
+  // 계정 탭에서 쓸 상세 정보 (AuthContext 의 user 에는 학과가 없다)
+  const [myDetail, setMyDetail] = useState<{ nickname: string; email: string; department: string } | null>(null)
+
+  const fetchMyDetail = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth(`${API_URL}/v1/users/me`)
+      if (!res.ok) return
+      const json = await res.json()
+      const d = json?.data ?? json
+      setMyDetail({ nickname: d?.nickname ?? '', email: d?.email ?? '', department: d?.department ?? '' })
+    } catch { /* 계정 탭에서만 쓰는 값이라 실패해도 다른 탭은 그대로 동작한다 */ }
+  }, [])
 
   // ── 공지 관리 ─────────────────────────────────────────────────────────────
   // 유저가 team_leader인 컨텐츠 목록 (페이지 로드 시 감지)
@@ -222,6 +236,7 @@ export default function MypagePage() {
     { key: 'comments',    label: '내 댓글' },
     { key: 'likes',       label: '좋아요한 게시글' },
     ...(canManageNotices  ? [{ key: 'notices'     as Tab, label: '공지 관리' }] : []),
+    { key: 'account',     label: '계정' },
   ]
 
   // ─── 기본 탭 fetch ────────────────────────────────────────────────────────
@@ -292,11 +307,12 @@ export default function MypagePage() {
 
   useEffect(() => {
     if (authLoading || !user) return
-    if (tab === 'posts' || tab === 'comments' || tab === 'likes') fetchBaseTab(tab)
+    if (tab === 'account')          fetchMyDetail()
+    else if (tab === 'posts' || tab === 'comments' || tab === 'likes') fetchBaseTab(tab)
     else if (tab === 'members')     fetchMembers(memberStatusFilter || undefined)
     else if (tab === 'recruitment') fetchRecruitments()
     // notices 탭은 content 선택 시 fetch
-  }, [tab, authLoading, user, fetchBaseTab, fetchMembers, fetchRecruitments, memberStatusFilter])
+  }, [tab, authLoading, user, fetchBaseTab, fetchMembers, fetchRecruitments, fetchMyDetail, memberStatusFilter])
 
   useEffect(() => {
     if (selectedContent) fetchNotices(selectedContent.id)
@@ -616,6 +632,20 @@ export default function MypagePage() {
         {!tabLoading && tab === 'posts'    && <PostList items={posts}   emptyMessage="작성한 게시글이 없습니다." />}
         {!tabLoading && tab === 'comments' && <CommentList items={comments} />}
         {!tabLoading && tab === 'likes'    && <PostList items={likes}   emptyMessage="좋아요한 게시글이 없습니다." />}
+
+        {tab === 'account' && (
+          myDetail ? (
+            <AccountPanel
+              nickname={myDetail.nickname}
+              department={myDetail.department}
+              email={myDetail.email}
+              onUpdated={() => { fetchMyDetail(); refetch() }}
+              onLoggedOut={clearUser}
+            />
+          ) : (
+            <div className="text-white/40 text-sm">불러오는 중...</div>
+          )
+        )}
 
         {/* ── 공지 관리 ── */}
         {tab === 'notices' && (

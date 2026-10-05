@@ -18,9 +18,10 @@ interface Content {
   isMember?: boolean
   leaderName?: string
   createdAt: string
+  isLeader?: boolean
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 const PAGE_SIZE = 10
 
 type Variant = 'blue' | 'white' | 'gray'
@@ -69,10 +70,12 @@ const PersonIcon = (
 
 function ContentCardMenu({
   content,
+  isAdmin,
   onDeleted,
   onArchived,
 }: {
   content: Content
+  isAdmin: boolean
   onDeleted: (id: number) => void
   onArchived: (id: number) => void
 }) {
@@ -187,7 +190,7 @@ function ContentCardMenu({
       {open && typeof window !== 'undefined' && createPortal(
         <div ref={menuRef} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, minWidth: '120px', display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px', borderRadius: '8px', background: 'rgba(8,12,28,0.97)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}>
           <button style={{ ...itemStyle, color: 'rgba(255,255,255,0.82)' }} onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }} onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }} onClick={handleEdit}>수정하기</button>
-          <button style={{ ...itemStyle, color: '#91CDFF' }} onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }} onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }} onClick={handleArchive}>보관하기</button>
+          {isAdmin && (<button style={{ ...itemStyle, color: '#91CDFF' }} onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }} onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }} onClick={handleArchive}>보관하기</button>)}
           <button style={{ ...itemStyle, color: '#f87171' }} onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }} onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }} onClick={handleDelete}>삭제하기</button>
         </div>,
         document.body
@@ -247,7 +250,7 @@ function ContentCard({
           </p>
         </div>
       </Link>
-      {isAdmin && <ContentCardMenu content={content} onDeleted={onDeleted} onArchived={onArchived} />}
+      {(isAdmin || content.isLeader) && <ContentCardMenu content={content} isAdmin={isAdmin} onDeleted={onDeleted} onArchived={onArchived} />}
     </div>
   )
 }

@@ -23,7 +23,7 @@ interface Post {
   thumbnailUrl?: string | null
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.xyz'
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 const PAGE_SIZE = 9
 
 const FALLBACK_IMAGE = '/logo_blur.png'
@@ -90,7 +90,7 @@ function sortPosts(list: Post[], sortOption: SortOption): Post[] {
 export default function BlogPage() {
   const { user } = useAuthContext()
   const [posts, setPosts] = useState<Post[]>([])
-  const [canWrite, setCanWrite] = useState(false)
+  const [serverCanWrite, setServerCanWrite] = useState(false)
   const [sort, setSort] = useState<SortOption>('최신순')
   const [activeTab, setActiveTab] = useState<'blog' | 'activities' | 'knowledge' | 'qna'>('blog')
 
@@ -118,12 +118,17 @@ export default function BlogPage() {
 
   // 글쓰기 권한 확인 (로그인 시에만)
   useEffect(() => {
-    if (!user) { setCanWrite(false); return }
+    if (!user) return
+    let cancelled = false
     fetchWithAuth(`${API_URL}/v1/posts/can-write`)
       .then(res => res.ok ? res.json() : null)
-      .then(json => setCanWrite(json?.data ?? false))
-      .catch(() => setCanWrite(false))
+      .then(json => { if (!cancelled) setServerCanWrite(json?.data ?? false) })
+      .catch(() => { if (!cancelled) setServerCanWrite(false) })
+    return () => { cancelled = true }
   }, [user])
+
+  // 로그아웃 상태는 서버에 물어볼 것도 없이 렌더에서 판단한다
+  const canWrite = !!user && serverCanWrite
 
   // 검색어 디바운스
   useEffect(() => {
@@ -131,8 +136,11 @@ export default function BlogPage() {
     return () => clearTimeout(timer)
   }, [search])
 
-  // 탭/정렬/검색 변경 시 첫 페이지로 리셋
-  useEffect(() => { setPage(1) }, [activeTab, sort, debouncedSearch])
+  // 탭/정렬/검색 변경 시 첫 페이지로 리셋.
+  // effect가 아니라 값을 바꾸는 시점에 함께 초기화한다 (렌더 두 번 도는 것을 피한다).
+  const changeTab = (t: typeof activeTab) => { setActiveTab(t); setPage(1) }
+  const changeSort = (s: typeof sort) => { setSort(s); setPage(1) }
+  const changeSearch = (v: string) => { setSearch(v); setPage(1) }
 
   // 서버사이드 페이지네이션 + 카테고리 필터 + 키워드 검색
   useEffect(() => {
@@ -252,7 +260,6 @@ export default function BlogPage() {
       </section>
 
       {/* ── Section Header ──────────────────────────── */}
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <div
         className="w-full flex flex-col sm:flex-row sm:items-center px-5 sm:px-10 lg:px-20 rounded-t-[40px] sm:rounded-t-[100px] gap-2 py-3 sm:py-0 sm:h-[49px]"
         style={{ background: 'rgba(0, 65, 239, 0.4)' }}
@@ -265,7 +272,7 @@ export default function BlogPage() {
           {(['blog', 'activities', 'knowledge', 'qna'] as const).map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => changeTab(tab)}
               style={{
                 padding: '5px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 600,
                 border: 'none', cursor: 'pointer', transition: 'all 0.15s',
@@ -296,7 +303,7 @@ export default function BlogPage() {
                 {SORT_OPTIONS.map(opt => (
                   <button key={opt} style={dropdownItemStyle(sort === opt, hoveredItem === `sort-${opt}`)}
                     onMouseEnter={() => setHoveredItem(`sort-${opt}`)} onMouseLeave={() => setHoveredItem(null)}
-                    onClick={() => { setSort(opt); setOpenSort(false) }}>
+                    onClick={() => { changeSort(opt); setOpenSort(false) }}>
                     {opt}
                   </button>
                 ))}
@@ -323,7 +330,7 @@ export default function BlogPage() {
               <input
                 type="text"
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => changeSearch(e.target.value)}
                 placeholder="Search title"
                 maxLength={50}
                 className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/30"
