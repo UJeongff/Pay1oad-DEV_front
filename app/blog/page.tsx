@@ -7,12 +7,13 @@ import Image from 'next/image'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { CATEGORY_LABEL, CATEGORY_STYLE, formatDate, type PostCategory } from '@/app/lib/postCategory'
 
 // PostSummaryResponse 필드와 일치
 interface Post {
   id: number
   title: string
-  category: 'KNOWLEDGE' | 'QNA' | 'ACTIVITIES'
+  category: PostCategory
   authorName: string       // 서버에서 표시 정책 적용된 이름
   likeCount: number
   commentCount: number
@@ -34,26 +35,8 @@ function toFullUrl(url: string | null | undefined): string {
   return `${API_URL}${url}`
 }
 
-const CATEGORY_LABEL: Record<Post['category'], string> = {
-  KNOWLEDGE: 'Knowledge',
-  QNA: 'QnA',
-  ACTIVITIES: 'Activities',
-}
-
-const CATEGORY_COLOR: Record<Post['category'], { border: string; text: string; bg: string }> = {
-  ACTIVITIES: { border: '#FF9193', text: '#FF9193', bg: 'rgba(255,145,147,0.08)' },
-  KNOWLEDGE:  { border: '#74FF89', text: '#74FF89', bg: 'rgba(116,255,137,0.08)' },
-  QNA:        { border: '#91CDFF', text: '#91CDFF', bg: 'rgba(145,205,255,0.08)' },
-}
-
 const SORT_OPTIONS = ['최신순', '인기순'] as const
 type SortOption = typeof SORT_OPTIONS[number]
-
-
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr)
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
-}
 
 const PIN_TIMES_KEY = 'pinTimes'
 
@@ -316,7 +299,8 @@ export default function BlogPage() {
 
       {/* ── Card Grid ───────────────────────────────── */}
       <section className="relative py-10" style={{ background: 'rgba(0, 65, 239, 0.05)' }}>
-        <div className="max-w-6xl mx-auto px-[vw]">
+        {/* 좁은 화면에서도 카드가 화면 끝에 붙지 않게 여백을 둔다. 넓은 화면(xl)은 최대 폭(6xl)이 여백 역할을 한다 */}
+        <div className="max-w-6xl mx-auto px-5 sm:px-8 xl:px-0">
           {/* 검색 + 작성하기 */}
           <div className="flex flex-wrap items-center justify-end gap-2.5 mt-[-5px] mb-[30px]">
             <div
@@ -331,7 +315,8 @@ export default function BlogPage() {
                 type="text"
                 value={search}
                 onChange={e => changeSearch(e.target.value)}
-                placeholder="Search title"
+                placeholder="제목 검색"
+                aria-label="제목 검색"
                 maxLength={50}
                 className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/30"
               />
@@ -363,7 +348,6 @@ export default function BlogPage() {
                   key={post.id}
                   post={post}
                   thumb={toFullUrl(post.thumbnailUrl)}
-                  color={CATEGORY_COLOR[post.category]}
                   user={user}
                   onPinToggle={handlePinToggle}
                   onDelete={handleDelete}
@@ -406,12 +390,57 @@ export default function BlogPage() {
   )
 }
 
+// 제목 표지에 번지는 분류 색 (--color-cat-* 와 같은 색의 옅은 버전)
+const CATEGORY_TINT: Record<Post['category'], string> = {
+  ACTIVITIES: 'rgba(226,154,156,0.30)',
+  KNOWLEDGE:  'rgba(134,207,146,0.26)',
+  QNA:        'rgba(141,188,228,0.30)',
+}
+
+/**
+ * 썸네일 없는 글의 표지: 왼쪽 위에서 분류 색이 은은하게 번지고, 제목을 크게 얹는다.
+ * 오른쪽 아래의 용 엠블럼과 왼쪽 위 "PAY1OAD / 분류" 로 빈칸이 아니라 의도한 표지처럼 보이게 한다.
+ */
+function TitleCover({ title, category }: { title: string; category: Post['category'] }) {
+  return (
+    <div
+      aria-hidden="true"
+      className="absolute inset-0"
+      style={{ background: `radial-gradient(120% 120% at 0% 0%, ${CATEGORY_TINT[category]} 0%, transparent 60%), linear-gradient(135deg, #0e1a36 0%, #070f20 100%)` }}
+    >
+      {/* 용 엠블럼(public/blog_cover_mark.webp)을 마스크로 써서 분류 색을 입힌다 */}
+      <div
+        className="absolute -right-10 -bottom-12 h-[210px] w-[210px] opacity-[0.22]"
+        style={{
+          background: `var(--color-cat-${category.toLowerCase()})`,
+          WebkitMaskImage: 'url(/blog_cover_mark.webp)',
+          maskImage: 'url(/blog_cover_mark.webp)',
+          WebkitMaskSize: 'contain',
+          maskSize: 'contain',
+          WebkitMaskRepeat: 'no-repeat',
+          maskRepeat: 'no-repeat',
+          WebkitMaskPosition: 'center',
+          maskPosition: 'center',
+        }}
+      />
+      <p className="absolute left-5 top-4 font-mono text-[11px] tracking-[0.14em] text-fg-faint">
+        PAY1OAD / {CATEGORY_LABEL[category].toUpperCase()}
+      </p>
+      <p
+        className="absolute left-5 right-14 bottom-[18px] line-clamp-2 text-[21px] font-bold leading-[1.35] tracking-[-0.01em] text-white"
+        style={{ wordBreak: 'keep-all' }}
+      >
+        {title}
+      </p>
+    </div>
+  )
+}
+
 function PostCard({
-  post, thumb, color, user, onPinToggle, onDelete,
+  post, thumb, user, onPinToggle, onDelete,
 }: {
   post: Post
   thumb: string
-  color: { border: string; text: string; bg: string }
   user: import('@/app/context/AuthContext').AuthUser | null
   onPinToggle: (postId: number, newIsFeatured: boolean) => void
   onDelete: (postId: number) => void
@@ -455,17 +484,22 @@ function PostCard({
   }
 
   return (
+    // 카드 면·선은 홈 카드와 같은 토큰. 마우스를 올리면 한 단계 밝아지고 살짝 떠오른다
     <Link
       href={`/blog/${post.id}`}
-      style={{ display: 'block', borderRadius: '16px', overflow: 'hidden', background: 'rgba(52,52,52,0.4)', border: '1px solid rgba(255,255,255,0.08)', transition: 'transform 0.2s, border-color 0.2s', cursor: 'pointer', textDecoration: 'none' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.18)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.08)' }}
+      className="block overflow-hidden rounded-2xl border border-line bg-surface transition-[translate,background-color,border-color] duration-200 hover:-translate-y-1 hover:border-line-strong hover:bg-surface-raised"
     >
-      {/* Thumbnail */}
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '16/10', overflow: 'hidden', background: thumb === FALLBACK_IMAGE ? 'rgba(20,25,45,0.8)' : undefined }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={thumb} alt={post.title} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: thumb === FALLBACK_IMAGE ? 'contain' : 'cover', padding: thumb === FALLBACK_IMAGE ? '10%' : undefined, opacity: thumb === FALLBACK_IMAGE ? 0.5 : 1 }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 50%, rgba(10,15,30,0.6) 100%)' }} />
+      {/* Thumbnail — 썸네일이 없으면 분류 색이 번진 "제목 표지"를 대신 그린다 */}
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '16/10', overflow: 'hidden' }}>
+        {thumb === FALLBACK_IMAGE ? (
+          <TitleCover title={post.title} category={post.category} />
+        ) : (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={thumb} alt={post.title} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 50%, rgba(10,15,30,0.6) 100%)' }} />
+          </>
+        )}
         {post.isFeatured && (
           <div style={{ position: 'absolute', top: '12px', right: '12px', width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Image src="/pin.svg" alt="pinned" width={16} height={16} />
@@ -553,7 +587,8 @@ function PostCard({
 
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '12px', fontWeight: 600, color: color.text, border: `1px solid ${color.border}`, background: color.bg, borderRadius: '100px', padding: '3px 12px' }}>
+          <span className={`inline-flex items-center gap-2 text-xs font-medium ${CATEGORY_STYLE[post.category].text}`}>
+            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${CATEGORY_STYLE[post.category].dot}`} />
             {CATEGORY_LABEL[post.category]}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

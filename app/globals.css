@@ -24,6 +24,25 @@
   /* 면: 카드·패널 바탕 / 선택·hover 처럼 한 단계 올라온 바탕 */
   --color-surface: rgb(255 255 255 / 0.03);
   --color-surface-raised: rgb(255 255 255 / 0.06);
+
+  /* 브랜드 파랑은 이 하나만 쓴다: 버튼 바탕·점·진행 막대·포커스 테두리처럼 면과 선에.
+     네이비 위 작은 글씨로 쓰면 대비가 모자라므로 글자는 흰색으로 두고 파랑은 바탕에 깐다 */
+  --color-brand: #1C5AFF;
+
+  /* 상태 색: 홈 히어로의 ● ACTIVE / ● RECRUITING 과 같은 값. 점(live)은 진하게, 글자(text)는 한 단계 밝게 */
+  --color-status-live: #4ADE80;
+  --color-status-live-text: #86EFAC;
+  --color-status-soon: #FBBF24;
+  --color-status-soon-text: #FCD34D;
+  --color-danger: #F87171;
+
+  /* 모달처럼 아래 내용을 가려야 하는 불투명 면. 네이비 위에 surface-raised 를 얹은 톤 */
+  --color-panel: #0F1628;
+
+  /* 블로그 분류 색:글자·테두리 대신 작은 점으로만 쓴다. 예전 형광색(#FF9193/#74FF89/#91CDFF)에서 채도와 밝기를 낮췄다 */
+  --color-cat-activities: #E29A9C;
+  --color-cat-knowledge: #86CF92;
+  --color-cat-qna: #8DBCE4;
 }
 
 html {
@@ -282,6 +301,21 @@ body {
   .goal-draw svg .fill-in { opacity: 1; transition: none; }
   .history-star-in { animation: none; }
   .heading-wipe-bar { display: none; }
+}
+
+/* ── 페이지 하단 알림 (CTF 등) : 아래에서 살짝 떠오른다 ── */
+.toast-in {
+  animation: toast-in 250ms ease-out;
+}
+
+@keyframes toast-in {
+  /* 가로 가운데 정렬은 요소의 translate(-translate-x-1/2)가 맡으므로 여기선 세로만 움직인다 */
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-in { animation: none; }
 }
 
 /* ── Collaboration Cursor ── */

@@ -4,13 +4,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import HomeFooter from '@/app/components/HomeFooter'
+import ToastMessage, { useToast } from '@/app/components/ToastMessage'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { ARCHIVE_YEAR_MIN, ARCHIVE_YEAR_MAX } from '@/app/lib/archive'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 const PAGE_SIZE = 10
 
 type ArchiveItemType = 'BLOG' | 'STUDY' | 'PROJECT'
+type Visibility = 'PUBLIC' | 'MEMBER' | 'ADMIN'
 
 interface ArchiveItem {
   id: number
@@ -18,7 +21,7 @@ interface ArchiveItem {
   title: string
   archivedAt: string
   description?: string | null
-  visibility?: 'PUBLIC' | 'MEMBER' | 'ADMIN'
+  visibility?: Visibility
 }
 
 interface ArchivePostResponse {
@@ -32,8 +35,14 @@ interface ArchiveContentResponse {
   type: 'STUDY' | 'PROJECT'
   title: string
   description?: string | null
-  visibility?: 'PUBLIC' | 'MEMBER' | 'ADMIN'
+  visibility?: Visibility
   archivedAt?: string
+}
+
+// 전체 공개는 기본값이라 표시하지 않고, 범위가 좁을 때만 알려 준다
+const VISIBILITY_LABEL: Partial<Record<Visibility, string>> = {
+  MEMBER: '회원 공개',
+  ADMIN: '관리자만',
 }
 
 function formatDate(dateStr: string) {
@@ -54,41 +63,54 @@ function groupByType(items: ArchiveItem[]): Record<'B' | 'C', ArchiveItem[]> {
   return map
 }
 
+// 페이지가 많으면 처음·끝·현재 주변만 보이고 나머지는 … 로 줄인다. 예: 1 … 4 5 6 … 12
+function pageNumbers(page: number, total: number): Array<number | 'gap'> {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const keep = [1, page - 1, page, page + 1, total].filter(n => n >= 1 && n <= total)
+  const sorted = [...new Set(keep)].sort((a, b) => a - b)
+  const out: Array<number | 'gap'> = []
+  sorted.forEach((n, i) => {
+    if (i > 0 && n - sorted[i - 1] > 1) out.push('gap')
+    out.push(n)
+  })
+  return out
+}
+
 function Pagination({ page, total, onChange }: { page: number; total: number; onChange: (p: number) => void }) {
   if (total <= 1) return null
 
+  const arrowClass = 'flex h-7 w-7 items-center justify-center rounded-[5px] text-fg-subtle transition-colors hover:text-white disabled:cursor-default disabled:text-fg-faint'
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '20px' }}>
-      <button
-        onClick={() => onChange(Math.max(1, page - 1))}
-        disabled={page === 1}
-        style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: page === 1 ? 'default' : 'pointer', color: page === 1 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)', borderRadius: '5px' }}
-      >
+    <nav aria-label="페이지" className="mt-5 flex items-center gap-1">
+      <button type="button" aria-label="이전 페이지" onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1} className={arrowClass}>
         <svg width="6" height="10" viewBox="0 0 7 12" fill="none">
           <path d="M6 1L1 6L6 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-      {Array.from({ length: total }, (_, i) => i + 1).map(n => (
-        <button
-          key={n}
-          onClick={() => onChange(n)}
-          style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: n === page ? 'rgba(255,255,255,0.12)' : 'transparent', border: 'none', cursor: 'pointer', color: n === page ? '#fff' : 'rgba(255,255,255,0.45)', fontSize: '13px', fontWeight: n === page ? 700 : 400, borderRadius: '5px', transition: 'background 0.15s, color 0.15s' }}
-          onMouseEnter={e => { if (n !== page) (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.8)' }}
-          onMouseLeave={e => { if (n !== page) (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.45)' }}
-        >
-          {n}
-        </button>
-      ))}
-      <button
-        onClick={() => onChange(Math.min(total, page + 1))}
-        disabled={page === total}
-        style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: page === total ? 'default' : 'pointer', color: page === total ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)', borderRadius: '5px' }}
-      >
+      {pageNumbers(page, total).map((n, i) =>
+        n === 'gap' ? (
+          <span key={`gap-${i}`} aria-hidden="true" className="flex h-7 w-5 items-center justify-center text-[13px] text-fg-faint">…</span>
+        ) : (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onChange(n)}
+            aria-current={n === page ? 'page' : undefined}
+            className={`flex h-7 min-w-7 items-center justify-center rounded-[5px] px-1 text-[13px] tabular-nums transition-colors ${
+              n === page ? 'bg-white/[0.12] font-bold text-white' : 'text-fg-subtle hover:text-white'
+            }`}
+          >
+            {n}
+          </button>
+        ),
+      )}
+      <button type="button" aria-label="다음 페이지" onClick={() => onChange(Math.min(total, page + 1))} disabled={page === total} className={arrowClass}>
         <svg width="6" height="10" viewBox="0 0 7 12" fill="none">
           <path d="M1 1L6 6L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-    </div>
+    </nav>
   )
 }
 
@@ -97,13 +119,11 @@ function ItemRow({
   isAdmin,
   onRestore,
   onDelete,
-  onOpenContent,
 }: {
   item: ArchiveItem
   isAdmin: boolean
   onRestore: (item: ArchiveItem) => void
   onDelete: (item: ArchiveItem) => void
-  onOpenContent: (item: ArchiveItem) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -120,45 +140,47 @@ function ItemRow({
     return () => window.removeEventListener('mousedown', handler)
   }, [])
 
+  const href = item.type === 'BLOG' ? `/blog/${item.id}` : `/content/${item.id}`
+  const visibilityLabel = item.visibility ? VISIBILITY_LABEL[item.visibility] : undefined
+
   return (
-    <div
-      className="flex items-center justify-between py-3 group hover:bg-white/[0.03] -mx-3 px-3 rounded transition-colors"
-      style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-    >
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        <span className="text-white/45 text-[11px] uppercase tracking-wide flex-shrink-0">
-          {item.type}
-        </span>
-        {item.type === 'BLOG' ? (
+    // 줄 전체가 링크처럼 눌린다: 제목 링크의 ::after 가 줄을 덮고, 메뉴만 그 위(z-10)에 올라온다.
+    // hover 바탕(::before)만 양옆으로 12px 넓히고, 구분선은 섹션 선과 같은 폭에 맞춘다
+    <div className="relative flex items-center justify-between gap-3 border-b border-line py-3 before:pointer-events-none before:absolute before:inset-y-0 before:-inset-x-3 before:rounded before:transition-colors hover:before:bg-white/[0.03]">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="flex-shrink-0 text-[11px] uppercase tracking-wide text-fg-subtle">
+            {item.type}
+          </span>
           <Link
-            href={`/blog/${item.id}`}
-            className="text-white/85 text-sm font-medium truncate hover:text-white transition-colors"
-            style={{ textDecoration: 'none' }}
+            href={href}
+            className="truncate text-sm font-medium text-fg-muted transition-colors after:absolute after:inset-0 after:rounded hover:text-white"
           >
             {item.title}
           </Link>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onOpenContent(item)}
-
-            className="text-white/85 text-sm font-medium truncate hover:text-white transition-colors"
-            style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
-          >
-            {item.title}
-          </button>
+        </div>
+        {item.description && (
+          <p className="truncate text-[13px] text-fg-subtle">{item.description}</p>
         )}
       </div>
 
-      <div className="flex items-center gap-3 flex-shrink-0">
-        <span className="text-white/35 text-xs tabular-nums">
+      <div className="flex flex-shrink-0 items-center gap-3">
+        {visibilityLabel && (
+          <span className="hidden rounded border border-line px-1.5 py-0.5 text-[11px] text-fg-subtle sm:inline">
+            {visibilityLabel}
+          </span>
+        )}
+        <span className="text-xs tabular-nums text-fg-subtle">
           {formatDate(item.archivedAt)}
         </span>
 
         {isAdmin && (
-          <div className="relative" ref={menuRef as React.RefObject<HTMLDivElement>}>
+          // 줄마다 z-10 이라 아래 줄이 열린 메뉴를 덮는다. 열린 줄만 한 단계 올린다
+          <div className={`relative ${menuOpen ? 'z-30' : 'z-10'}`} ref={menuRef}>
             <button
               ref={btnRef}
+              type="button"
+              aria-label={`${item.title} 메뉴`}
               onClick={() => setMenuOpen(v => !v)}
               style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px', color: 'rgba(255,255,255,0.4)', lineHeight: 1 }}
             >
@@ -168,13 +190,11 @@ function ItemRow({
             </button>
 
             {menuOpen && (
-              <div
-                style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 50, minWidth: '110px', display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px', borderRadius: '8px', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
-              >
+              // 반투명이면 아래 줄의 날짜가 비쳐 보여서 불투명 면(panel)을 쓴다
+              <div className="absolute right-0 top-[calc(100%+4px)] z-50 flex min-w-[110px] flex-col gap-1 rounded-lg border border-line bg-panel p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
                 <button
-                  style={{ background: 'rgba(36,36,36,0.8)', border: 'none', color: 'rgba(255,255,255,0.85)', fontSize: '12px', fontWeight: 500, padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '6px', width: '100%' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
+                  type="button"
+                  className="w-full rounded-md bg-surface px-3 py-[7px] text-left text-xs font-medium text-fg-muted transition-colors hover:bg-surface-raised hover:text-white"
                   onClick={() => {
                     setMenuOpen(false)
                     const target = item.type === 'BLOG' ? '블로그' : '콘텐츠'
@@ -185,9 +205,8 @@ function ItemRow({
                   {'복원하기'}
                 </button>
                 <button
-                  style={{ background: 'rgba(36,36,36,0.8)', border: 'none', color: '#f87171', fontSize: '12px', fontWeight: 500, padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '6px', width: '100%' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
+                  type="button"
+                  className="w-full rounded-md bg-surface px-3 py-[7px] text-left text-xs font-medium text-danger transition-colors hover:bg-surface-raised"
                   onClick={() => {
                     setMenuOpen(false)
                     if (!window.confirm('영구 삭제하시겠습니까?')) return
@@ -205,11 +224,80 @@ function ItemRow({
   )
 }
 
+// 연도 탭 머리. 예전엔 1440×116 SVG 하나를 가로로만 늘려서 좁은 화면에서 탭이 찌그러지고 연도가 탭 밖으로 넘쳤다.
+// 이제 왼쪽 탭 조각은 비율을 지킨 채 높이(--tab-h)만 따라가고, 오른쪽은 같은 색 막대가 화면 끝까지 이어진다.
+// 모바일 80px, sm 이상 116px. 아래 calc 의 470·116·56.376 은 탭 조각 viewBox 의 폭·높이·막대 높이
+function YearTabHeader({ year }: { year: string }) {
+  const barHeight = 'calc(var(--tab-h) * 56.376 / 116)'
+
+  return (
+    <div className="relative [--tab-h:80px] sm:[--tab-h:116px]" style={{ height: 'var(--tab-h)' }}>
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 470 116"
+        fill="none"
+        aria-hidden="true"
+        className="absolute left-0 top-0 block"
+        style={{ height: 'var(--tab-h)', width: 'calc(var(--tab-h) * 470 / 116)' }}
+      >
+        <defs>
+          <linearGradient id="archive-tab-fill" x1="0" y1="54.73" x2="0" y2="119.76" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#0433B2" />
+            <stop offset="1" stopColor="#002589" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M0 116H470V59.624H460.851C431.453 59.624 403.543 46.6879 384.543 24.2547L381.974 21.2216C370.574 7.76165 353.828 0 336.189 0H73.4466C45.1808 0 20.7483 19.7279 14.7933 47.3592L0 116Z"
+          fill="url(#archive-tab-fill)"
+        />
+      </svg>
+      {/* 탭 조각에 1px 겹쳐서 이음새가 보이지 않게. 색은 탭 그라데이션의 같은 높이 값 */}
+      <div
+        aria-hidden="true"
+        className="absolute bottom-0 right-0"
+        style={{
+          left: 'calc(var(--tab-h) * 470 / 116 - 1px)',
+          height: barHeight,
+          borderTopRightRadius: barHeight,
+          background: 'linear-gradient(#0432AF, #00268B)',
+        }}
+      />
+
+      <div className="absolute inset-y-0 flex flex-col justify-center" style={{ left: 'calc(var(--tab-h) * 80 / 116)' }}>
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" className="mb-1" aria-hidden="true">
+          <path d="M10 1.5V18.5M2.5 5.75L17.5 14.25M17.5 5.75L2.5 14.25" stroke="white" strokeWidth="2.8" strokeLinecap="round" />
+        </svg>
+        <h1
+          className="whitespace-nowrap font-black leading-none text-white"
+          style={{ fontSize: 'clamp(2rem, 5vw, 3.6rem)', fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif", letterSpacing: '0.02em' }}
+        >
+          {year}
+        </h1>
+      </div>
+
+      {/* 현재 위치를 터미널 경로처럼 보여준다 (블로그의 ~/blog/write 와 같은 형식) */}
+      <nav
+        aria-label="현재 위치"
+        className="absolute bottom-0 right-0 flex items-center pr-5 font-mono text-[13px] tracking-[0.02em] sm:pr-10 lg:pr-20"
+        style={{ height: barHeight }}
+      >
+        <span className="text-fg-faint">~/</span>
+        <Link href="/archive" className="text-fg-subtle transition-colors hover:text-white">archive</Link>
+        <span className="text-fg-faint">/</span>
+        <span aria-current="page" className="text-white">{year}</span>
+      </nav>
+    </div>
+  )
+}
+
+const SECTION_LABEL: Record<'B' | 'C', string> = { B: '블로그', C: '콘텐츠' }
+
 export default function ArchiveYearPage() {
   const params = useParams()
   const year = params?.year as string
   const { user } = useAuthContext()
   const isAdmin = user?.role === 'ADMIN'
+  const { toast, showToast, clearToast } = useToast()
 
   const [items, setItems] = useState<ArchiveItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -220,7 +308,7 @@ export default function ArchiveYearPage() {
 
   useEffect(() => {
     const yearNum = Number(year)
-    if (!year || !/^\d{4}$/.test(year) || yearNum < 2000 || yearNum > 2099) {
+    if (!year || !/^\d{4}$/.test(year) || yearNum < ARCHIVE_YEAR_MIN || yearNum > ARCHIVE_YEAR_MAX) {
       router.replace('/archive')
       return
     }
@@ -291,7 +379,10 @@ export default function ArchiveYearPage() {
         : `${API_URL}/v1/admin/contents/${item.id}/unarchive`
       const res = await fetchWithAuth(url, { method: 'PATCH' })
       if (res.ok) setItems(prev => prev.filter(i => !(i.id === item.id && i.type === item.type)))
-    } catch {}
+      else showToast('복원하지 못했습니다.')
+    } catch {
+      showToast('복원하지 못했습니다.')
+    }
   }
 
   const handleDelete = async (item: ArchiveItem) => {
@@ -301,11 +392,10 @@ export default function ArchiveYearPage() {
         : `${API_URL}/v1/contents/${item.id}`
       const res = await fetchWithAuth(url, { method: 'DELETE' })
       if (res.ok) setItems(prev => prev.filter(i => !(i.id === item.id && i.type === item.type)))
-    } catch {}
-  }
-
-  const handleOpenContent = (item: ArchiveItem) => {
-    router.push(`/content/${item.id}`)
+      else showToast('삭제하지 못했습니다.')
+    } catch {
+      showToast('삭제하지 못했습니다.')
+    }
   }
 
   const sections: Array<{ key: 'B' | 'C'; items: ArchiveItem[]; page: number; totalPages: number; setPage: (p: number) => void }> = [
@@ -314,72 +404,29 @@ export default function ArchiveYearPage() {
   ]
 
   return (
-    <main className="relative min-h-screen select-none" style={{ background: 'linear-gradient(to bottom, #0F1425, #0D193B)' }}>
+    // 배경은 목록 페이지와 같은 사이트 기본 네이비, 본문 영역은 목록과 같은 옅은 파랑
+    <main className="relative min-h-screen select-none bg-background">
       <div className="pt-40">
-        <div className="relative">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 1440 116"
-            fill="none"
-            style={{ display: 'block', width: '100%', height: '116px' }}
-            preserveAspectRatio="none"
-          >
-            <path
-              d="M0 116H1440C1440 84.8644 1414.76 59.624 1383.62 59.624H460.851C431.453 59.624 403.543 46.6879 384.543 24.2547L381.974 21.2216C370.574 7.76165 353.828 0 336.189 0H73.4466C45.1808 0 20.7483 19.7279 14.7933 47.3592L0 116Z"
-              fill="url(#paint0_linear_251_98)"
-            />
-            <defs>
-              <linearGradient id="paint0_linear_251_98" x1="817" y1="54.7301" x2="817" y2="119.76" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#0433B2" />
-                <stop offset="1" stopColor="#002589" />
-              </linearGradient>
-            </defs>
-          </svg>
-
-          <div className="absolute inset-0">
-            <div
-              className="absolute flex flex-col justify-center h-full pl-2 sm:pl-4 lg:pl-8"
-              style={{ left: '6%', width: '23.3%' }}
-            >
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" className="mb-1">
-                <path d="M10 1.5V18.5M2.5 5.75L17.5 14.25M17.5 5.75L2.5 14.25" stroke="white" strokeWidth="2.8" strokeLinecap="round" />
-              </svg>
-              <h1
-                className="text-white font-black leading-none"
-                style={{ fontSize: 'clamp(2.4rem, 5.5vw, 3.8rem)', fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif", letterSpacing: '0.02em' }}
-              >
-                {year}
-              </h1>
-            </div>
-
-            <nav
-              className="absolute right-0 flex items-center gap-1.5 text-white/70 text-sm pr-[5vw]"
-              style={{ top: '51.4%', height: '48.6%' }}
-            >
-              <Link href="/archive" className="hover:text-white transition-colors">Archive</Link>
-              <span className="text-white/40">/</span>
-              <span className="text-white">{year}</span>
-            </nav>
-          </div>
-        </div>
+        <YearTabHeader year={year} />
       </div>
 
-      <section className="relative pb-32">
+      <section className="relative pb-32" style={{ background: 'rgba(0, 65, 239, 0.05)' }}>
         <div className="max-w-6xl mx-auto px-[5vw] pt-8">
           <div className="flex justify-end mb-8">
             <div
-              className="flex items-center gap-2 px-4 py-2 rounded"
-              style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', width: 'clamp(200px, 30vw, 320px)' }}
+              className="flex items-center gap-2 rounded border border-line bg-surface-raised px-4 py-2"
+              style={{ width: 'clamp(200px, 30vw, 320px)' }}
             >
               <input
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search title"
+                placeholder="제목 검색"
+                aria-label="제목 검색"
                 maxLength={50}
-                className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-white/30"
+                className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-fg-faint"
               />
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <circle cx="11" cy="11" r="7" stroke="rgba(255,255,255,0.45)" strokeWidth="2" />
                 <path d="M16.5 16.5L21 21" stroke="rgba(255,255,255,0.45)" strokeWidth="2" strokeLinecap="round" />
               </svg>
@@ -387,27 +434,32 @@ export default function ArchiveYearPage() {
           </div>
 
           {loading ? (
-            <p className="text-white/30 text-sm text-center py-20">Loading...</p>
+            <p className="text-fg-subtle text-sm text-center py-20">불러오는 중...</p>
           ) : (
             <div className="flex flex-col gap-10">
               {sections.map(({ key, items: sectionItems, page, totalPages, setPage }) => (
-                <div
+                <section
                   key={key}
-                  className="flex gap-8"
-                  style={{ borderTop: '2px solid rgba(255,255,255,0.85)', paddingTop: '24px' }}
+                  aria-label={SECTION_LABEL[key]}
+                  className="flex gap-8 border-t border-line-strong pt-6"
                 >
                   <div className="flex-shrink-0 w-16">
                     <span
-                      className="text-white font-black leading-none"
+                      className="block text-white font-black leading-none"
                       style={{ fontSize: 'clamp(2.5rem, 5vw, 3.5rem)', fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif", opacity: 0.9 }}
                     >
                       {key}
                     </span>
+                    <span className="mt-2 block text-[13px] tabular-nums text-fg-subtle">
+                      {grouped[key].length}개
+                    </span>
                   </div>
 
-                  <div className="flex-1 flex flex-col">
+                  <div className="flex-1 flex flex-col min-w-0">
                     {grouped[key].length === 0 ? (
-                      <span className="text-white/20 text-sm py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>No archived items.</span>
+                      <span className="border-b border-line py-3 text-sm text-fg-subtle">
+                        {search.trim() ? '검색 결과가 없습니다.' : '보관된 항목이 없습니다.'}
+                      </span>
                     ) : (
                       <>
                         {sectionItems.map(item => (
@@ -417,14 +469,13 @@ export default function ArchiveYearPage() {
                             isAdmin={isAdmin}
                             onRestore={handleRestore}
                             onDelete={handleDelete}
-                            onOpenContent={handleOpenContent}
                           />
                         ))}
                         <Pagination page={page} total={totalPages} onChange={setPage} />
                       </>
                     )}
                   </div>
-                </div>
+                </section>
               ))}
             </div>
           )}
@@ -433,6 +484,7 @@ export default function ArchiveYearPage() {
 
       <HomeFooter />
 
+      {toast && <ToastMessage key={toast.id} toast={toast} onDone={clearToast} />}
     </main>
   )
 }

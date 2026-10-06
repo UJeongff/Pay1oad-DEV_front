@@ -19,10 +19,11 @@ const CATEGORY_LABEL: Record<string, string> = {
   ACTIVITIES: 'Activities',
 }
 
-const CATEGORY_COLOR: Record<string, { border: string; text: string; bg: string }> = {
-  ACTIVITIES: { border: '#FF9193', text: '#FF9193', bg: 'rgba(255,145,147,0.08)' },
-  KNOWLEDGE:  { border: '#74FF89', text: '#74FF89', bg: 'rgba(116,255,137,0.08)' },
-  QNA:        { border: '#91CDFF', text: '#91CDFF', bg: 'rgba(145,205,255,0.08)' },
+// 분류 표시: 블로그 목록과 같은 빛나는 점 + 같은 색 글자 (globals.css 의 --color-cat-*)
+const CATEGORY_STYLE: Record<string, { text: string; dot: string }> = {
+  ACTIVITIES: { text: 'text-cat-activities', dot: 'bg-cat-activities shadow-[0_0_8px_var(--color-cat-activities)]' },
+  KNOWLEDGE:  { text: 'text-cat-knowledge',  dot: 'bg-cat-knowledge shadow-[0_0_8px_var(--color-cat-knowledge)]' },
+  QNA:        { text: 'text-cat-qna',        dot: 'bg-cat-qna shadow-[0_0_8px_var(--color-cat-qna)]' },
 }
 
 interface PostFile {
@@ -342,7 +343,7 @@ export default function BlogDetailPage() {
     } catch {}
   }
 
-  const color = post ? CATEGORY_COLOR[post.category] : CATEGORY_COLOR.KNOWLEDGE
+  const catStyle = post ? CATEGORY_STYLE[post.category] ?? CATEGORY_STYLE.KNOWLEDGE : CATEGORY_STYLE.KNOWLEDGE
 
   if (loading) {
     return (
@@ -386,16 +387,14 @@ export default function BlogDetailPage() {
       <div className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 gap-1.5 text-[13px] mt-40 rounded-t-[100px]"
         style={{ background: 'rgba(0, 65, 239, 0.4)' }}
       >
-        <Link
-          href="/blog"
-          style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
-        >
-          Blog
-        </Link>
-        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <span style={{ color: '#fff' }}>게시글 상세페이지</span>
+        {/* 현재 위치를 터미널 경로처럼 보여준다 (글쓰기 화면의 ~/blog/write 와 같은 형식).
+            마지막 칸은 글 번호 대신 제목 — 길면 말줄임 */}
+        <nav aria-label="현재 위치" className="flex min-w-0 items-baseline font-mono tracking-[0.02em]">
+          <span className="shrink-0 text-fg-faint">~/</span>
+          <Link href="/blog" className="shrink-0 text-fg-subtle transition-colors hover:text-white">blog</Link>
+          <span className="shrink-0 text-fg-faint">/</span>
+          <span aria-current="page" className="truncate text-white">{post.title}</span>
+        </nav>
       </div>
 
       {/* ── Content ─────────────────────────────────── */}
@@ -404,11 +403,8 @@ export default function BlogDetailPage() {
 
           {/* Category badge + pin */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            <span style={{
-              fontSize: '12px', fontWeight: 600,
-              color: color.text, border: `1px solid ${color.border}`, background: color.bg,
-              borderRadius: '100px', padding: '3px 14px',
-            }}>
+            <span className={`inline-flex items-center gap-2 text-[13px] font-medium ${catStyle.text}`}>
+              <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${catStyle.dot}`} />
               {CATEGORY_LABEL[post.category] ?? post.category}
             </span>
             {post.isFeatured && (

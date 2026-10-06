@@ -126,7 +126,7 @@ export default function RulesSection() {
   }
 
   return (
-    <section className="pb-28 px-[5vw]">
+    <section className="pb-40 px-[5vw]">
       <div className="max-w-3xl mx-auto">
 
         {/* Title badge */}

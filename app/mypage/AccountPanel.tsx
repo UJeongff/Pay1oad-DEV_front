@@ -22,17 +22,18 @@ type Props = {
   onLoggedOut: () => void
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', boxSizing: 'border-box', height: '42px', padding: '0 14px',
-  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-  borderRadius: '8px', color: '#fff', fontSize: '14px', outline: 'none',
-}
-const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.45)', marginBottom: '6px',
-}
-const cardStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: '14px', padding: '24px', marginBottom: '20px',
+const CARD = 'rounded-xl bg-surface border border-line p-6'
+const CARD_TITLE = 'text-[15px] font-bold mb-1'
+const CARD_DESC = 'text-fg-subtle text-xs leading-relaxed mb-5'
+const LABEL = 'block text-xs text-fg-subtle mb-1.5'
+const FIELD_ERROR = 'text-danger text-xs mt-1.5'
+const OUTLINE_BUTTON =
+  'px-5 py-2.5 rounded-lg text-[13px] font-semibold border transition-colors'
+
+function inputClass(hasError: boolean) {
+  return `w-full h-[42px] px-3.5 rounded-lg text-sm text-white bg-surface-raised border outline-none transition-colors placeholder:text-fg-faint ${
+    hasError ? 'border-danger' : 'border-line focus:border-brand'
+  }`
 }
 
 export default function AccountPanel({ nickname, department, email, onUpdated, onLoggedOut }: Props) {
@@ -49,6 +50,7 @@ export default function AccountPanel({ nickname, department, email, onUpdated, o
   const [leaving, setLeaving] = useState(false)
 
   const changed = form.nickname !== nickname || form.department !== department
+  const leaveReady = leaveConfirm.trim() === '탈퇴'
 
   async function handleSave() {
     if (!changed) return
@@ -106,58 +108,59 @@ export default function AccountPanel({ nickname, department, email, onUpdated, o
   }
 
   return (
-    <div style={{ maxWidth: '520px' }}>
+    // 넓은 화면: 왼쪽 프로필 / 오른쪽 비밀번호·탈퇴. 좁은 화면에선 한 줄로 쌓인다
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)] items-start">
       {/* ── 프로필 ── */}
-      <div style={cardStyle}>
-        <h3 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: '0 0 4px' }}>프로필</h3>
-        <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', margin: '0 0 20px' }}>
-          닉네임과 학과를 바꿀 수 있습니다.
-        </p>
+      <section className={CARD}>
+        <h3 className={`${CARD_TITLE} text-white`}>프로필</h3>
+        <p className={CARD_DESC}>닉네임과 학과를 바꿀 수 있습니다.</p>
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={labelStyle}>이메일</label>
-          <input value={email} disabled style={{ ...inputStyle, opacity: 0.45, cursor: 'not-allowed' }} />
-          <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px', margin: '6px 0 0' }}>
+        <div className="mb-4">
+          <label className={LABEL}>이메일</label>
+          <input value={email} disabled className={`${inputClass(false)} text-fg-subtle cursor-not-allowed`} />
+          <p className="text-fg-subtle text-[11px] mt-1.5">
             이메일은 이 화면에서 바꿀 수 없습니다. 변경이 필요하면 운영진에게 문의해주세요.
           </p>
         </div>
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={labelStyle}>닉네임</label>
-          <input
-            value={form.nickname}
-            onChange={e => setForm(f => ({ ...f, nickname: e.target.value }))}
-            style={{ ...inputStyle, borderColor: fieldErrors.nickname ? 'rgba(255,60,60,0.85)' : 'rgba(255,255,255,0.12)' }}
-          />
-          {fieldErrors.nickname && <p style={{ color: '#f87171', fontSize: '12px', margin: '6px 0 0' }}>{fieldErrors.nickname}</p>}
-        </div>
+        <div className="grid gap-4 sm:grid-cols-2 mb-4">
+          <div>
+            <label className={LABEL}>닉네임</label>
+            <input
+              value={form.nickname}
+              onChange={e => setForm(f => ({ ...f, nickname: e.target.value }))}
+              className={inputClass(!!fieldErrors.nickname)}
+            />
+            {fieldErrors.nickname && <p className={FIELD_ERROR}>{fieldErrors.nickname}</p>}
+          </div>
 
-        <div style={{ marginBottom: '16px' }}>
-          <label style={labelStyle}>학과</label>
-          <input
-            value={form.department}
-            onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
-            style={{ ...inputStyle, borderColor: fieldErrors.department ? 'rgba(255,60,60,0.85)' : 'rgba(255,255,255,0.12)' }}
-          />
-          {fieldErrors.department && <p style={{ color: '#f87171', fontSize: '12px', margin: '6px 0 0' }}>{fieldErrors.department}</p>}
+          <div>
+            <label className={LABEL}>학과</label>
+            <input
+              value={form.department}
+              onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
+              className={inputClass(!!fieldErrors.department)}
+            />
+            {fieldErrors.department && <p className={FIELD_ERROR}>{fieldErrors.department}</p>}
+          </div>
         </div>
 
         {/* 서버가 현재 비밀번호 재인증을 요구한다 (도용된 세션으로 프로필이 바뀌는 것을 막기 위해) */}
-        <div style={{ marginBottom: '18px' }}>
-          <label style={labelStyle}>현재 비밀번호</label>
+        <div className="mb-5">
+          <label className={LABEL}>현재 비밀번호</label>
           <input
             type="password"
             value={form.currentPassword}
             onChange={e => setForm(f => ({ ...f, currentPassword: e.target.value }))}
             placeholder="본인 확인을 위해 필요합니다"
             autoComplete="current-password"
-            style={{ ...inputStyle, borderColor: fieldErrors.currentPassword ? 'rgba(255,60,60,0.85)' : 'rgba(255,255,255,0.12)' }}
+            className={inputClass(!!fieldErrors.currentPassword)}
           />
-          {fieldErrors.currentPassword && <p style={{ color: '#f87171', fontSize: '12px', margin: '6px 0 0' }}>{fieldErrors.currentPassword}</p>}
+          {fieldErrors.currentPassword && <p className={FIELD_ERROR}>{fieldErrors.currentPassword}</p>}
         </div>
 
         {message && (
-          <p style={{ fontSize: '12px', margin: '0 0 14px', color: message.kind === 'ok' ? '#4ade80' : '#f87171' }}>
+          <p className={`text-xs mb-3.5 ${message.kind === 'ok' ? 'text-status-live-text' : 'text-danger'}`}>
             {message.text}
           </p>
         )}
@@ -165,93 +168,74 @@ export default function AccountPanel({ nickname, department, email, onUpdated, o
         <button
           onClick={handleSave}
           disabled={saving || !changed}
-          style={{
-            padding: '9px 20px', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: 600,
-            background: changed ? '#1C5AFF' : 'rgba(255,255,255,0.08)',
-            color: changed ? '#fff' : 'rgba(255,255,255,0.35)',
-            cursor: saving || !changed ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
-          }}
+          className={`px-5 py-2.5 rounded-lg text-[13px] font-semibold transition-opacity ${
+            changed ? 'bg-brand text-white' : 'bg-surface-raised text-fg-faint cursor-not-allowed'
+          } ${saving ? 'opacity-60 cursor-not-allowed' : ''}`}
         >
           {saving ? '저장 중...' : '변경사항 저장'}
         </button>
-      </div>
+      </section>
 
-      {/* ── 비밀번호 ── */}
-      <div style={cardStyle}>
-        <h3 style={{ color: '#fff', fontSize: '15px', fontWeight: 700, margin: '0 0 4px' }}>비밀번호</h3>
-        <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', margin: '0 0 16px', lineHeight: 1.6 }}>
-          비밀번호는 가입한 이메일로 재설정 링크를 받아 바꿉니다.
-        </p>
-        <button
-          onClick={() => router.push('/forgot-password')}
-          style={{
-            padding: '9px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-            background: 'transparent', border: '1px solid rgba(255,255,255,0.18)',
-            color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
-          }}
-        >
-          비밀번호 재설정 메일 받기
-        </button>
-      </div>
-
-      {/* ── 탈퇴 ── */}
-      <div style={{ ...cardStyle, border: '1px solid rgba(239,68,68,0.25)' }}>
-        <h3 style={{ color: '#fca5a5', fontSize: '15px', fontWeight: 700, margin: '0 0 4px' }}>회원 탈퇴</h3>
-        <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', margin: '0 0 16px', lineHeight: 1.6 }}>
-          탈퇴하면 계정이 비활성화되고 참여 중인 스터디·프로젝트에서 빠집니다.
-          작성한 글과 댓글은 남습니다. 팀장으로 있는 팀이 있으면 먼저 위임해야 합니다.
-        </p>
-
-        {!leaveOpen ? (
+      <div className="grid gap-5">
+        {/* ── 비밀번호 ── */}
+        <section className={CARD}>
+          <h3 className={`${CARD_TITLE} text-white`}>비밀번호</h3>
+          <p className={CARD_DESC}>비밀번호는 가입한 이메일로 재설정 링크를 받아 바꿉니다.</p>
           <button
-            onClick={() => { setLeaveOpen(true); setLeaveError(''); setLeaveConfirm('') }}
-            style={{
-              padding: '9px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-              background: 'transparent', border: '1px solid rgba(239,68,68,0.5)',
-              color: '#f87171', cursor: 'pointer',
-            }}
+            onClick={() => router.push('/forgot-password')}
+            className={`${OUTLINE_BUTTON} text-fg-muted border-line-strong hover:text-white hover:bg-surface-raised`}
           >
-            탈퇴하기
+            비밀번호 재설정 메일 받기
           </button>
-        ) : (
-          <div>
-            <label style={labelStyle}>
-              정말 탈퇴하려면 <strong style={{ color: '#fca5a5' }}>탈퇴</strong> 를 입력해주세요
-            </label>
-            <input
-              value={leaveConfirm}
-              onChange={e => setLeaveConfirm(e.target.value)}
-              placeholder="탈퇴"
-              style={{ ...inputStyle, marginBottom: '12px' }}
-            />
-            {leaveError && <p style={{ color: '#f87171', fontSize: '12px', margin: '0 0 12px' }}>{leaveError}</p>}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => setLeaveOpen(false)}
-                style={{
-                  padding: '9px 18px', borderRadius: '8px', fontSize: '13px',
-                  background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-                  color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
-                }}
-              >
-                취소
-              </button>
-              <button
-                onClick={handleLeave}
-                disabled={leaving || leaveConfirm.trim() !== '탈퇴'}
-                style={{
-                  padding: '9px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, border: 'none',
-                  background: leaveConfirm.trim() === '탈퇴' ? 'rgba(239,68,68,0.85)' : 'rgba(255,255,255,0.08)',
-                  color: leaveConfirm.trim() === '탈퇴' ? '#fff' : 'rgba(255,255,255,0.35)',
-                  cursor: leaving || leaveConfirm.trim() !== '탈퇴' ? 'not-allowed' : 'pointer',
-                  opacity: leaving ? 0.6 : 1,
-                }}
-              >
-                {leaving ? '처리 중...' : '탈퇴하기'}
-              </button>
+        </section>
+
+        {/* ── 탈퇴 ── */}
+        <section className={`${CARD} border-danger/30`}>
+          <h3 className={`${CARD_TITLE} text-danger`}>회원 탈퇴</h3>
+          <p className={CARD_DESC}>
+            탈퇴하면 계정이 비활성화되고 참여 중인 스터디·프로젝트에서 빠집니다.
+            작성한 글과 댓글은 남습니다. 팀장으로 있는 팀이 있으면 먼저 위임해야 합니다.
+          </p>
+
+          {!leaveOpen ? (
+            <button
+              onClick={() => { setLeaveOpen(true); setLeaveError(''); setLeaveConfirm('') }}
+              className={`${OUTLINE_BUTTON} text-danger border-danger/50 hover:bg-danger/10`}
+            >
+              탈퇴하기
+            </button>
+          ) : (
+            <div>
+              <label className={LABEL}>
+                정말 탈퇴하려면 <strong className="text-danger">탈퇴</strong> 를 입력해주세요
+              </label>
+              <input
+                value={leaveConfirm}
+                onChange={e => setLeaveConfirm(e.target.value)}
+                placeholder="탈퇴"
+                className={`${inputClass(false)} mb-3`}
+              />
+              {leaveError && <p className="text-danger text-xs mb-3">{leaveError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setLeaveOpen(false)}
+                  className={`${OUTLINE_BUTTON} font-normal text-fg-subtle border-line hover:text-white hover:bg-surface-raised`}
+                >
+                  취소
+                </button>
+                <button
+                  onClick={handleLeave}
+                  disabled={leaving || !leaveReady}
+                  className={`px-5 py-2.5 rounded-lg text-[13px] font-semibold transition-colors ${
+                    leaveReady ? 'bg-danger/85 hover:bg-danger text-white' : 'bg-surface-raised text-fg-faint cursor-not-allowed'
+                  } ${leaving ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {leaving ? '처리 중...' : '탈퇴하기'}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </section>
       </div>
     </div>
   )

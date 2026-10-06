@@ -81,7 +81,7 @@ export default function AboutIntro({ applyUrl }: { applyUrl: string | null }) {
   const archivo = { fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif" }
 
   return (
-    <section className="py-28 px-[5vw]">
+    <section className="py-40 px-[5vw]">
       <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-18 items-center">
 
         {/* 사전 카드 */}

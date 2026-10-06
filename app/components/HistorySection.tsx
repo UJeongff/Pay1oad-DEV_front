@@ -291,7 +291,7 @@ export default function HistorySection() {
   // ── 렌더 가드 ─────────────────────────────────────────
   if (loading || years.length === 0 || selectedYear == null) {
     return (
-      <section className="pb-28 px-[5vw]">
+      <section className="pb-40 px-[5vw]">
         <div className="max-w-3xl mx-auto">
           <HistoryTitle />
           <p className="text-center text-fg-faint text-sm py-16">
@@ -305,7 +305,7 @@ export default function HistorySection() {
   const data = yearData[selectedYear] ?? EMPTY_YEAR
 
   return (
-    <section className="pb-28 px-[5vw]">
+    <section className="pb-40 px-[5vw]">
       <div className="max-w-3xl mx-auto">
 
         <HistoryTitle />

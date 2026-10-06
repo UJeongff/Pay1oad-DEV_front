@@ -1,30 +1,18 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { mapServerErrors, summarize } from '@/app/lib/formErrors'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthContext } from '@/app/context/AuthContext'
+import {
+  AuthShell, StepIndicator, Field, TextInput, PasswordInput, ActionBtn,
+  GenerationSelect, PolicyList, AgreeCheckbox, PRIMARY_BUTTON,
+} from '@/app/components/AuthForm'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
-// 1기 = 2018. 현재 년도 기준으로 최고 기수 자동 산출 (2027년 → 10기, 2028년 → 11기 ...)
-const GENERATION_OPTIONS = (() => {
-  const maxGen = Math.max(1, new Date().getFullYear() - 2017)
-  return Array.from({ length: maxGen }, (_, i) => {
-    const gen = maxGen - i
-    const year = 2017 + gen
-    return { value: gen, label: `${year}년 - ${gen}기` }
-  })
-})()
-
-const POLICIES = [
-  { label: '개인정보 처리방침', href: '/policy/privacy-policy', external: false },
-  { label: '개인정보 수집 및 동의', href: '/policy/personal-info-consent', external: false },
-  { label: '마케팅 및 수신 동의', href: '/policy/marketing-consent', external: false },
-  { label: '초상권', href: '/policy/portrait-rights', external: false },
-]
+const STEPS = ['정보 입력', '이메일 인증', '가입 완료']
 
 // 서버가 쓰는 필드명 → 이 폼의 필드명 (generation 만 이름이 다르다)
 const SERVER_FIELD_MAP = {
@@ -38,12 +26,6 @@ const SERVER_CODE_MAP = {
   OAUTH_ACCOUNT_EXISTS: 'email',
   NICKNAME_ALREADY_EXISTS: 'nickname',
 } as const
-
-const RED_BORDER = '1px solid rgba(255,60,60,0.85)'
-const RED_SHADOW = '0 0 8px rgba(255,40,40,0.45)'
-const DEFAULT_BORDER = '1px solid rgba(255,255,255,0.12)'
-const GREEN_BORDER = '1px solid rgba(60,200,100,0.7)'
-const GREEN_SHADOW = '0 0 8px rgba(40,200,80,0.35)'
 
 type FieldErrors = {
   name: string
@@ -61,53 +43,15 @@ const EMPTY_ERRORS: FieldErrors = {
   department: '', studentId: '', joinYear: '', agreed: '',
 }
 
-const baseInput: React.CSSProperties = {
-  height: '42px',
-  padding: '0 16px',
-  background: 'rgba(255,255,255,0.07)',
-  borderRadius: '6px',
-  color: 'white',
-  fontSize: '14px',
-  outline: 'none',
-  width: '100%',
-  transition: 'border 0.15s, box-shadow 0.15s',
-}
+type Msg = { tone: 'ok' | 'error'; text: string } | null
 
-function iStyle(hasError: boolean, isSuccess = false): React.CSSProperties {
-  if (isSuccess) return { ...baseInput, border: GREEN_BORDER, boxShadow: GREEN_SHADOW }
-  return {
-    ...baseInput,
-    border: hasError ? RED_BORDER : DEFAULT_BORDER,
-    boxShadow: hasError ? RED_SHADOW : 'none',
-  }
-}
+// 인증을 마친 뒤 어디로 가는지 — 완료 화면의 안내 문구도 이걸로 정한다
+type NextStop = 'home' | 'pending' | 'login'
 
-function ActionBtn({
-  onClick, disabled, loading, children,
-}: { onClick: () => void; disabled: boolean; loading: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled || loading}
-      style={{
-        height: '42px',
-        padding: '0 14px',
-        background: disabled ? 'rgba(255,255,255,0.05)' : 'rgba(0,65,239,0.85)',
-        border: '1px solid rgba(255,255,255,0.12)',
-        borderRadius: '6px',
-        color: disabled ? 'rgba(255,255,255,0.3)' : 'white',
-        fontSize: '12px',
-        fontWeight: 600,
-        cursor: disabled || loading ? 'not-allowed' : 'pointer',
-        whiteSpace: 'nowrap',
-        flexShrink: 0,
-        transition: 'background 0.15s',
-      }}
-    >
-      {loading ? '...' : children}
-    </button>
-  )
+const NEXT_STOP_TEXT: Record<NextStop, string> = {
+  home: '바로 로그인해서 홈으로 이동합니다.',
+  pending: '잠시 후 운영진 승인 안내 페이지로 이동합니다.',
+  login: '잠시 후 로그인 페이지로 이동합니다.',
 }
 
 export default function RegisterPage() {
@@ -118,7 +62,6 @@ export default function RegisterPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [nickname, setNickname] = useState('')
   const [department, setDepartment] = useState('')
   const [studentId, setStudentId] = useState('')
@@ -129,9 +72,10 @@ export default function RegisterPage() {
   const [signupDone, setSignupDone] = useState(false)
   const [emailCode, setEmailCode] = useState('')
   const [emailVerifying, setEmailVerifying] = useState(false)
-  const [emailMsg, setEmailMsg] = useState('')
-  const [emailVerified, setEmailVerified] = useState(false)
+  const [emailMsg, setEmailMsg] = useState<Msg>(null)
+  const [nextStop, setNextStop] = useState<NextStop | null>(null)
   const [emailResending, setEmailResending] = useState(false)
+  const emailVerified = nextStop !== null
 
   // nickname check
   const [nicknameAvailable, setNicknameAvailable] = useState<boolean | null>(null)
@@ -237,7 +181,11 @@ export default function RegisterPage() {
       )
       if (confirmed) {
         window.removeEventListener('beforeunload', handleBeforeUnload)
-        router.push('/register')
+        // 이미 /register 라서 router.push('/register') 로는 화면이 바뀌지 않는다.
+        // 상태를 되돌려 입력 화면으로 돌아간다 (입력했던 값은 그대로 남는다).
+        setSignupDone(false)
+        setEmailCode('')
+        setEmailMsg(null)
       } else {
         window.history.pushState(null, '', window.location.href)
       }
@@ -248,13 +196,13 @@ export default function RegisterPage() {
       window.removeEventListener('beforeunload', handleBeforeUnload)
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [signupDone, emailVerified, handleBeforeUnload, router])
+  }, [signupDone, emailVerified, handleBeforeUnload])
 
 
   // ── Email verification (after signup) ──────────────────────────
   async function resendEmailCode() {
     setEmailResending(true)
-    setEmailMsg('')
+    setEmailMsg(null)
     try {
       const res = await fetch(
         `${API_URL}/v1/auth/email/resend?email=${encodeURIComponent(email)}`,
@@ -262,41 +210,45 @@ export default function RegisterPage() {
       )
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        setEmailMsg(data?.message ?? '재발송에 실패했습니다.')
+        setEmailMsg({ tone: 'error', text: data?.message ?? '재발송에 실패했습니다.' })
         return
       }
-      setEmailMsg('인증 코드가 재발송되었습니다.')
+      setEmailMsg({ tone: 'ok', text: '인증 코드가 재발송되었습니다.' })
     } catch {
-      setEmailMsg('서버에 연결할 수 없습니다.')
+      setEmailMsg({ tone: 'error', text: '서버에 연결할 수 없습니다.' })
     } finally {
       setEmailResending(false)
     }
   }
 
   async function verifyEmailCode() {
-    if (!emailCode.trim()) return
+    if (emailCode.length !== 6) return
     setEmailVerifying(true)
-    setEmailMsg('')
+    setEmailMsg(null)
     try {
       const res = await fetch(
         `${API_URL}/v1/auth/email/verify?email=${encodeURIComponent(email)}&code=${encodeURIComponent(emailCode)}`,
         { method: 'POST' },
       )
+      const data = await res.json().catch(() => null)
       if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        setEmailMsg(data?.message ?? '인증 코드가 올바르지 않습니다.')
+        setEmailMsg({ tone: 'error', text: data?.message ?? '인증 코드가 올바르지 않습니다.' })
         return
       }
-      setEmailVerified(true)
       sessionStorage.removeItem('register_draft')
 
-      // 초대 코드로 가입한 경우만 자동 승인 → 자동 로그인 시도
-      // 초대 없거나 무효였으면 승인 대기 페이지로
-      const isAutoApproved = inviteCode && inviteState === 'valid'
-      if (!isAutoApproved) {
+      // 바로 로그인할지는 서버가 인증하는 순간 초대 코드를 다시 확인해 정한 승인 상태로 따른다.
+      // 화면이 미리 확인한 초대 코드 상태는 그사이 만료됐거나 확인에 실패했을 수 있다.
+      // (응답에 승인 상태가 없는 이전 서버라면 그 미리 확인한 상태로 대신한다)
+      const status = data?.data?.approvalStatus
+      const approved = status ? status === 'APPROVED' : inviteState === 'valid'
+      if (!approved) {
+        setNextStop('pending')
         setTimeout(() => router.push('/register/pending'), 1200)
         return
       }
+
+      setNextStop('home')
       try {
         const loginRes = await fetch(`${API_URL}/v1/auth/login`, {
           method: 'POST',
@@ -310,9 +262,10 @@ export default function RegisterPage() {
           return
         }
       } catch { /* 로그인 실패 시 로그인 페이지로 폴백 */ }
+      setNextStop('login')
       setTimeout(() => router.push('/login'), 2000)
     } catch {
-      setEmailMsg('서버에 연결할 수 없습니다.')
+      setEmailMsg({ tone: 'error', text: '서버에 연결할 수 없습니다.' })
     } finally {
       setEmailVerifying(false)
     }
@@ -409,145 +362,120 @@ export default function RegisterPage() {
     }
   }
 
+  const nicknameOk = nicknameAvailable === true && nickname === checkedNickname
+  const inviteWarn = inviteState === 'invalid' || inviteState === 'error'
+
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <AuthShell>
+      <div className="mx-auto flex w-full max-w-[860px] flex-col px-5 sm:px-8">
+        <StepIndicator steps={STEPS} current={emailVerified ? STEPS.length : signupDone ? 1 : 0} />
 
-      {/* Background */}
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage: 'url(/login_background.jpg)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      />
-
-      {/* Content */}
-      <div className="relative z-10 flex items-center justify-center min-h-screen pt-10 px-[8.5vw]">
-
-        {/* Card */}
-        <div
-          className="w-full flex flex-col items-center py-8 relative overflow-hidden"
-          style={{
-            maxWidth: '1196px',
-            background: 'rgba(0,0,0,0.50)',
-            backdropFilter: 'blur(29.1px)',
-            WebkitBackdropFilter: 'blur(29.1px)',
-            borderRadius: '40px',
-            border: '1px solid rgba(255,255,255,0.07)',
-          }}
-        >
-          {/* Logo watermark */}
-          <Image
-            src="/logo.png"
-            alt=""
-            width={570}
-            height={592}
-            className="select-none pointer-events-none absolute"
-            style={{ opacity: 0.03, top: '-10px', left: '314px' }}
-          />
-
-          <div className="w-full px-4 sm:px-6 flex flex-col" style={{ maxWidth: '860px', minHeight: '480px', justifyContent: signupDone ? 'center' : 'flex-start' }}>
-
-            {signupDone ? (
-              /* ── 이메일 인증 화면 ── */
-              <div className="flex flex-col items-center gap-6 py-8">
-                <div
-                  className="w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300"
-                  style={emailVerified
-                    ? { background: 'rgba(40,200,80,0.15)', border: '1px solid rgba(40,200,80,0.4)' }
-                    : { background: 'rgba(0,65,239,0.15)', border: '1px solid rgba(0,65,239,0.3)' }
-                  }
+        {signupDone ? (
+          /* ── 이메일 인증 화면 ── */
+          <div className="flex min-h-[420px] flex-col items-center justify-center gap-6 py-8">
+            <div
+              className={`flex h-14 w-14 items-center justify-center rounded-full border transition-all duration-300 ${
+                emailVerified ? 'border-status-live/40 bg-status-live/15' : 'border-brand/40 bg-brand/15'
+              }`}
+            >
+              {emailVerified ? (
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-status-live" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : (
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#6E95FF]" aria-hidden="true">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                  <polyline points="22,6 12,13 2,6" />
+                </svg>
+              )}
+            </div>
+            <div className="text-center" aria-live="polite">
+              {nextStop ? (
+                <>
+                  <h2 className="mb-2 text-2xl font-bold text-white">인증 완료</h2>
+                  <p className="text-sm leading-relaxed text-fg-subtle">
+                    이메일 인증이 완료되었습니다.<br />
+                    <span className="text-xs text-fg-faint">{NEXT_STOP_TEXT[nextStop]}</span>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="mb-2 text-2xl font-bold text-white">이메일 인증</h2>
+                  <p className="text-sm leading-relaxed text-fg-subtle">
+                    <span className="font-medium text-fg-muted">{email}</span>로<br />
+                    인증 코드 6자리를 보내드렸습니다.
+                  </p>
+                </>
+              )}
+            </div>
+            {!emailVerified && (
+              <div className="flex w-full max-w-sm flex-col gap-2">
+                <form
+                  className="flex gap-2"
+                  onSubmit={(e) => { e.preventDefault(); verifyEmailCode() }}
                 >
-                  {emailVerified ? (
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  ) : (
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#4d8fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                      <polyline points="22,6 12,13 2,6" />
-                    </svg>
-                  )}
-                </div>
-                <div className="text-center">
-                  {emailVerified ? (
-                    <>
-                      <h2 className="text-white text-2xl font-bold mb-2">인증 완료</h2>
-                      <p className="text-white/50 text-sm leading-relaxed">
-                        이메일 인증이 완료되었습니다.<br />
-                        <span className="text-white/40 text-xs">잠시 후 로그인 페이지로 이동합니다.</span>
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <h2 className="text-white text-2xl font-bold mb-2">이메일 인증</h2>
-                      <p className="text-white/50 text-sm leading-relaxed">
-                        <span className="text-white/70 font-medium">{email}</span>로<br />
-                        인증 코드 6자리를 보내드렸습니다.
-                      </p>
-                    </>
-                  )}
-                </div>
-                {!emailVerified && (
-                  <div className="flex flex-col gap-2 w-full max-w-sm">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="인증 코드 6자리 입력"
-                        value={emailCode}
-                        onChange={(e) => { setEmailCode(e.target.value); setEmailMsg('') }}
-                        style={{
-                          ...baseInput,
-                          border: DEFAULT_BORDER,
-                          flex: 1,
-                        }}
-                        className="placeholder-white/30 focus:border-blue-500 transition-colors"
-                      />
-                      <ActionBtn onClick={verifyEmailCode} disabled={!emailCode.trim()} loading={emailVerifying}>
-                        확인
-                      </ActionBtn>
-                    </div>
-                    {emailMsg && <p className="text-red-400 text-xs">{emailMsg}</p>}
-                    <button
-                      type="button"
-                      onClick={resendEmailCode}
-                      disabled={emailResending}
-                      className="text-white/40 text-xs hover:text-white/70 transition-colors mt-1 self-start disabled:opacity-40"
-                    >
-                      {emailResending ? '재발송 중...' : '인증 코드 재발송'}
-                    </button>
-                  </div>
+                  <TextInput
+                    type="text"
+                    aria-label="인증 코드 6자리"
+                    placeholder="인증 코드 6자리"
+                    // 숫자 키패드 + 문자로 받은 코드 자동 입력
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={emailCode}
+                    onChange={(e) => { setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setEmailMsg(null) }}
+                    aria-invalid={emailMsg?.tone === 'error' ? true : undefined}
+                    aria-describedby={emailMsg ? 'email-code-msg' : undefined}
+                    className="flex-1 font-mono tracking-[0.3em] placeholder:tracking-normal placeholder:font-sans"
+                  />
+                  <ActionBtn type="submit" disabled={emailCode.length !== 6} loading={emailVerifying}>
+                    확인
+                  </ActionBtn>
+                </form>
+                {emailMsg && (
+                  <p
+                    id="email-code-msg"
+                    role={emailMsg.tone === 'ok' ? 'status' : 'alert'}
+                    className={`text-xs ${emailMsg.tone === 'ok' ? 'text-status-live-text' : 'text-danger'}`}
+                  >
+                    {emailMsg.text}
+                  </p>
                 )}
+                <button
+                  type="button"
+                  onClick={resendEmailCode}
+                  disabled={emailResending}
+                  className="mt-1 self-start cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg-muted disabled:cursor-wait disabled:opacity-40"
+                >
+                  {emailResending ? '재발송 중...' : '인증 코드 재발송'}
+                </button>
               </div>
-            ) : (
-            <>
-            <h1 className="text-white text-3xl font-bold mb-8">Sign up</h1>
+            )}
+          </div>
+        ) : (
+          <>
+            <h1 className="mt-6 mb-8 text-3xl font-bold text-white">회원가입</h1>
 
             {/* 초대 코드 배너 */}
             {inviteCode && (
-              <div style={{
-                marginBottom: '20px', padding: '12px 16px', borderRadius: '8px',
-                background: inviteState === 'valid'
-                  ? 'rgba(34,197,94,0.08)'
-                  : (inviteState === 'invalid' || inviteState === 'error')
-                    ? 'rgba(250,204,21,0.08)'
-                    : 'rgba(255,255,255,0.05)',
-                border: inviteState === 'valid'
-                  ? '1px solid rgba(34,197,94,0.35)'
-                  : (inviteState === 'invalid' || inviteState === 'error')
-                    ? '1px solid rgba(250,204,21,0.35)'
-                    : '1px solid rgba(255,255,255,0.1)',
-                display: 'flex', alignItems: 'flex-start', gap: '10px',
-              }}>
-                <span style={{ fontSize: '16px', lineHeight: 1 }}>
-                  {inviteState === 'valid' ? '🔑' : (inviteState === 'invalid' || inviteState === 'error') ? '⚠️' : '⌛'}
+              <div
+                className={`mb-5 flex items-start gap-2.5 rounded-xl border px-4 py-3 ${
+                  inviteState === 'valid'
+                    ? 'border-status-live/35 bg-status-live/10'
+                    : inviteWarn
+                      ? 'border-status-soon/35 bg-status-soon/10'
+                      : 'border-line bg-surface-raised'
+                }`}
+              >
+                <span className="text-base leading-none" aria-hidden="true">
+                  {inviteState === 'valid' ? '🔑' : inviteWarn ? '⚠️' : '⌛'}
                 </span>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>
+                <div className="text-[13px] leading-normal text-fg-muted" aria-live="polite">
                   {inviteState === 'valid' && (
                     <>
                       <strong>초대 코드가 확인되었습니다.</strong><br />
-                      <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
+                      <span className="text-xs text-fg-subtle">
                         가입 완료 시 별도 승인 없이 바로 로그인할 수 있습니다.
                       </span>
                     </>
@@ -555,7 +483,7 @@ export default function RegisterPage() {
                   {inviteState === 'invalid' && (
                     <>
                       <strong>초대 코드가 만료되었거나 유효하지 않습니다.</strong><br />
-                      <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
+                      <span className="text-xs text-fg-subtle">
                         일반 가입으로 진행되며, 가입 후 관리자 승인이 필요합니다.
                       </span>
                     </>
@@ -563,7 +491,7 @@ export default function RegisterPage() {
                   {inviteState === 'error' && (
                     <>
                       <strong>초대 코드를 확인하지 못했습니다.</strong><br />
-                      <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
+                      <span className="text-xs text-fg-subtle">
                         일시적인 네트워크 문제일 수 있습니다. 코드는 가입할 때 서버에서 다시 확인하므로
                         그대로 진행하셔도 됩니다.
                       </span>
@@ -571,11 +499,7 @@ export default function RegisterPage() {
                       <button
                         type="button"
                         onClick={() => { setInviteState('unchecked'); setInviteRetry(n => n + 1) }}
-                        style={{
-                          marginTop: '6px', padding: '4px 10px', borderRadius: '6px', fontSize: '12px',
-                          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-                          color: 'rgba(255,255,255,0.8)', cursor: 'pointer',
-                        }}
+                        className="mt-1.5 cursor-pointer rounded-lg border border-line-strong bg-surface-raised px-2.5 py-1 text-xs text-fg-muted transition-colors hover:text-white"
                       >
                         다시 확인
                       </button>
@@ -587,356 +511,146 @@ export default function RegisterPage() {
             )}
 
             <form onSubmit={handleSubmit} noValidate>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">
+              <div className="grid grid-cols-1 gap-x-10 gap-y-4 md:grid-cols-2">
 
                 {/* ── Left column ── */}
                 <div className="flex flex-col gap-4">
-
-                  {/* Name */}
-                  <Field label="Name" error={fieldErrors.name}>
-                    <input
-                      type="text"
-                      placeholder="홍길동"
-                      value={name}
-                      onChange={(e) => { setName(e.target.value); clearField('name') }}
-                      style={iStyle(!!fieldErrors.name)}
-                      className="placeholder-white/30 focus:border-blue-500 transition-colors"
-                    />
-                  </Field>
-
-                  {/* Email */}
-                  <Field label="Email" error={fieldErrors.email}>
-                    <input
-                      type="email"
-                      placeholder="Username@gmail.com"
-                      value={email}
-                      onChange={(e) => { setEmail(e.target.value); clearField('email') }}
-                      style={iStyle(!!fieldErrors.email)}
-                      className="placeholder-white/30 focus:border-blue-500 transition-colors"
-                    />
-                  </Field>
-
-                  {/* Password */}
-                  <Field label="Password" error={fieldErrors.password}>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="8자 이상 입력"
-                        value={password}
-                        onChange={(e) => { setPassword(e.target.value); clearField('password') }}
-                        style={{ ...iStyle(!!fieldErrors.password), paddingRight: '40px' }}
-                        className="placeholder-white/30 focus:border-blue-500 transition-colors"
+                  <Field label="이름" error={fieldErrors.name}>
+                    {(a11y) => (
+                      <TextInput
+                        {...a11y}
+                        type="text"
+                        autoComplete="name"
+                        placeholder="홍길동"
+                        value={name}
+                        onChange={(e) => { setName(e.target.value); clearField('name') }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((v) => !v)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
-                        tabIndex={-1}
-                      >
-                        {showPassword ? (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                            <line x1="1" y1="1" x2="23" y2="23" />
-                          </svg>
-                        ) : (
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                    {!fieldErrors.password && (
-                      <p className="text-white/30 text-xs mt-0.5">영문, 숫자, 특수문자 포함 8자 이상</p>
                     )}
                   </Field>
 
-                  {/* Nickname + 중복 확인 */}
-                  <Field label="Nickname" error={fieldErrors.nickname}>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="닉네임"
-                        value={nickname}
-                        onChange={(e) => {
-                          setNickname(e.target.value)
-                          clearField('nickname')
-                          setNicknameAvailable(null)
-                          setNicknameMsg('')
-                          setCheckedNickname('')
-                        }}
-                        style={iStyle(!!fieldErrors.nickname, nicknameAvailable === true && nickname === checkedNickname)}
-                        className="placeholder-white/30 focus:border-blue-500 transition-colors"
+                  <Field label="이메일" error={fieldErrors.email}>
+                    {(a11y) => (
+                      <TextInput
+                        {...a11y}
+                        type="email"
+                        autoComplete="email"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        placeholder="username@gmail.com"
+                        value={email}
+                        onChange={(e) => { setEmail(e.target.value); clearField('email') }}
                       />
-                      <ActionBtn
-                        onClick={checkNickname}
-                        disabled={!nickname.trim()}
-                        loading={nicknameChecking}
-                      >
-                        중복 확인
-                      </ActionBtn>
-                    </div>
-                    {nicknameMsg && (
-                      <p className={`text-xs mt-0.5 ${nicknameAvailable ? 'text-green-400' : 'text-red-400'}`}>
-                        {nicknameMsg}
-                      </p>
+                    )}
+                  </Field>
+
+                  <Field label="비밀번호" error={fieldErrors.password} hint="영문, 숫자, 특수문자 포함 8자 이상">
+                    {(a11y) => (
+                      <PasswordInput
+                        {...a11y}
+                        autoComplete="new-password"
+                        placeholder="8자 이상 입력"
+                        value={password}
+                        onChange={(e) => { setPassword(e.target.value); clearField('password') }}
+                      />
+                    )}
+                  </Field>
+
+                  <Field
+                    label="닉네임"
+                    error={fieldErrors.nickname}
+                    note={nicknameMsg ? { tone: nicknameAvailable ? 'ok' : 'error', text: nicknameMsg } : null}
+                  >
+                    {(a11y) => (
+                      <div className="flex gap-2">
+                        <TextInput
+                          {...a11y}
+                          type="text"
+                          autoComplete="nickname"
+                          placeholder="닉네임"
+                          value={nickname}
+                          success={nicknameOk}
+                          onChange={(e) => {
+                            setNickname(e.target.value)
+                            clearField('nickname')
+                            setNicknameAvailable(null)
+                            setNicknameMsg('')
+                            setCheckedNickname('')
+                          }}
+                        />
+                        <ActionBtn onClick={checkNickname} disabled={!nickname.trim()} loading={nicknameChecking}>
+                          중복 확인
+                        </ActionBtn>
+                      </div>
                     )}
                   </Field>
                 </div>
 
                 {/* ── Right column ── */}
                 <div className="flex flex-col gap-4">
-
-                  {/* 학과 + 학번 */}
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="학과" error={fieldErrors.department}>
-                      <input
-                        type="text"
-                        placeholder="컴퓨터공학과"
-                        value={department}
-                        onChange={(e) => { setDepartment(e.target.value); clearField('department') }}
-                        style={iStyle(!!fieldErrors.department)}
-                        className="placeholder-white/30 focus:border-blue-500 transition-colors"
-                      />
+                      {(a11y) => (
+                        <TextInput
+                          {...a11y}
+                          type="text"
+                          autoComplete="off"
+                          placeholder="컴퓨터공학과"
+                          value={department}
+                          onChange={(e) => { setDepartment(e.target.value); clearField('department') }}
+                        />
+                      )}
                     </Field>
                     <Field label="학번" error={fieldErrors.studentId}>
-                      <input
-                        type="text"
-                        placeholder="202235341"
-                        value={studentId}
-                        onChange={(e) => { setStudentId(e.target.value); clearField('studentId') }}
-                        style={iStyle(!!fieldErrors.studentId)}
-                        className="placeholder-white/30 focus:border-blue-500 transition-colors"
-                      />
+                      {(a11y) => (
+                        <TextInput
+                          {...a11y}
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          placeholder="202235341"
+                          value={studentId}
+                          onChange={(e) => { setStudentId(e.target.value); clearField('studentId') }}
+                        />
+                      )}
                     </Field>
                   </div>
 
-                  {/* 가입년도 */}
                   <Field label="동아리 가입년도" error={fieldErrors.joinYear}>
-                    <GenerationSelect
-                      value={joinYear}
-                      onChange={(v) => { setJoinYear(v); clearField('joinYear') }}
-                      hasError={!!fieldErrors.joinYear}
-                    />
+                    {(a11y) => (
+                      <GenerationSelect
+                        a11y={a11y}
+                        value={joinYear}
+                        onChange={(v) => { setJoinYear(v); clearField('joinYear') }}
+                      />
+                    )}
                   </Field>
 
-                  {/* Policy */}
-                  <Field label="정책">
-                    <div
-                      className="rounded-md p-3 flex flex-col gap-2"
-                      style={{
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.10)',
-                        minHeight: '120px',
-                      }}
-                    >
-                      {POLICIES.map(({ label, href, external }) => (
-                        <Link
-                          key={label}
-                          href={href}
-                          target={external ? '_blank' : undefined}
-                          rel={external ? 'noopener noreferrer' : undefined}
-                          className="flex items-center gap-1.5 text-xs text-white/60 hover:text-blue-300 transition-colors group"
-                        >
-                          <svg
-                            className="shrink-0 text-white/25 group-hover:text-blue-400 transition-colors"
-                            width="12" height="12" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-                          >
-                            {external ? (
-                              <>
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                                <polyline points="15 3 21 3 21 9" />
-                                <line x1="10" y1="14" x2="21" y2="3" />
-                              </>
-                            ) : (
-                              <path d="M9 18l6-6-6-6" />
-                            )}
-                          </svg>
-                          {label}
-                        </Link>
-                      ))}
-                    </div>
-                  </Field>
+                  <PolicyList />
 
-                  {/* Agree checkbox */}
-                  <label className="flex items-center gap-2 cursor-pointer select-none mt-1">
-                    <div
-                      className="w-4 h-4 rounded flex items-center justify-center shrink-0 transition-colors"
-                      style={{
-                        background: agreed ? '#0041EF' : 'rgba(255,255,255,0.07)',
-                        border: fieldErrors.agreed
-                          ? RED_BORDER
-                          : `1px solid ${agreed ? '#0041EF' : 'rgba(255,255,255,0.20)'}`,
-                        boxShadow: fieldErrors.agreed ? RED_SHADOW : 'none',
-                      }}
-                    >
-                      {agreed && (
-                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
-                          <polyline points="2 6 5 9 10 3" />
-                        </svg>
-                      )}
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={agreed}
-                      onChange={(e) => { setAgreed(e.target.checked); clearField('agreed') }}
-                      className="sr-only"
-                    />
-                    <span className="text-white/55 text-xs">위 정책을 모두 확인했습니다</span>
-                  </label>
-                  {fieldErrors.agreed && <p className="text-red-400 text-xs -mt-2">{fieldErrors.agreed}</p>}
+                  <AgreeCheckbox
+                    checked={agreed}
+                    onChange={(v) => { setAgreed(v); clearField('agreed') }}
+                    error={fieldErrors.agreed}
+                  />
 
-                  {/* API Error */}
-                  {apiError && <p className="text-red-400 text-xs">{apiError}</p>}
+                  {apiError && <p role="alert" className="text-xs text-danger">{apiError}</p>}
 
-                  {/* Submit */}
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    style={{
-                      height: '42px',
-                      background: '#0041EF',
-                      borderRadius: '3.56px',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: 'white',
-                      border: 'none',
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      opacity: loading ? 0.6 : 1,
-                      transition: 'opacity 0.2s',
-                      width: '100%',
-                    }}
-                  >
-                    {loading ? 'Processing...' : 'Sign Up'}
+                  <button type="submit" disabled={loading} className={`${PRIMARY_BUTTON} w-full`}>
+                    {loading ? '가입 중...' : '가입하기'}
                   </button>
                 </div>
               </div>
 
-              {/* Sign in link */}
-              <p className="text-center text-white/40 text-xs mt-6">
+              <p className="mt-6 text-center text-xs text-fg-faint">
                 이미 계정이 있으신가요?{' '}
-                <Link href="/login" className="text-white font-semibold hover:text-blue-300 transition-colors">
+                <Link href="/login" className="font-semibold text-white transition-colors hover:text-[#8DB0FF]">
                   로그인
                 </Link>
               </p>
             </form>
-            </>
-            )}
-          </div>
-        </div>
-
+          </>
+        )}
       </div>
-    </div>
-  )
-}
-
-function GenerationSelect({ value, onChange, hasError }: {
-  value: string
-  onChange: (v: string) => void
-  hasError: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  const selected = GENERATION_OPTIONS.find((o) => String(o.value) === value)
-
-  return (
-    <div ref={ref} style={{ position: 'relative', zIndex: open ? 50 : 'auto' }}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          height: '42px',
-          width: '100%',
-          padding: '0 16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'rgba(255,255,255,0.07)',
-          border: hasError ? '1px solid rgba(255,60,60,0.85)' : open ? '1px solid rgba(0,65,239,0.6)' : '1px solid rgba(255,255,255,0.12)',
-          borderRadius: '6px',
-          color: selected ? 'white' : 'rgba(255,255,255,0.3)',
-          fontSize: '14px',
-          cursor: 'pointer',
-          boxShadow: hasError ? '0 0 8px rgba(255,40,40,0.45)' : 'none',
-          transition: 'border 0.15s, box-shadow 0.15s',
-        }}
-      >
-        <span>{selected ? selected.label : '선택해주세요'}</span>
-        <svg
-          width="16" height="16" viewBox="0 0 24 24" fill="none"
-          stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round"
-          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
-
-      {open && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            left: 0,
-            right: 0,
-            background: 'rgba(8,10,22,0.92)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            borderRadius: '12px',
-            border: '1px solid rgba(255,255,255,0.10)',
-            overflow: 'hidden',
-            overflowY: 'auto',
-            maxHeight: '260px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-          }}
-        >
-          {GENERATION_OPTIONS.map((opt) => {
-            const isSelected = String(opt.value) === value
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => { onChange(String(opt.value)); setOpen(false) }}
-                style={{
-                  width: '100%',
-                  padding: '10px 16px',
-                  textAlign: 'left',
-                  background: isSelected ? '#0041EF' : 'transparent',
-                  color: isSelected ? 'white' : 'rgba(255,255,255,0.75)',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  border: 'none',
-                  transition: 'background 0.12s, color 0.12s',
-                }}
-                onMouseEnter={(e) => { if (!isSelected) { e.currentTarget.style.background = 'rgba(0,65,239,0.45)'; e.currentTarget.style.color = 'white' } }}
-                onMouseLeave={(e) => { if (!isSelected) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.75)' } }}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-white/60 text-xs tracking-wider">{label}</label>
-      {children}
-      {error && <p className="text-red-400 text-xs mt-0.5">{error}</p>}
-    </div>
+    </AuthShell>
   )
 }

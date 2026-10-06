@@ -1,84 +1,44 @@
-'use client'
-
 import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
+import { AuthShell, PRIMARY_BUTTON } from '@/app/components/AuthForm'
 
+// 회원가입 · 이메일 인증 화면과 같은 바탕과 카드를 써서 흐름이 끊기지 않게 한다
 export default function RegisterPendingPage() {
   return (
-    <main className="relative min-h-screen flex flex-col" style={{ background: '#040d1f' }}>
-      <div
-        className="absolute inset-x-0 top-0 pointer-events-none"
-        style={{
-          height: '60vh',
-          backgroundImage: 'url(/background.png)',
-          backgroundSize: '130%',
-          backgroundPosition: 'center top',
-          backgroundRepeat: 'no-repeat',
-          WebkitMaskImage: 'linear-gradient(to bottom, black 30%, transparent 80%)',
-          maskImage: 'linear-gradient(to bottom, black 30%, transparent 80%)',
-        }}
-      />
-
-      <div className="flex-1 flex items-center justify-center px-6 py-32">
-        <div
-          style={{
-            maxWidth: '480px', width: '100%', padding: '40px 32px',
-            borderRadius: '16px',
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            textAlign: 'center',
-          }}
-        >
-          <div
-            style={{
-              width: '64px', height: '64px', margin: '0 auto 20px',
-              borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'rgba(250,204,21,0.12)', border: '1px solid rgba(250,204,21,0.35)',
-            }}
-          >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <main className="flex min-h-screen flex-col bg-[#040d1f]">
+      <AuthShell size="narrow">
+        <div className="flex flex-col items-center text-center">
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-status-soon/35 bg-status-soon/10">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-status-soon" aria-hidden="true">
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
           </div>
 
-          <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: '12px' }}>
-            관리자 승인 대기 중
-          </h1>
-          <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.65)', lineHeight: 1.7, marginBottom: '24px' }}>
+          <p className="mb-2 font-mono text-xs tracking-[0.2em] text-status-soon-text">PENDING</p>
+          <h1 className="mb-4 text-2xl font-bold text-white sm:text-[28px]">관리자 승인 대기 중</h1>
+          <p className="mb-7 text-sm leading-7 text-fg-subtle sm:text-[15px]">
             회원가입이 접수되었습니다.<br />
             동아리 운영진의 승인이 완료되면 이메일로 알려드립니다.<br />
-            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
-              (보통 1~2일 내 처리됩니다)
-            </span>
+            <span className="text-xs text-fg-faint">(보통 1~2일 내 처리됩니다)</span>
           </p>
 
-          <div
-            style={{
-              padding: '14px 16px', marginBottom: '24px', borderRadius: '8px',
-              background: 'rgba(28,90,255,0.06)', border: '1px solid rgba(28,90,255,0.2)',
-              fontSize: '12px', color: 'rgba(255,255,255,0.55)', textAlign: 'left', lineHeight: 1.6,
-            }}
-          >
-            <strong style={{ color: '#7aa3ff', display: 'block', marginBottom: '4px' }}>💡 빠른 가입을 원하시나요?</strong>
-            운영진에게 받은 <strong style={{ color: '#fff' }}>초대 링크</strong>로 가입하면 별도 승인 없이 바로 활동할 수 있어요.
+          <div className="mb-7 flex w-full items-start gap-3 rounded-xl border border-brand/25 bg-brand/[0.06] p-4 text-left">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-[#8DB0FF]" aria-hidden="true">
+              <circle cx="7.5" cy="15.5" r="4.5" />
+              <path d="M10.7 12.3 21 2M16 7l3 3M18.5 4.5l2 2" />
+            </svg>
+            <div className="text-xs leading-relaxed text-fg-subtle">
+              <p className="mb-1 text-[13px] font-semibold text-[#8DB0FF]">빠른 가입을 원하시나요?</p>
+              운영진에게 받은 <strong className="font-semibold text-white">초대 링크</strong>로 가입하면 별도 승인 없이 바로 활동할 수 있어요.
+            </div>
           </div>
 
-          <Link
-            href="/"
-            style={{
-              display: 'inline-block', padding: '10px 24px', borderRadius: '8px',
-              background: 'rgba(0,65,239,0.85)', color: '#fff',
-              fontSize: '13px', fontWeight: 600, textDecoration: 'none',
-              transition: 'background 0.15s',
-            }}
-          >
+          <Link href="/" className={PRIMARY_BUTTON}>
             홈으로 돌아가기
           </Link>
         </div>
-      </div>
+      </AuthShell>
 
       <HomeFooter />
     </main>

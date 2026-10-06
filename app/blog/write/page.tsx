@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import DOMPurify from 'dompurify'
@@ -19,16 +19,46 @@ const sanitizeHtml = (html: string): string => DOMPurify.sanitize(html, SANITIZE
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
+// 분류 색은 목록과 같은 점 색(globals.css 의 --color-cat-*)
 const CATEGORY_OPTIONS = [
-  { value: 'ACTIVITIES', label: 'Activities', color: '#FF9193' },
-  { value: 'KNOWLEDGE', label: 'Knowledge', color: '#74FF89' },
-  { value: 'QNA', label: 'QnA', color: '#91CDFF' },
+  { value: 'ACTIVITIES', label: 'Activities', text: 'text-cat-activities', dot: 'bg-cat-activities shadow-[0_0_8px_var(--color-cat-activities)]' },
+  { value: 'KNOWLEDGE', label: 'Knowledge', text: 'text-cat-knowledge', dot: 'bg-cat-knowledge shadow-[0_0_8px_var(--color-cat-knowledge)]' },
+  { value: 'QNA', label: 'QnA', text: 'text-cat-qna', dot: 'bg-cat-qna shadow-[0_0_8px_var(--color-cat-qna)]' },
 ] as const
 
 type Category = typeof CATEGORY_OPTIONS[number]['value']
 
 function formatDate(d: Date) {
   return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
+}
+
+const ChevronDown = () => (
+  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+    <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+)
+
+/** 메타 줄 드롭다운: 버튼 바로 아래로 열려서 좁은 화면에서도 옆으로 넘치지 않는다 */
+function Menu({ children }: { children: ReactNode }) {
+  return (
+    <div role="listbox" className="absolute left-0 top-[calc(100%+6px)] z-50 flex min-w-[130px] flex-col gap-1 rounded-lg border border-line bg-[#0b1324] p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
+      {children}
+    </div>
+  )
+}
+
+function MenuItem({ children, selected, onClick }: { children: ReactNode; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      onClick={onClick}
+      className={`w-full rounded-md px-3 py-2 text-left text-xs font-medium text-fg-muted transition-colors hover:bg-surface-raised hover:text-white ${selected ? 'bg-surface-raised text-white' : ''}`}
+    >
+      {children}
+    </button>
+  )
 }
 
 export default function BlogWritePage() {
@@ -52,6 +82,7 @@ export default function BlogWritePage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [fileDragOver, setFileDragOver] = useState(false)
 
   const categoryRef = useRef<HTMLDivElement>(null)
   const visibilityRef = useRef<HTMLDivElement>(null)
@@ -68,6 +99,13 @@ export default function BlogWritePage() {
     window.addEventListener('mousedown', handler)
     return () => window.removeEventListener('mousedown', handler)
   }, [])
+
+  // 대표 이미지 미리보기: 등록 때와 같은 규칙(본문 첫 이미지 → 없으면 첨부한 첫 이미지)
+  const firstInlineImg = useMemo(() => content.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] ?? null, [content])
+  const firstAttachedImage = attachedFiles.find(f => f.type.startsWith('image/'))
+  const attachedPreview = useMemo(() => (firstAttachedImage ? URL.createObjectURL(firstAttachedImage) : null), [firstAttachedImage])
+  useEffect(() => () => { if (attachedPreview) URL.revokeObjectURL(attachedPreview) }, [attachedPreview])
+  const thumbPreview = firstInlineImg ?? attachedPreview
 
   const selectedLabel = CATEGORY_OPTIONS.find(o => o.value === category)?.label ?? category
 
@@ -267,22 +305,6 @@ export default function BlogWritePage() {
     }
   }
 
-  const rowStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '10px 0',
-    fontSize: '14px',
-    color: 'rgba(255,255,255,0.7)',
-  }
-
-  const labelStyle: React.CSSProperties = {
-    width: '72px',
-    flexShrink: 0,
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: '13px',
-  }
-
   return (
     <main className="relative min-h-screen select-none" style={{ background: '#040d1f' }}>
 
@@ -319,12 +341,13 @@ export default function BlogWritePage() {
       <div className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 gap-1.5 text-[13px] mt-40 rounded-t-[100px]"
         style={{ background: 'rgba(0, 65, 239, 0.4)' }}
       >
-        <Link href="/blog" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
-        >Blog</Link>
-        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <span style={{ color: '#fff' }}>게시글 작성하기</span>
+        {/* 현재 위치를 터미널 경로처럼 보여준다. 상위 경로(blog)는 눌러서 이동 */}
+        <nav aria-label="현재 위치" className="font-mono tracking-[0.02em]">
+          <span className="text-fg-faint">~/</span>
+          <Link href="/blog" className="text-fg-subtle transition-colors hover:text-white">blog</Link>
+          <span className="text-fg-faint">/</span>
+          <span aria-current="page" className="text-white">write</span>
+        </nav>
       </div>
 
       {/* ── Write form ──────────────────────────────── */}
@@ -354,202 +377,142 @@ export default function BlogWritePage() {
           }}
         />
 
-        {/* Meta rows */}
-        <div>
+        {/* Meta rows — 모든 줄이 [라벨 72px | 값] 같은 칸에 맞춰 선다 */}
+        <dl className="flex flex-col">
 
           {/* Category */}
-          <div style={rowStyle}>
-            <div ref={categoryRef} style={{ position: 'relative' }}>
+          <div className="flex items-center gap-3 py-2.5 text-sm">
+            <dt className="w-[72px] shrink-0 text-[13px] text-fg-subtle">분류</dt>
+            <dd ref={categoryRef} className="relative">
               <button
+                type="button"
                 onClick={() => setCategoryOpen(v => !v)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  background: 'transparent', border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: '999px', padding: '6px 16px',
-                  color: CATEGORY_OPTIONS.find(o => o.value === category)?.color ?? 'rgba(255,255,255,0.8)',
-                  fontSize: '13px', cursor: 'pointer',
-                }}
+                aria-haspopup="listbox"
+                aria-expanded={categoryOpen}
+                className={`flex items-center gap-2 rounded-full border border-line-strong px-4 py-1.5 text-[13px] hover:border-fg-faint transition-colors ${CATEGORY_OPTIONS.find(o => o.value === category)?.text}`}
               >
+                <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${CATEGORY_OPTIONS.find(o => o.value === category)?.dot}`} />
                 {selectedLabel}
-                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 4L6 8L10 4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <ChevronDown />
               </button>
               {categoryOpen && (
-                <div
-                  className="absolute z-50 flex flex-col gap-1 p-1.5 rounded-lg min-w-[120px]"
-                  style={{
-                    top: '0',
-                    left: 'calc(100% + 6px)',
-                    background: 'rgba(0,0,0,0.6)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-                  }}
-                >
+                <Menu>
                   {CATEGORY_OPTIONS.map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => { setCategory(opt.value); setCategoryOpen(false) }}
-                      className="w-full text-left px-3 py-2 text-xs font-medium rounded-md transition-colors"
-                      style={{ background: 'rgba(36,36,36,0.8)', color: opt.color }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
-                    >
-                      {opt.label}
-                    </button>
+                    <MenuItem key={opt.value} selected={category === opt.value}
+                      onClick={() => { setCategory(opt.value); setCategoryOpen(false) }}>
+                      <span className={`inline-flex items-center gap-2 ${opt.text}`}>
+                        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${opt.dot}`} />
+                        {opt.label}
+                      </span>
+                    </MenuItem>
                   ))}
-                </div>
+                </Menu>
               )}
-            </div>
+            </dd>
           </div>
 
           {/* Visibility */}
-          <div style={rowStyle}>
-            <span style={labelStyle}>공개 범위</span>
-            <div ref={visibilityRef} style={{ position: 'relative' }}>
+          <div className="flex items-center gap-3 py-2.5 text-sm">
+            <dt className="w-[72px] shrink-0 text-[13px] text-fg-subtle">공개 범위</dt>
+            <dd ref={visibilityRef} className="relative">
               <button
+                type="button"
                 onClick={() => setVisibilityOpen(v => !v)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  background: 'transparent', border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: '999px', padding: '6px 16px',
-                  color: 'rgba(255,255,255,0.8)', fontSize: '13px', cursor: 'pointer',
-                }}
+                aria-haspopup="listbox"
+                aria-expanded={visibilityOpen}
+                className="flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-1.5 text-[13px] text-fg-muted hover:border-fg-faint transition-colors"
               >
                 {visibility === 'PUBLIC' ? '전체 공개' : '멤버 공개'}
-                <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 4L6 8L10 4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <ChevronDown />
               </button>
               {visibilityOpen && (
-                <div
-                  className="absolute z-50 flex flex-col gap-1 p-1.5 rounded-lg min-w-[120px]"
-                  style={{
-                    top: '0',
-                    left: 'calc(100% + 6px)',
-                    background: 'rgba(0,0,0,0.6)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-                  }}
-                >
+                <Menu>
                   {(['PUBLIC', 'MEMBER'] as const).map(v => (
-                    <button
-                      key={v}
-                      onClick={() => { setVisibility(v); setVisibilityOpen(false) }}
-                      className="w-full text-left px-3 py-2 text-xs font-medium rounded-md transition-colors"
-                      style={{ background: 'rgba(36,36,36,0.8)', color: 'rgba(255,255,255,0.8)' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
-                    >
+                    <MenuItem key={v} selected={visibility === v}
+                      onClick={() => { setVisibility(v); setVisibilityOpen(false) }}>
                       {v === 'PUBLIC' ? '전체 공개' : '멤버 공개'}
-                    </button>
+                    </MenuItem>
                   ))}
-                </div>
+                </Menu>
               )}
-            </div>
+            </dd>
           </div>
 
           {/* Author */}
-          <div style={rowStyle}>
-            <span style={labelStyle}>작성자</span>
-            <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
-            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>
-              {user?.nickname ?? '—'}
-            </span>
+          <div className="flex items-center gap-3 py-2.5 text-sm">
+            <dt className="w-[72px] shrink-0 text-[13px] text-fg-subtle">작성자</dt>
+            <dd className="text-fg-muted">{user?.nickname ?? '—'}</dd>
           </div>
 
           {/* Date */}
-          <div style={rowStyle}>
-            <span style={labelStyle}>작성일</span>
-            <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
-            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{today}</span>
+          <div className="flex items-center gap-3 py-2.5 text-sm">
+            <dt className="w-[72px] shrink-0 text-[13px] text-fg-subtle">작성일</dt>
+            <dd className="text-fg-muted">{today}</dd>
           </div>
 
-          {/* File attachment */}
-          <div style={{ ...rowStyle, alignItems: 'flex-start', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={labelStyle}>파일첨부</span>
+          {/* File attachment — 박스 하나로 클릭·끌어다 놓기 모두 받는다 */}
+          <div className="flex flex-col gap-2.5 py-2.5 text-sm sm:flex-row sm:items-start sm:gap-3">
+            <dt className="w-[72px] shrink-0 text-[13px] text-fg-subtle sm:pt-3.5">파일첨부</dt>
+            <dd className="flex-1 min-w-0 flex flex-col gap-2">
               <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
-                style={{
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: '6px',
-                  fontSize: '13px', padding: 0,
+                onDragOver={e => { e.preventDefault(); setFileDragOver(true) }}
+                onDragLeave={() => setFileDragOver(false)}
+                onDrop={e => {
+                  e.preventDefault()
+                  setFileDragOver(false)
+                  const dropped = Array.from(e.dataTransfer.files)
+                  if (dropped.length > 0) setAttachedFiles(prev => [...prev, ...dropped])
                 }}
+                className={`w-full flex items-center gap-2.5 rounded-lg border border-dashed px-4 py-3.5 text-left text-[13px] transition-colors ${
+                  fileDragOver
+                    ? 'border-[#1C5AFF] bg-[#1C5AFF]/10 text-white'
+                    : 'border-line-strong bg-surface text-fg-subtle hover:border-fg-faint hover:text-fg-muted'
+                }`}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
                 </svg>
+                <span>{fileDragOver ? '여기에 놓으면 첨부됩니다' : '첨부할 파일을 선택하세요'}</span>
+                {!fileDragOver && <span className="ml-auto hidden text-xs text-fg-faint sm:inline">또는 끌어다 놓기</span>}
               </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                style={{ display: 'none' }}
-                onChange={handleFileChange}
-              />
-            </div>
+              <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileChange} />
 
-            {/* File input area */}
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                width: '100%', padding: '14px 16px',
-                borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)',
-                background: 'rgba(255,255,255,0.03)',
-                color: 'rgba(255,255,255,0.3)', fontSize: '13px', cursor: 'pointer',
-              }}
-            >
-              첨부할 파일을 선택하세요
-            </div>
-
-            {/* Attached file list */}
-            {attachedFiles.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
-                {attachedFiles.map((file, idx) => (
-                  <div key={idx} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '6px 12px', borderRadius: '6px',
-                    background: 'rgba(255,255,255,0.05)', fontSize: '13px',
-                    color: 'rgba(255,255,255,0.7)',
-                  }}>
-                    <span>{file.name}</span>
-                    <button
-                      onClick={() => removeFile(idx)}
-                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: '16px', lineHeight: 1 }}
-                    >×</button>
-                  </div>
-                ))}
-              </div>
-            )}
+              {/* Attached file list */}
+              {attachedFiles.length > 0 && (
+                <ul className="flex flex-col gap-1.5">
+                  {attachedFiles.map((file, idx) => (
+                    <li key={idx} className="flex items-center justify-between gap-3 rounded-md bg-surface-raised px-3 py-1.5 text-[13px] text-fg-muted">
+                      <span className="truncate">{file.name}</span>
+                      <button type="button" onClick={() => removeFile(idx)} aria-label={`${file.name} 첨부 취소`}
+                        className="shrink-0 text-base leading-none text-fg-faint hover:text-white">×</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </dd>
           </div>
-        </div>
+        </dl>
 
-        {/* ── Divider ─────────────────────────────────── */}
-        <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.12)', margin: '16px 0' }} />
-
-        {/* ── Content editor ─────────────────────────── */}
-        <div
-          style={{
-            marginTop: '20px',
-            minHeight: '320px',
-            padding: '20px 0',
-          }}
-        >
+        {/* ── Content editor — 도구 막대 아래에 테두리 있는 입력 칸을 두어 어디에 쓰는지 바로 보인다 ── */}
+        <div className="mt-8">
           <BlogEditorToolbar editorRef={editorRef} onContentChange={() => { if (editorRef.current) setContent(editorRef.current.innerHTML) }} />
 
-          <div style={{ position: 'relative', marginTop: '12px' }}>
+          <div className="relative rounded-xl border border-line bg-surface transition-colors focus-within:border-[#1C5AFF]/60">
             <div
               ref={editorRef}
-              className="rich-editor"
+              className="rich-editor select-text"
               contentEditable
               suppressContentEditableWarning
+              aria-label="본문"
               onInput={handleEditorInput}
               onPaste={handleEditorPaste}
               onDrop={handleEditorDrop}
               onDragOver={e => e.preventDefault()}
               style={{
-                minHeight: '280px',
+                minHeight: '320px',
+                padding: '20px 22px',
                 outline: 'none',
                 color: 'rgba(255,255,255,0.8)',
                 fontSize: '15px',
@@ -558,59 +521,52 @@ export default function BlogWritePage() {
               }}
             />
             {/* Placeholder */}
-            {(!editorRef.current || !editorRef.current.textContent?.trim()) && (
-              <div
-                style={{
-                  position: 'absolute', top: 0, left: 0,
-                  color: 'rgba(255,255,255,0.2)', fontSize: '15px', lineHeight: 1.75,
-                  pointerEvents: 'none', userSelect: 'none',
-                }}
-              >
+            {(!editorRef.current || !editorRef.current.textContent?.trim()) && !content.includes('<img') && (
+              <div className="pointer-events-none absolute left-[22px] top-5 select-none text-[15px] leading-[1.75] text-fg-faint">
                 <p>본문을 작성해 보세요.</p>
-                <p style={{ fontSize: '13px', marginTop: '4px' }}>*이미지는 드롭 다운/ 복사 붙여넣기로 첨부할 수 있습니다.</p>
+                <p className="mt-1 text-[13px]">이미지는 끌어다 놓거나 복사해 붙여넣으면 본문에 들어갑니다.</p>
               </div>
             )}
+          </div>
+
+          {/* 대표 이미지(목록 썸네일) — 정해지는 규칙과 지금 무엇이 쓰일지 보여준다 */}
+          <div className="mt-3 flex items-center gap-3 rounded-lg border border-line bg-surface px-3 py-2.5">
+            <div className="relative h-11 w-[70px] shrink-0 overflow-hidden rounded-md bg-surface-raised">
+              {thumbPreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={thumbPreview} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="absolute inset-0 m-auto text-fg-faint">
+                  <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" />
+                </svg>
+              )}
+            </div>
+            <div className="min-w-0 text-[13px] leading-relaxed">
+              <p className="font-medium text-fg-muted">
+                대표 이미지 · {firstInlineImg ? '본문에 넣은 첫 번째 이미지' : attachedPreview ? '파일첨부로 올린 이미지' : '아직 없음 (기본 이미지로 표시)'}
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Error */}
         {error && (
-          <p style={{ color: '#FF6060', fontSize: '13px', marginTop: '12px' }}>{error}</p>
+          <p className="mt-3 text-[13px] text-[#FF6060]">{error}</p>
         )}
 
-        {/* ── Action buttons ──────────────────────────── */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px', marginBottom: '48px' }}>
+        {/* ── Action buttons — 본문 바로 아래 ── */}
+        <div className="mt-6 mb-12 flex justify-end gap-2.5">
           <Link
             href="/blog"
-            style={{
-              padding: '10px 24px', borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.2)', background: 'transparent',
-              color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontWeight: 500,
-              textDecoration: 'none', display: 'inline-flex', alignItems: 'center',
-              transition: 'border-color 0.15s, color 0.15s',
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.5)'
-              ;(e.currentTarget as HTMLElement).style.color = '#fff'
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.2)'
-              ;(e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.6)'
-            }}
+            className="inline-flex items-center rounded-lg border border-line-strong px-6 py-2.5 text-sm font-medium text-fg-muted transition-colors hover:border-fg-subtle hover:text-white"
           >
             취소
           </Link>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={submitting}
-            style={{
-              padding: '10px 28px', borderRadius: '8px',
-              border: '0.734px solid rgba(0, 65, 239, 0.6)',
-              background: 'rgba(0, 65, 239, 0.4)',
-              color: '#fff', fontSize: '14px', fontWeight: 600,
-              cursor: submitting ? 'not-allowed' : 'pointer',
-              opacity: submitting ? 0.6 : 1,
-            }}
+            className="rounded-lg bg-[#1C5AFF] px-7 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1749D6] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? '등록 중...' : '등록하기'}
           </button>

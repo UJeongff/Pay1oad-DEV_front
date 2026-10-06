@@ -3,10 +3,59 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import HomeFooter from '@/app/components/HomeFooter'
+import ToastMessage, { useToast } from '@/app/components/ToastMessage'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { ARCHIVE_YEAR_MIN, ARCHIVE_YEAR_MAX } from '@/app/lib/archive'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
+
+const FOLDER_PATH = 'M0 14.6875C0 6.57581 6.57582 0 14.6875 0H84.3267C89.2248 0 93.8005 2.44165 96.5274 6.51041L104.388 18.2396C111.206 28.4115 122.645 34.5156 134.89 34.5156H233.531H267.312C275.424 34.5156 282 41.0914 282 49.2031V210.398C282 218.51 275.424 225.086 267.312 225.086H14.6875C6.57581 225.086 0 218.51 0 210.398V14.6875Z'
+// 같은 모양을 반 픽셀 안쪽으로 줄인 선. 바깥 모양에 그대로 그으면 가장자리에서 선 절반이 잘린다
+const FOLDER_STROKE_PATH = 'M14.6875 0.367188H84.3271C89.1026 0.367339 93.564 2.74793 96.2227 6.71484L104.083 18.4443C110.969 28.718 122.523 34.8828 134.891 34.8828H267.312C275.221 34.8828 281.633 41.2942 281.633 49.2031V210.398C281.633 218.307 275.221 224.719 267.312 224.719H14.6875C6.77861 224.719 0.367188 218.307 0.367188 210.398V14.6875C0.367188 6.77861 6.77861 0.367188 14.6875 0.367188Z'
+
+// 폴더 카드는 칸 폭에 맞춰 줄고 늘며(최대 220px), 안쪽 글자·여백은 카드 폭(cqw) 기준으로 같이 줄어든다.
+// 220px 일 때 예전 고정값(여백 20px, 연도 30px)과 같다
+const FOLDER_BOX = 'relative w-full max-w-[220px] mx-auto aspect-[282/226] [container-type:inline-size]'
+const FOLDER_INNER_PADDING = '9cqw 9cqw 10cqw'
+const FOLDER_LABEL_STYLE = { fontSize: 'clamp(11px, 5.9cqw, 13px)', lineHeight: 1.5, letterSpacing: '0.04em' }
+const FOLDER_YEAR_STYLE = {
+  fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif",
+  fontSize: 'clamp(22px, 13.6cqw, 30px)',
+  lineHeight: 1.5,
+  letterSpacing: '-0.8px',
+}
+
+function validateYear(input: string, existing: number[]): string {
+  if (input.length !== 4) return '4자리 연도를 입력해 주세요.'
+  const n = Number(input)
+  if (n < ARCHIVE_YEAR_MIN || n > ARCHIVE_YEAR_MAX) return `${ARCHIVE_YEAR_MIN}~${ARCHIVE_YEAR_MAX}년 사이로 입력해 주세요.`
+  if (existing.includes(n)) return '이미 있는 연도입니다.'
+  return ''
+}
+
+// 폴더 면: 진한 파랑을 꽉 채우던 것을 브랜드 블루를 옅게 깐 유리 면으로 바꿨다. 위가 조금 더 밝다.
+// 테두리는 한쪽 대각선만 빛나던 것 대신 위에서 아래로 고르게 옅어지는 선. hover 때 한 겹 더 밝아진다
+function FolderShape({ id, active = false }: { id: string; active?: boolean }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 282 226" fill="none" className="absolute inset-0 w-full h-full" aria-hidden="true">
+      <defs>
+        <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="226" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1C5AFF" stopOpacity={active ? 0.45 : 0.32} />
+          <stop offset="1" stopColor="#1C5AFF" stopOpacity={active ? 0.16 : 0.06} />
+        </linearGradient>
+        <linearGradient id={`${id}-stroke`} x1="0" y1="0" x2="0" y2="226" gradientUnits="userSpaceOnUse">
+          <stop stopColor="white" stopOpacity="0.3" />
+          <stop offset="1" stopColor="white" stopOpacity="0.06" />
+        </linearGradient>
+      </defs>
+      <path d={FOLDER_PATH} fill={`url(#${id}-fill)`} />
+      {/* hover 때 겹쳐지는 한 단계 밝은 면 */}
+      <path d={FOLDER_PATH} fill="rgb(28 90 255 / 0.14)" className="opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      <path d={FOLDER_STROKE_PATH} stroke={`url(#${id}-stroke)`} strokeWidth="1" vectorEffect="non-scaling-stroke" />
+    </svg>
+  )
+}
 
 function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit, onDelete, showMenu = false }: {
   year: number
@@ -17,37 +66,20 @@ function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit, onDelete
   onDelete: () => void
   showMenu?: boolean
 }) {
-  const gradFillId = `fg-fill-${year}`
-  const gradStrokeId = `fg-stroke-${year}`
-
   return (
     <div
-      className="relative group cursor-pointer select-none transition-transform duration-300 hover:scale-[1.03] mx-auto"
-      style={{ width: '220px', height: '175px' }}
+      // 메뉴가 열린 폴더는 옆·아래 폴더보다 위에 그린다
+      className={`${FOLDER_BOX} group cursor-pointer select-none transition-transform duration-300 hover:scale-[1.03] ${menuOpen ? 'z-20' : ''}`}
       onClick={onNavigate}
     >
-      <svg xmlns="http://www.w3.org/2000/svg" width="282" height="226" viewBox="0 0 282 226" fill="none"
-        style={{ display: 'block', width: '100%', height: '100%' }}
-      >
-        <defs>
-          <linearGradient id={gradFillId} x1="141" y1="-8.44531" x2="141" y2="225.086" gradientUnits="userSpaceOnUse">
-            <stop stopColor="#0041EF"/>
-            <stop offset="1" stopColor="#02174E"/>
-          </linearGradient>
-          <linearGradient id={gradStrokeId} x1="267.312" y1="19.8281" x2="2.79213e-05" y2="243.813" gradientUnits="userSpaceOnUse">
-            <stop/>
-            <stop offset="0.5" stopColor="white"/>
-            <stop offset="1"/>
-          </linearGradient>
-        </defs>
-        <path d="M0 14.6875C0 6.57581 6.57582 0 14.6875 0H84.3267C89.2248 0 93.8005 2.44165 96.5274 6.51041L104.388 18.2396C111.206 28.4115 122.645 34.5156 134.89 34.5156H233.531H267.312C275.424 34.5156 282 41.0914 282 49.2031V210.398C282 218.51 275.424 225.086 267.312 225.086H14.6875C6.57581 225.086 0 218.51 0 210.398V14.6875Z" fill={`url(#${gradFillId})`}/>
-        <path d="M14.6875 0.367188H84.3271C89.1026 0.367339 93.564 2.74793 96.2227 6.71484L104.083 18.4443C110.969 28.718 122.523 34.8828 134.891 34.8828H267.312C275.221 34.8828 281.633 41.2942 281.633 49.2031V210.398C281.633 218.307 275.221 224.719 267.312 224.719H14.6875C6.77861 224.719 0.367188 218.307 0.367188 210.398V14.6875C0.367188 6.77861 6.77861 0.367188 14.6875 0.367188Z" stroke={`url(#${gradStrokeId})`} strokeOpacity="0.5" strokeWidth="0.734375"/>
-      </svg>
+      <FolderShape id={`folder-${year}`} />
 
-      <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: '20px 20px 24px' }}>
-        <div className="relative flex justify-end" style={{ paddingTop: '25px' }}>
+      <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: FOLDER_INNER_PADDING }}>
+        <div className="relative flex justify-end" style={{ paddingTop: '11cqw' }}>
           {showMenu && (
             <button
+              type="button"
+              aria-label={`${year} 메뉴`}
               onClick={e => { e.stopPropagation(); onMenuToggle() }}
               style={{ width: '16px', height: '16px' }}
             >
@@ -60,63 +92,33 @@ function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit, onDelete
           )}
 
           {showMenu && menuOpen && (
+            // 반투명이면 아래 연도 글자가 비쳐 보여서 불투명 면(panel)을 쓴다
             <div
-              className="absolute right-0 top-6 z-50 flex flex-col gap-1 p-1.5 rounded-lg min-w-[120px]"
-              style={{
-                background: 'rgba(0,0,0,0.6)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-              }}
+              className="absolute right-0 top-6 z-50 flex min-w-[120px] flex-col gap-1 rounded-lg border border-line bg-panel p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
               onClick={e => e.stopPropagation()}
             >
               <button
-                className="w-full text-left px-3 py-2 text-xs font-medium text-white rounded-md transition-colors"
-                style={{ background: 'rgba(36,36,36,0.8)' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(36,36,36,1)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(36,36,36,0.8)')}
+                type="button"
+                className="w-full rounded-md bg-surface px-3 py-2 text-left text-xs font-medium text-fg-muted transition-colors hover:bg-surface-raised hover:text-white"
                 onClick={() => { onMenuToggle(); onEdit() }}
               >
-                Edit
+                수정
               </button>
               <button
-                className="w-full text-left px-3 py-2 text-xs font-medium rounded-md transition-colors"
-                style={{ background: 'rgba(36,36,36,0.8)', color: '#f87171' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(36,36,36,1)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(36,36,36,0.8)')}
+                type="button"
+                className="w-full rounded-md bg-surface px-3 py-2 text-left text-xs font-medium text-danger transition-colors hover:bg-surface-raised"
                 onClick={() => { onMenuToggle(); onDelete() }}
               >
-                Delete
+                삭제
               </button>
             </div>
           )}
         </div>
 
         <div className="flex flex-col">
-          <span
-            style={{
-              color: '#FFF',
-              fontFamily: "'Pretendard Variable', Pretendard, sans-serif",
-              fontSize: '12px',
-              fontWeight: 200,
-              lineHeight: '150%',
-              letterSpacing: '-0.32px',
-            }}
-          >
-            Archive
-          </span>
-          <p
-            style={{
-              color: '#FFF',
-              fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif",
-              fontSize: '30px',
-              fontWeight: 400,
-              lineHeight: '150%',
-              letterSpacing: '-0.8px',
-              margin: 0,
-            }}
-          >
-            {year}
-          </p>
+          {/* 예전 12px · 굵기 200 은 파란 면 위에서 거의 안 보여서 한 단계 키우고 굵게 */}
+          <span className="font-medium text-fg-muted" style={FOLDER_LABEL_STYLE}>Archive</span>
+          <p className="m-0 text-white" style={FOLDER_YEAR_STYLE}>{year}</p>
         </div>
       </div>
     </div>
@@ -125,16 +127,15 @@ function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit, onDelete
 
 function AddFolderCard({ onClick }: { onClick: () => void }) {
   return (
-    <div
-      className="relative group cursor-pointer select-none mx-auto transition-transform duration-300 hover:scale-[1.03]"
+    <button
+      type="button"
+      aria-label="연도 추가"
+      className={`${FOLDER_BOX} block group cursor-pointer select-none transition-transform duration-300 hover:scale-[1.03]`}
       onClick={onClick}
-      style={{ width: '220px', height: '175px' }}
     >
-      <svg xmlns="http://www.w3.org/2000/svg" width="282" height="226" viewBox="0 0 282 226" fill="none"
-        style={{ display: 'block', width: '100%', height: '100%' }}
-      >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 282 226" fill="none" className="absolute inset-0 w-full h-full">
         <path
-          d="M0 14.6875C0 6.57581 6.57582 0 14.6875 0H84.3267C89.2248 0 93.8005 2.44165 96.5274 6.51041L104.388 18.2396C111.206 28.4115 122.645 34.5156 134.89 34.5156H233.531H267.312C275.424 34.5156 282 41.0914 282 49.2031V210.398C282 218.51 275.424 225.086 267.312 225.086H14.6875C6.57581 225.086 0 218.51 0 210.398V14.6875Z"
+          d={FOLDER_PATH}
           fill="rgba(255,255,255,0.02)"
           stroke="rgba(255,255,255,0.22)"
           strokeWidth="2"
@@ -154,17 +155,19 @@ function AddFolderCard({ onClick }: { onClick: () => void }) {
           +
         </text>
       </svg>
-    </div>
+    </button>
   )
 }
 
 function EditableFolderCard({
+  id,
   value,
   onChange,
   onConfirm,
   onCancel,
   error,
 }: {
+  id: string
   value: string
   onChange: (v: string) => void
   onConfirm: () => void
@@ -178,65 +181,32 @@ function EditableFolderCard({
   }, [])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div
-        className="relative select-none mx-auto"
-        style={{ width: '220px', height: '175px' }}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="282" height="226" viewBox="0 0 282 226" fill="none"
-          style={{ display: 'block', width: '100%', height: '100%' }}
-        >
-          <defs>
-            <linearGradient id="ef-fill" x1="141" y1="-8.44531" x2="141" y2="225.086" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#0041EF" stopOpacity="0.6"/>
-              <stop offset="1" stopColor="#02174E" stopOpacity="0.6"/>
-            </linearGradient>
-          </defs>
-          <path
-            d="M0 14.6875C0 6.57581 6.57582 0 14.6875 0H84.3267C89.2248 0 93.8005 2.44165 96.5274 6.51041L104.388 18.2396C111.206 28.4115 122.645 34.5156 134.89 34.5156H233.531H267.312C275.424 34.5156 282 41.0914 282 49.2031V210.398C282 218.51 275.424 225.086 267.312 225.086H14.6875C6.57581 225.086 0 218.51 0 210.398V14.6875Z"
-            fill="url(#ef-fill)"
-            stroke="rgba(255,255,255,0.35)"
-            strokeWidth="1.5"
-          />
-        </svg>
+    <div className="flex w-full flex-col items-center">
+      <div className={`${FOLDER_BOX} select-none`}>
+        <FolderShape id={id} active />
 
-        <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: '20px 20px 24px' }}>
-          <div style={{ paddingTop: '25px' }} />
+        <div className="absolute inset-0 flex flex-col justify-between" style={{ padding: FOLDER_INNER_PADDING }}>
+          <div style={{ paddingTop: '11cqw' }} />
           <div className="flex flex-col">
-            <span style={{
-              color: '#FFF',
-              fontFamily: "'Pretendard Variable', Pretendard, sans-serif",
-              fontSize: '12px',
-              fontWeight: 200,
-              lineHeight: '150%',
-              letterSpacing: '-0.32px',
-            }}>
-              Archive
-            </span>
+            <span className="font-medium text-fg-muted" style={FOLDER_LABEL_STYLE}>Archive</span>
             <input
               ref={inputRef}
               type="text"
               inputMode="numeric"
               maxLength={4}
               value={value}
+              aria-label="연도"
               onChange={e => onChange(e.target.value.replace(/\D/g, ''))}
               onKeyDown={e => {
                 if (e.key === 'Enter') onConfirm()
                 if (e.key === 'Escape') onCancel()
               }}
-              placeholder="Year"
+              placeholder="연도"
+              className="w-full bg-transparent text-white outline-none placeholder:text-fg-faint"
               style={{
-                background: 'transparent',
+                ...FOLDER_YEAR_STYLE,
                 border: 'none',
                 borderBottom: '1.5px solid rgba(255,255,255,0.5)',
-                outline: 'none',
-                color: '#FFF',
-                fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif",
-                fontSize: '30px',
-                fontWeight: 400,
-                lineHeight: '150%',
-                letterSpacing: '-0.8px',
-                width: '100%',
                 caretColor: '#fff',
               }}
             />
@@ -245,13 +215,7 @@ function EditableFolderCard({
       </div>
 
       {error && (
-        <p style={{
-          marginTop: '8px',
-          color: '#f87171',
-          fontSize: '12px',
-          fontWeight: 500,
-          textAlign: 'center',
-        }}>
+        <p role="alert" className="mt-2 text-center text-xs font-medium text-danger">
           {error}
         </p>
       )}
@@ -263,6 +227,7 @@ export default function ArchivePage() {
   const { user } = useAuthContext()
   const router = useRouter()
   const isAdmin = user?.role === 'ADMIN'
+  const { toast, showToast, clearToast } = useToast()
 
   const [years, setYears] = useState<number[]>([])
   const [openMenuYear, setOpenMenuYear] = useState<number | null>(null)
@@ -284,7 +249,8 @@ export default function ArchivePage() {
       const json = await res.json()
       const data = json?.data
       const list = Array.isArray(data) ? data : []
-      setYears([...list].sort((a, b) => a - b))
+      // 최신 연도가 먼저
+      setYears([...list].sort((a, b) => b - a))
     } catch {
       setYears([])
     } finally {
@@ -303,8 +269,9 @@ export default function ArchivePage() {
   }, [])
 
   async function handleYearConfirm() {
-    if (newYearInput.length !== 4) {
-      setYearError('Please enter a 4-digit year.')
+    const invalid = validateYear(newYearInput, years)
+    if (invalid) {
+      setYearError(invalid)
       return
     }
 
@@ -316,8 +283,7 @@ export default function ArchivePage() {
       })
 
       if (!res.ok) {
-        const error = await res.json().catch(() => ({}))
-        setYearError(error?.message ?? 'Failed to create archive year.')
+        setYearError('연도를 만들지 못했습니다.')
         return
       }
 
@@ -327,7 +293,7 @@ export default function ArchivePage() {
       setNewYearInput('')
       setYearError('')
     } catch {
-      setYearError('Failed to create archive year.')
+      setYearError('연도를 만들지 못했습니다.')
     }
   }
 
@@ -354,12 +320,17 @@ export default function ArchivePage() {
     try {
       const res = await fetchWithAuth(`${API_URL}/v1/archive/years/${year}`, { method: 'DELETE' })
       if (res.ok) setYears(prev => prev.filter(y => y !== year))
-    } catch {}
+      else showToast(`${year} 아카이브를 삭제하지 못했습니다.`)
+    } catch {
+      showToast(`${year} 아카이브를 삭제하지 못했습니다.`)
+    }
   }
 
   async function handleEditConfirm() {
-    if (editYearInput.length !== 4) {
-      setEditYearError('Please enter a 4-digit year.')
+    // 자기 자신은 중복으로 치지 않는다
+    const invalid = validateYear(editYearInput, years.filter(y => y !== editingYear))
+    if (invalid) {
+      setEditYearError(invalid)
       return
     }
 
@@ -371,8 +342,7 @@ export default function ArchivePage() {
       })
 
       if (!res.ok) {
-        const error = await res.json().catch(() => ({}))
-        setEditYearError(error?.message ?? 'Failed to update archive year.')
+        setEditYearError('연도를 수정하지 못했습니다.')
         return
       }
 
@@ -381,12 +351,12 @@ export default function ArchivePage() {
       setEditYearInput('')
       setEditYearError('')
     } catch {
-      setEditYearError('Failed to update archive year.')
+      setEditYearError('연도를 수정하지 못했습니다.')
     }
   }
 
   return (
-    <main className="relative min-h-screen select-none" style={{ background: '#040d1f' }}>
+    <main className="relative min-h-screen select-none bg-background">
       <div
         className="absolute inset-x-0 top-0 pointer-events-none"
         style={{
@@ -422,20 +392,24 @@ export default function ArchivePage() {
           </h1>
         </div>
 
-        <p className="relative z-10 text-white/75 font-medium mb-3" style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.05rem)' }}>
+        <p className="relative z-10 text-fg-muted font-medium mb-3" style={{ fontSize: 'clamp(0.9rem, 1.5vw, 1.05rem)' }}>
           지난 활동들을 보관하는 공간입니다.
         </p>
-        <p className="relative z-10 text-white/40 text-sm leading-relaxed">
-          * 타인에 대한 비방, 욕설, 저작권 침해 등 부적절한 내용을 포함한 게시물은<br />
-          서비스 운영 원칙에 따라 사전 고지 없이 삭제될 수 있습니다. 
+        {/* 글을 쓰는 게시판용 경고문 대신, 보기만 하는 아카이브에 맞게 무엇이 들어 있는지 안내한다 */}
+        <p className="relative z-10 text-fg-subtle text-sm leading-relaxed">
+          해마다 블로그 글과 스터디·프로젝트 기록을 연도별 폴더에 모아 둡니다.
         </p>
       </section>
 
       <div
-        className="w-full h-[49px] flex items-center pl-5 sm:pl-10 lg:pl-20 rounded-t-[100px]"
+        className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 text-[13px] rounded-t-[100px]"
         style={{ background: 'rgba(0, 65, 239, 0.4)' }}
       >
-        <span className="text-white text-sm font-medium tracking-widest">Archive</span>
+        {/* 현재 위치를 터미널 경로처럼 보여준다 (블로그의 ~/blog/write 와 같은 형식) */}
+        <nav aria-label="현재 위치" className="font-mono tracking-[0.02em]">
+          <span className="text-fg-faint">~/</span>
+          <span aria-current="page" className="text-white">archive</span>
+        </nav>
       </div>
 
       <section
@@ -444,13 +418,31 @@ export default function ArchivePage() {
       >
         <div className="max-w-5xl mx-auto px-[5vw]">
           {loading ? (
-            <p className="text-white/50 text-sm text-center py-12">Loading years...</p>
+            <p className="text-fg-subtle text-sm text-center py-12">연도를 불러오는 중...</p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
+              {isAdmin && (
+                <div className="flex justify-center">
+                  {isAddingYear ? (
+                    <EditableFolderCard
+                      id="folder-new"
+                      value={newYearInput}
+                      onChange={v => { setNewYearInput(v); setYearError('') }}
+                      onConfirm={handleYearConfirm}
+                      onCancel={handleYearCancel}
+                      error={yearError}
+                    />
+                  ) : (
+                    <AddFolderCard onClick={() => setIsAddingYear(true)} />
+                  )}
+                </div>
+              )}
+
               {years.map(year => (
                 <div key={year} className="flex justify-center">
                   {editingYear === year ? (
                     <EditableFolderCard
+                      id="folder-edit"
                       value={editYearInput}
                       onChange={v => { setEditYearInput(v); setEditYearError('') }}
                       onConfirm={handleEditConfirm}
@@ -470,28 +462,14 @@ export default function ArchivePage() {
                   )}
                 </div>
               ))}
-
-              {isAdmin && (
-                <div className="flex justify-center">
-                  {isAddingYear ? (
-                    <EditableFolderCard
-                      value={newYearInput}
-                      onChange={v => { setNewYearInput(v); setYearError('') }}
-                      onConfirm={handleYearConfirm}
-                      onCancel={handleYearCancel}
-                      error={yearError}
-                    />
-                  ) : (
-                    <AddFolderCard onClick={() => setIsAddingYear(true)} />
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>
       </section>
 
       <HomeFooter />
+
+      {toast && <ToastMessage key={toast.id} toast={toast} onDone={clearToast} />}
     </main>
   )
 }

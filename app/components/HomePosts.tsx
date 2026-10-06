@@ -26,10 +26,11 @@ const CATEGORY_LABEL: Record<Post['category'], string> = {
   ACTIVITIES: '활동',
 }
 
-const CATEGORY_COLOR: Record<Post['category'], string> = {
-  ACTIVITIES: '#FF9193',
-  KNOWLEDGE:  '#74FF89',
-  QNA:        '#91CDFF',
+// 분류 표시: 블로그 목록과 같은 빛나는 점 + 같은 색 글자 (globals.css 의 --color-cat-*)
+const CATEGORY_STYLE: Record<Post['category'], { text: string; dot: string }> = {
+  ACTIVITIES: { text: 'text-cat-activities', dot: 'bg-cat-activities shadow-[0_0_8px_var(--color-cat-activities)]' },
+  KNOWLEDGE:  { text: 'text-cat-knowledge',  dot: 'bg-cat-knowledge shadow-[0_0_8px_var(--color-cat-knowledge)]' },
+  QNA:        { text: 'text-cat-qna',        dot: 'bg-cat-qna shadow-[0_0_8px_var(--color-cat-qna)]' },
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
@@ -179,7 +180,8 @@ export default function HomePosts() {
 
                 {/* Body */}
                 <div className="p-5 flex flex-col gap-2">
-                  <span className="text-xs font-semibold tracking-wider uppercase" style={{ color: CATEGORY_COLOR[post.category] }}>
+                  <span className={`inline-flex items-center gap-2 text-xs font-semibold tracking-wider uppercase ${CATEGORY_STYLE[post.category].text}`}>
+                    <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${CATEGORY_STYLE[post.category].dot}`} />
                     {CATEGORY_LABEL[post.category]}
                   </span>
                   <p className="text-white font-semibold text-base leading-snug line-clamp-2">

@@ -106,7 +106,7 @@ export default async function AboutPage() {
       <AboutIntro applyUrl={recruitment?.applyUrl ?? null} />
 
       {/* ── Our Goal Section ──────────────────────────── */}
-      <section className="relative pb-28 px-[5vw] overflow-hidden">
+      <section className="relative pb-40 px-[5vw] overflow-hidden">
         {/* Circular glow background */}
         <div
           className="absolute inset-0 pointer-events-none"
@@ -129,7 +129,7 @@ export default async function AboutPage() {
           </div>
 
           {/* 화면에 들어오면 아이콘이 펜으로 그리듯 차례로 그려진다 (globals.css 의 .goal-draw) */}
-          <RevealToggle className="goal-draw" onClass="is-drawn">
+          <RevealToggle className="goal-draw" onClass="is-drawn" threshold={0.5}>
           {/* Top row: 3 goals */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
 
@@ -224,7 +224,7 @@ export default async function AboutPage() {
       <RulesSection />
 
       {/* ── Contact Section: 태그라인을 제목으로 올려 페이지를 닫는다 ─── */}
-      <section className="pb-28 px-[5vw]">
+      <section className="pb-40 px-[5vw]">
         <div className="max-w-4xl mx-auto flex flex-col items-center text-center">
           <span className="mb-6 border border-line-strong text-white text-sm font-bold tracking-[0.35em] px-8 py-2.5 rounded-full">
             CONTACT

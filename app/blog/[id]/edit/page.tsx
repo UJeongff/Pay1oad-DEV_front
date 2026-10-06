@@ -99,6 +99,8 @@ export default function BlogEditPage() {
   const [forbidden, setForbidden] = useState(false)
 
   const [title, setTitle] = useState('')
+  // 경로 표시용: 입력 중인 제목이 아니라 저장돼 있는 원래 제목
+  const [savedTitle, setSavedTitle] = useState('')
   const [initialContent, setInitialContent] = useState('')
   const [category, setCategory] = useState<Category>('ACTIVITIES')
   const [categoryOpen, setCategoryOpen] = useState(false)
@@ -141,6 +143,7 @@ export default function BlogEditPage() {
 
       setOriginalAuthorId(post.authorId)
       setTitle(post.title)
+      setSavedTitle(post.title)
       setCategory((post.category as Category) ?? 'ACTIVITIES')
       setVisibility((post.visibility as 'PUBLIC' | 'MEMBER') ?? 'PUBLIC')
       setAuthorDisplay((post.authorDisplay as 'NICKNAME' | 'ANONYMOUS') ?? 'NICKNAME')
@@ -403,17 +406,15 @@ export default function BlogEditPage() {
         className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 gap-1.5 text-[13px] mt-40 rounded-t-[100px]"
         style={{ background: 'rgba(0, 65, 239, 0.4)' }}
       >
-        <Link href="/blog" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
-        >Blog</Link>
-        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <Link href={`/blog/${id}`} style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
-        >게시글</Link>
-        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <span style={{ color: '#fff' }}>수정하기</span>
+        {/* 현재 위치를 터미널 경로처럼 보여준다. 상위 경로는 눌러서 이동, 글은 번호 대신 제목(길면 말줄임) */}
+        <nav aria-label="현재 위치" className="flex min-w-0 items-baseline font-mono tracking-[0.02em]">
+          <span className="shrink-0 text-fg-faint">~/</span>
+          <Link href="/blog" className="shrink-0 text-fg-subtle transition-colors hover:text-white">blog</Link>
+          <span className="shrink-0 text-fg-faint">/</span>
+          <Link href={`/blog/${id}`} className="truncate text-fg-subtle transition-colors hover:text-white">{savedTitle || '게시글'}</Link>
+          <span className="shrink-0 text-fg-faint">/</span>
+          <span aria-current="page" className="shrink-0 text-white">edit</span>
+        </nav>
       </div>
 
       {/* ── Edit form ───────────────────────────────── */}
