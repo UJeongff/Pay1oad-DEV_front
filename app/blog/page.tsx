@@ -7,6 +7,7 @@ import Image from 'next/image'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import PostTitleCover from '@/app/components/PostTitleCover'
 import { CATEGORY_LABEL, CATEGORY_STYLE, formatDate, type PostCategory } from '@/app/lib/postCategory'
 
 // PostSummaryResponse 필드와 일치
@@ -390,52 +391,6 @@ export default function BlogPage() {
   )
 }
 
-// 제목 표지에 번지는 분류 색 (--color-cat-* 와 같은 색의 옅은 버전)
-const CATEGORY_TINT: Record<Post['category'], string> = {
-  ACTIVITIES: 'rgba(226,154,156,0.30)',
-  KNOWLEDGE:  'rgba(134,207,146,0.26)',
-  QNA:        'rgba(141,188,228,0.30)',
-}
-
-/**
- * 썸네일 없는 글의 표지: 왼쪽 위에서 분류 색이 은은하게 번지고, 제목을 크게 얹는다.
- * 오른쪽 아래의 용 엠블럼과 왼쪽 위 "PAY1OAD / 분류" 로 빈칸이 아니라 의도한 표지처럼 보이게 한다.
- */
-function TitleCover({ title, category }: { title: string; category: Post['category'] }) {
-  return (
-    <div
-      aria-hidden="true"
-      className="absolute inset-0"
-      style={{ background: `radial-gradient(120% 120% at 0% 0%, ${CATEGORY_TINT[category]} 0%, transparent 60%), linear-gradient(135deg, #0e1a36 0%, #070f20 100%)` }}
-    >
-      {/* 용 엠블럼(public/blog_cover_mark.webp)을 마스크로 써서 분류 색을 입힌다 */}
-      <div
-        className="absolute -right-10 -bottom-12 h-[210px] w-[210px] opacity-[0.22]"
-        style={{
-          background: `var(--color-cat-${category.toLowerCase()})`,
-          WebkitMaskImage: 'url(/blog_cover_mark.webp)',
-          maskImage: 'url(/blog_cover_mark.webp)',
-          WebkitMaskSize: 'contain',
-          maskSize: 'contain',
-          WebkitMaskRepeat: 'no-repeat',
-          maskRepeat: 'no-repeat',
-          WebkitMaskPosition: 'center',
-          maskPosition: 'center',
-        }}
-      />
-      <p className="absolute left-5 top-4 font-mono text-[11px] tracking-[0.14em] text-fg-faint">
-        PAY1OAD / {CATEGORY_LABEL[category].toUpperCase()}
-      </p>
-      <p
-        className="absolute left-5 right-14 bottom-[18px] line-clamp-2 text-[21px] font-bold leading-[1.35] tracking-[-0.01em] text-white"
-        style={{ wordBreak: 'keep-all' }}
-      >
-        {title}
-      </p>
-    </div>
-  )
-}
-
 function PostCard({
   post, thumb, user, onPinToggle, onDelete,
 }: {
@@ -492,7 +447,7 @@ function PostCard({
       {/* Thumbnail — 썸네일이 없으면 분류 색이 번진 "제목 표지"를 대신 그린다 */}
       <div style={{ position: 'relative', width: '100%', aspectRatio: '16/10', overflow: 'hidden' }}>
         {thumb === FALLBACK_IMAGE ? (
-          <TitleCover title={post.title} category={post.category} />
+          <PostTitleCover title={post.title} category={post.category} />
         ) : (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}

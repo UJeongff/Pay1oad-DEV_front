@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import SectionLabel from '@/app/components/SectionLabel'
 import Reveal from '@/app/components/Reveal'
+import PostTitleCover from '@/app/components/PostTitleCover'
 
 interface Post {
   id: number
@@ -154,21 +155,18 @@ export default function HomePosts() {
                   const thumb = toFullUrl(post.thumbnailUrl)
                   const isFallback = thumb === FALLBACK_IMAGE
                   return (
-                    <div
-                      className="w-full aspect-[16/10] flex-shrink-0 relative overflow-hidden"
-                      style={{ background: isFallback ? 'rgba(20,25,45,0.8)' : undefined }}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={thumb}
-                        alt={post.title}
-                        style={{
-                          position: 'absolute', inset: 0, width: '100%', height: '100%',
-                          objectFit: isFallback ? 'contain' : 'cover',
-                          padding: isFallback ? '10%' : undefined,
-                          opacity: isFallback ? 0.5 : 1,
-                        }}
-                      />
+                    <div className="w-full aspect-[16/10] flex-shrink-0 relative overflow-hidden">
+                      {/* 썸네일 없는 글은 블로그 목록과 같은 제목 표지 */}
+                      {isFallback ? (
+                        <PostTitleCover title={post.title} category={post.category} />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={thumb}
+                          alt={post.title}
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                      )}
                       {post.isFeatured && (
                         <div style={{ position: 'absolute', top: '10px', right: '10px', width: '26px', height: '26px', borderRadius: '6px', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <Image src="/pin.svg" alt="pinned" width={14} height={14} />
