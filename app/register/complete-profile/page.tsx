@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { mapServerErrors, summarize } from '@/app/lib/formErrors'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthContext } from '@/app/context/AuthContext'
 import {
@@ -36,6 +36,9 @@ const SERVER_CODE_MAP = {
   NICKNAME_ALREADY_EXISTS: 'nickname',
 } as const
 
+// 정책 링크는 같은 탭에서 열리므로, 다녀와도 입력이 남도록 임시 저장한다 (회원가입과 같은 방식)
+const DRAFT_KEY = 'complete_profile_draft'
+
 export default function CompleteProfilePage() {
   const router = useRouter()
   const { refetch } = useAuthContext()
@@ -60,6 +63,35 @@ export default function CompleteProfilePage() {
   function clearField(key: keyof FieldErrors) {
     setFieldErrors((p) => ({ ...p, [key]: '' }))
   }
+
+  // ── sessionStorage 복원 (마운트 시 1회) ─────────────────────────
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(DRAFT_KEY)
+      if (!saved) return
+      const d = JSON.parse(saved)
+      if (d.name)       setName(d.name)
+      if (d.nickname)   setNickname(d.nickname)
+      if (d.department) setDepartment(d.department)
+      if (d.studentId)  setStudentId(d.studentId)
+      if (d.joinYear)   setJoinYear(d.joinYear)
+      if (d.agreed)     setAgreed(d.agreed)
+      if (d.checkedNickname) {
+        setCheckedNickname(d.checkedNickname)
+        setNicknameAvailable(d.nicknameAvailable ?? null)
+      }
+    } catch { /* 손상된 데이터 무시 */ }
+  }, [])
+
+  // ── sessionStorage 저장 (필드 변경 시마다) ──────────────────────
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+        name, nickname, department, studentId, joinYear, agreed,
+        checkedNickname, nicknameAvailable,
+      }))
+    } catch { /* 저장 실패 무시 */ }
+  }, [name, nickname, department, studentId, joinYear, agreed, checkedNickname, nicknameAvailable])
 
   async function checkNickname() {
     if (!nickname.trim()) {
@@ -137,6 +169,8 @@ export default function CompleteProfilePage() {
         setApiError(summarize(mapped, data, '프로필 등록에 실패했습니다. 다시 시도해주세요.'))
         return
       }
+
+      sessionStorage.removeItem(DRAFT_KEY)
 
       // 프로필 입력까지만 끝났고 로그인은 관리자 승인 후다 (서버가 토큰을 주지 않는다)
       if ((data?.data ?? data)?.approvalStatus === 'AWAITING_APPROVAL') {
