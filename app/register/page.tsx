@@ -107,6 +107,9 @@ export default function RegisterPage() {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 8000)
     let done = false
+    // 화면을 떠나거나 effect 가 다시 돌면서 끊은 요청은 결과를 반영하지 않는다
+    // (개발 모드의 StrictMode 는 effect 를 두 번 돌려서, 끊긴 첫 요청이 "확인 실패"로 덮어썼다)
+    let cancelled = false
 
     fetch(`${API_URL}/v1/auth/invite/check?code=${encodeURIComponent(code)}`, { signal: ctrl.signal })
       .then(async r => {
@@ -115,14 +118,15 @@ export default function RegisterPage() {
       })
       .then(j => {
         done = true
+        if (cancelled) return
         // usable 이 응답에 아예 없으면 확인한 게 아니다
         const usable = j?.data?.usable
         setInviteState(usable === true ? 'valid' : usable === false ? 'invalid' : 'error')
       })
-      .catch(() => { done = true; setInviteState('error') })
-      .finally(() => { clearTimeout(timer); if (!done) setInviteState('error') })
+      .catch(() => { done = true; if (!cancelled) setInviteState('error') })
+      .finally(() => { clearTimeout(timer); if (!done && !cancelled) setInviteState('error') })
 
-    return () => { clearTimeout(timer); ctrl.abort() }
+    return () => { cancelled = true; clearTimeout(timer); ctrl.abort() }
   }, [inviteRetry])
 
   function clearField(key: keyof FieldErrors) {
@@ -455,57 +459,62 @@ export default function RegisterPage() {
           </div>
         ) : (
           <>
-            <h1 className="mt-6 mb-8 text-3xl font-bold text-white">회원가입</h1>
+            <h1 className={`mt-6 text-3xl font-bold text-white ${inviteCode ? 'mb-3' : 'mb-8'}`}>회원가입</h1>
 
-            {/* 초대 코드 배너 */}
+            {/* 초대 코드 배너 — 승인 대기 화면과 같은 터미널 출력 말투. 상태는 줄 앞 빛나는 점으로 */}
             {inviteCode && (
-              <div
-                className={`mb-5 flex items-start gap-2.5 rounded-xl border px-4 py-3 ${
-                  inviteState === 'valid'
-                    ? 'border-status-live/35 bg-status-live/10'
-                    : inviteWarn
-                      ? 'border-status-soon/35 bg-status-soon/10'
-                      : 'border-line bg-surface-raised'
-                }`}
-              >
-                <span className="text-base leading-none" aria-hidden="true">
-                  {inviteState === 'valid' ? '🔑' : inviteWarn ? '⚠️' : '⌛'}
-                </span>
-                <div className="text-[13px] leading-normal text-fg-muted" aria-live="polite">
+              <div className="mb-8 font-mono text-[13px] leading-[1.9] text-fg-muted">
+                <p className="sr-only" aria-live="polite">
+                  {inviteState === 'valid' && '초대 코드가 확인되었습니다. 승인 없이 바로 가입됩니다.'}
+                  {inviteState === 'invalid' && '초대 코드가 만료되었거나 유효하지 않습니다. 일반 가입으로 진행되며 운영진 승인이 필요합니다.'}
+                  {inviteState === 'error' && '초대 코드를 확인하지 못했습니다. 가입할 때 서버에서 다시 확인합니다.'}
+                  {inviteState === 'unchecked' && '초대 코드를 확인하는 중입니다.'}
+                </p>
+                <div aria-hidden="true">
+                  <span className="text-[#6E95FF]">$</span> invite check ····{inviteCode.slice(-4)}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-2">
+                  <span
+                    aria-hidden="true"
+                    className={`h-[7px] w-[7px] shrink-0 rounded-full ${
+                      inviteState === 'valid'
+                        ? 'bg-status-live shadow-[0_0_8px_var(--color-status-live)]'
+                        : inviteWarn
+                          ? 'bg-status-soon shadow-[0_0_8px_var(--color-status-soon)]'
+                          : 'bg-status-soon motion-safe:animate-pulse'
+                    }`}
+                  />
                   {inviteState === 'valid' && (
-                    <>
-                      <strong>초대 코드가 확인되었습니다.</strong><br />
-                      <span className="text-xs text-fg-subtle">
-                        가입 완료 시 별도 승인 없이 바로 로그인할 수 있습니다.
-                      </span>
-                    </>
+                    <span aria-hidden="true">
+                      <span className="text-status-live-text">valid</span>{' '}
+                      <span className="text-fg-faint"># 승인 없이 바로 가입</span>
+                    </span>
                   )}
                   {inviteState === 'invalid' && (
-                    <>
-                      <strong>초대 코드가 만료되었거나 유효하지 않습니다.</strong><br />
-                      <span className="text-xs text-fg-subtle">
-                        일반 가입으로 진행되며, 가입 후 관리자 승인이 필요합니다.
-                      </span>
-                    </>
+                    <span aria-hidden="true">
+                      <span className="text-status-soon-text">expired</span>{' '}
+                      <span className="text-fg-faint"># 일반 가입 → 운영진 승인</span>
+                    </span>
                   )}
                   {inviteState === 'error' && (
                     <>
-                      <strong>초대 코드를 확인하지 못했습니다.</strong><br />
-                      <span className="text-xs text-fg-subtle">
-                        일시적인 네트워크 문제일 수 있습니다. 코드는 가입할 때 서버에서 다시 확인하므로
-                        그대로 진행하셔도 됩니다.
-                      </span>
-                      <br />
+                      <span aria-hidden="true" className="text-status-soon-text">unreachable</span>
                       <button
                         type="button"
                         onClick={() => { setInviteState('unchecked'); setInviteRetry(n => n + 1) }}
-                        className="mt-1.5 cursor-pointer rounded-lg border border-line-strong bg-surface-raised px-2.5 py-1 text-xs text-fg-muted transition-colors hover:text-white"
+                        aria-label="초대 코드 다시 확인"
+                        className="cursor-pointer text-[#8DB0FF] underline underline-offset-[3px] transition-colors hover:text-white"
                       >
-                        다시 확인
+                        retry
                       </button>
+                      <span aria-hidden="true" className="text-fg-faint"># 가입할 때 다시 확인</span>
                     </>
                   )}
-                  {inviteState === 'unchecked' && '초대 코드 확인 중...'}
+                  {inviteState === 'unchecked' && (
+                    <span aria-hidden="true" className="text-fg-subtle">
+                      checking <span className="term-spin" />
+                    </span>
+                  )}
                 </div>
               </div>
             )}

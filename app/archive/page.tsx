@@ -94,7 +94,7 @@ function FolderIcon({ year, onNavigate, menuOpen, onMenuToggle, onEdit, onDelete
           {showMenu && menuOpen && (
             // 반투명이면 아래 연도 글자가 비쳐 보여서 불투명 면(panel)을 쓴다
             <div
-              className="absolute right-0 top-6 z-50 flex min-w-[120px] flex-col gap-1 rounded-lg border border-line bg-panel p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
+              className="absolute right-0 top-6 z-50 flex min-w-[120px] flex-col gap-1 rounded-lg border border-line bg-panel p-1.5 shadow-pop"
               onClick={e => e.stopPropagation()}
             >
               <button

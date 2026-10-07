@@ -251,6 +251,7 @@ function CtfCard({
   isAdmin,
   onDelete,
   onError,
+  className = 'w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]',
 }: {
   event: CtfEvent
   now: number
@@ -260,6 +261,7 @@ function CtfCard({
   isAdmin: boolean
   onDelete: (event: CtfEvent) => void
   onError: (message: string) => void
+  className?: string
 }) {
   const handleShortcutOpen = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
@@ -287,7 +289,7 @@ function CtfCard({
   const isOngoing = event.status === 'ongoing'
 
   return (
-    <div className="flex-shrink-0 w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] rounded-xl overflow-hidden flex flex-col bg-surface border border-line">
+    <div className={`flex-shrink-0 ${className} rounded-xl overflow-hidden flex flex-col bg-surface border border-line`}>
       {/* Image: 기본 포스터(384×467)와 같은 4:5 */}
       <div className="relative w-full aspect-[4/5]">
         <Image
@@ -617,7 +619,6 @@ export default function CTFPage() {
   const [deleteTarget, setDeleteTarget] = useState<CtfEvent | null>(null)
   const { toast, showToast, clearToast } = useToast()
   const wheelAccum = useRef(0)
-  const touchStart = useRef<{ x: number; y: number } | null>(null)
 
   // 페이지 단위로 넘긴다. 화면 폭이 바뀌거나 삭제로 개수가 줄면 마지막 페이지 안으로 맞춘다
   const pageCount = Math.max(1, Math.ceil(events.length / perPage))
@@ -651,19 +652,21 @@ export default function CTFPage() {
     else if (wheelAccum.current < -80) { wheelAccum.current = 0; prev() }
   }, [next, prev])
 
-  // 모바일: 좌우로 밀어서 넘긴다 (세로 스크롤과 헷갈리지 않게 가로 이동이 더 클 때만)
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  // 모바일: 카드를 한 장씩 가로로 넘기는 스크롤(스냅). 지금 보이는 카드 번호를 스크롤 위치로 계산한다
+  const mobileTrack = useRef<HTMLDivElement>(null)
+  const [mobileIndex, setMobileIndex] = useState(0)
+  const handleMobileScroll = () => {
+    const track = mobileTrack.current
+    const first = track?.firstElementChild as HTMLElement | null
+    if (!track || !first) return
+    const step = first.offsetWidth + 16 // 카드 폭 + gap-4
+    setMobileIndex(Math.min(events.length - 1, Math.max(0, Math.round(track.scrollLeft / step))))
   }
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    const start = touchStart.current
-    touchStart.current = null
-    if (!start) return
-    const dx = e.changedTouches[0].clientX - start.x
-    const dy = e.changedTouches[0].clientY - start.y
-    if (Math.abs(dx) < 50 || Math.abs(dx) <= Math.abs(dy)) return
-    if (dx < 0) next()
-    else prev()
+  const scrollMobileTo = (index: number) => {
+    const track = mobileTrack.current
+    const card = track?.children[index] as HTMLElement | undefined
+    if (!track || !card) return
+    track.scrollTo({ left: card.offsetLeft - (track.clientWidth - card.offsetWidth) / 2, behavior: 'smooth' })
   }
 
   const handleShortcutOpen = useCallback((eventId: number) => {
@@ -784,8 +787,6 @@ export default function CTFPage() {
         <div
           className="relative max-w-5xl mx-auto px-[5vw]"
           onWheel={handleWheel}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
         >
           {pageCount > 1 && (
             <>
@@ -817,7 +818,29 @@ export default function CTFPage() {
               <p className="text-fg-subtle text-sm">등록된 CTF 이벤트가 없습니다.</p>
             </div>
           ) : (
-            <div className="flex flex-wrap gap-6">
+            <>
+            {/* 모바일: 한 장씩 좌우로 밀어 넘긴다. 다음 카드가 살짝 보여 넘길 수 있다는 걸 알려준다 */}
+            <div
+              ref={mobileTrack}
+              onScroll={handleMobileScroll}
+              className="sm:hidden relative flex gap-4 overflow-x-auto snap-x snap-mandatory -mx-[5vw] px-[8vw] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              {events.map(event => (
+                <CtfCard
+                  key={event.id}
+                  className="w-[84vw] snap-center"
+                  event={event}
+                  now={now}
+                  onShortcutOpen={handleShortcutOpen}
+                  isLoggedIn={!!user}
+                  onLoginRedirect={() => router.push('/login?next=%2Fctf')}
+                  isAdmin={isAdmin}
+                  onDelete={setDeleteTarget}
+                  onError={showToast}
+                />
+              ))}
+            </div>
+            <div className="hidden sm:flex flex-wrap gap-6">
               {visible.map(event => (
                 <CtfCard
                   key={event.id}
@@ -832,18 +855,19 @@ export default function CTFPage() {
                 />
               ))}
             </div>
+            </>
           )}
 
-          {/* 모바일: 카드 아래에 ‹ 1 / 4 › */}
-          {!loading && pageCount > 1 && (
+          {/* 모바일: 카드 아래에 ‹ 1 / 4 › — 스와이프한 위치와 같이 움직인다 */}
+          {!loading && events.length > 1 && (
             <div className="sm:hidden flex items-center justify-center gap-5 mt-6">
-              <button onClick={prev} disabled={current === 0} aria-label="이전 대회" className={ARROW_CLASS}>
+              <button onClick={() => scrollMobileTo(mobileIndex - 1)} disabled={mobileIndex === 0} aria-label="이전 대회" className={ARROW_CLASS}>
                 <ArrowIcon dir="left" />
               </button>
               <span className="text-sm text-fg-subtle tabular-nums">
-                <span className="text-white font-semibold">{current + 1}</span> / {pageCount}
+                <span className="text-white font-semibold">{mobileIndex + 1}</span> / {events.length}
               </span>
-              <button onClick={next} disabled={current >= pageCount - 1} aria-label="다음 대회" className={ARROW_CLASS}>
+              <button onClick={() => scrollMobileTo(mobileIndex + 1)} disabled={mobileIndex >= events.length - 1} aria-label="다음 대회" className={ARROW_CLASS}>
                 <ArrowIcon dir="right" />
               </button>
             </div>

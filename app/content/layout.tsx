@@ -17,8 +17,8 @@ export default function ContentLayout({ children }: { children: React.ReactNode 
 
   if (loading || !user) {
     return (
-      <main style={{ minHeight: '100vh', background: '#040d1f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>불러오는 중...</span>
+      <main className="min-h-screen flex items-center justify-center bg-background">
+        <span className="text-fg-subtle text-sm">불러오는 중...</span>
       </main>
     )
   }

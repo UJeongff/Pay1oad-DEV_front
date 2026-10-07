@@ -1,9 +1,12 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
-import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
+import { useState } from 'react'
+import { useAuthContext } from '@/app/context/AuthContext'
+import {
+  adminFetch, Button, Choice, ConfirmDialog, DetailPanel, EmptyState, ErrorState, FilterTabs,
+  formatDate, InfoGrid, LoadingState, PageHeader, panelPad, SelectableRow, StatusLabel, Table, Td, TextInput,
+  Th, Toast, useAdminQuery, useToast, type Tone,
+} from '../_components/AdminUI'
 
 type UserStatus = 'ACTIVE' | 'BREAK' | 'OB' | 'LEAVE'
 
@@ -14,455 +17,299 @@ interface AdminUser {
   nickname: string
   department: string
   studentId: string
-  generation: number
+  generation: number | null
   status: UserStatus
   createdAt: string
   roles: string[]
 }
 
-interface PageInfo {
+interface PageData {
+  content: AdminUser[]
   totalElements: number
   totalPages: number
   number: number
 }
 
-const STATUS_OPTIONS: { value: '' | UserStatus; label: string }[] = [
-  { value: '', label: '전체' },
-  { value: 'ACTIVE', label: '활동' },
-  { value: 'BREAK', label: '휴학' },
-  { value: 'OB', label: 'OB' },
-  { value: 'LEAVE', label: '탈퇴' },
+const STATUS: Record<UserStatus, { label: string; tone: Tone; tab: string }> = {
+  ACTIVE: { label: '활동', tone: 'live', tab: 'active' },
+  BREAK: { label: '휴학', tone: 'soon', tab: 'break' },
+  OB: { label: 'OB', tone: 'off', tab: 'ob' },
+  LEAVE: { label: '탈퇴', tone: 'danger', tab: 'leave' },
+}
+
+type Filter = 'ALL' | UserStatus
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'ALL', label: 'all' },
+  ...(Object.keys(STATUS) as UserStatus[]).map((k) => ({ key: k as Filter, label: STATUS[k].tab })),
 ]
 
-const STATUS_STYLE: Record<UserStatus, React.CSSProperties> = {
-  ACTIVE: { color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)' },
-  BREAK:  { color: '#facc15', background: 'rgba(250,204,21,0.1)',  border: '1px solid rgba(250,204,21,0.25)' },
-  OB:     { color: '#94a3b8', background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.25)' },
-  LEAVE:  { color: '#f87171', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)' },
-}
-
-const STATUS_LABEL: Record<UserStatus, string> = {
-  ACTIVE: '활동', BREAK: '휴학', OB: 'OB', LEAVE: '탈퇴',
-}
-
-function Badge({ children, style }: { children: React.ReactNode; style: React.CSSProperties }) {
-  return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
-      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap', ...style,
-    }}>
-      {children}
-    </span>
-  )
-}
-
-function ConfirmModal({
-  message, onConfirm, onCancel, danger = false,
-}: {
-  message: string
-  onConfirm: () => void
-  onCancel: () => void
-  danger?: boolean
-}) {
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 100,
-      background: 'rgba(0,0,0,0.65)', display: 'flex',
-      alignItems: 'center', justifyContent: 'center', padding: '16px',
-    }}>
-      <div style={{
-        background: '#0d1b35', borderRadius: '16px', padding: '28px',
-        border: '1px solid rgba(255,255,255,0.1)', maxWidth: '380px', width: '100%',
-      }}>
-        <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
-          {message}
-        </p>
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onCancel}
-            style={{
-              padding: '8px 18px', borderRadius: '8px', fontSize: '13px',
-              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-              color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
-            }}
-          >취소</button>
-          <button
-            onClick={onConfirm}
-            style={{
-              padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-              background: danger ? 'rgba(239,68,68,0.85)' : 'rgba(28,90,255,0.85)',
-              border: 'none', color: '#fff', cursor: 'pointer',
-            }}
-          >확인</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function StatusModal({
-  user,
-  onClose,
-  onSaved,
-}: {
-  user: AdminUser
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const [status, setStatus] = useState<UserStatus>(user.status)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const isAdmin = user.roles.includes('ADMIN')
-  const [grantAdmin, setGrantAdmin] = useState(isAdmin)
-
-  async function handleSave() {
-    setLoading(true)
-    setError('')
-    try {
-      const statusRes = await fetchWithAuth(`${API_URL}/v1/admin/users/${user.id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      })
-      if (!statusRes.ok) {
-        const d = await statusRes.json().catch(() => ({}))
-        throw new Error(d?.message ?? '상태 변경 실패')
-      }
-
-      if (grantAdmin !== isAdmin) {
-        const roleRes = await fetchWithAuth(`${API_URL}/v1/admin/users/${user.id}/role`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ grant: grantAdmin }),
-        })
-        if (!roleRes.ok) {
-          const d = await roleRes.json().catch(() => ({}))
-          throw new Error(d?.message ?? '권한 변경 실패')
-        }
-      }
-
-      onSaved()
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '저장 실패')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 100,
-        background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
-      }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{
-        background: '#0d1b35', borderRadius: '16px', padding: '28px',
-        border: '1px solid rgba(255,255,255,0.1)', maxWidth: '400px', width: '100%',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-          <div>
-            <p style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 700, fontSize: '15px' }}>{user.name}</p>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '2px' }}>{user.email}</p>
-          </div>
-          <button onClick={onClose} style={{ color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>✕</button>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '11px', fontWeight: 600, marginBottom: '8px', letterSpacing: '0.08em' }}>활동 상태</p>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {(['ACTIVE', 'BREAK', 'OB', 'LEAVE'] as UserStatus[]).map(s => (
-                <button
-                  key={s}
-                  onClick={() => setStatus(s)}
-                  style={{
-                    padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                    cursor: 'pointer', transition: 'all 0.15s',
-                    ...(status === s
-                      ? STATUS_STYLE[s]
-                      : { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' }
-                    ),
-                  }}
-                >
-                  {STATUS_LABEL[s]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 14px', borderRadius: '8px',
-            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
-          }}>
-            <div>
-              <p style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>
-                이 회원에게 관리자 권한 부여
-              </p>
-              <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginTop: '2px' }}>
-                켜면 이 회원도 관리자 콘솔에 들어와 가입 승인·회원 관리를 할 수 있습니다
-              </p>
-            </div>
-            <button
-              onClick={() => setGrantAdmin(v => !v)}
-              style={{
-                width: '44px', height: '24px', borderRadius: '12px', border: 'none',
-                cursor: 'pointer', transition: 'background 0.2s', position: 'relative',
-                background: grantAdmin ? '#1C5AFF' : 'rgba(255,255,255,0.15)',
-              }}
-            >
-              <span style={{
-                position: 'absolute', top: '3px',
-                left: grantAdmin ? '23px' : '3px',
-                width: '18px', height: '18px', borderRadius: '50%',
-                background: '#fff', transition: 'left 0.2s',
-              }} />
-            </button>
-          </div>
-        </div>
-
-        {error && <p style={{ color: '#f87171', fontSize: '12px', marginTop: '12px' }}>{error}</p>}
-
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '9px 18px', borderRadius: '8px', fontSize: '13px',
-              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-              color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
-            }}
-          >취소</button>
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            style={{
-              padding: '9px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-              background: 'rgba(28,90,255,0.85)', border: 'none',
-              color: '#fff', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1,
-            }}
-          >{loading ? '저장 중...' : '저장'}</button>
-        </div>
-      </div>
-    </div>
-  )
-}
+const isAdminUser = (u: AdminUser) => u.roles?.includes('ADMIN')
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<AdminUser[]>([])
-  const [pageInfo, setPageInfo] = useState<PageInfo>({ totalElements: 0, totalPages: 0, number: 0 })
-  const [statusFilter, setStatusFilter] = useState<'' | UserStatus>('')
+  const { user: me } = useAuthContext()
+  const { toast, show } = useToast()
+
+  const [filter, setFilter] = useState<Filter>('ALL')
   const [page, setPage] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
-  const [editingUser, setEditingUser] = useState<AdminUser | null>(null)
-  const [deletingUser, setDeletingUser] = useState<AdminUser | null>(null)
+  const params = new URLSearchParams({ page: String(page), size: '20' })
+  if (filter !== 'ALL') params.set('status', filter)
+  if (search) params.set('search', search)
+  // 필터를 빠르게 바꿔도 늦게 온 이전 응답은 버려진다 (useAdminQuery)
+  const { data, error, loading, reload: load, mutate } = useAdminQuery<PageData>(`/v1/admin/users?${params}`)
 
-  const loadUsers = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ page: String(page), size: '20' })
-      if (statusFilter) params.set('status', statusFilter)
-      if (search) params.set('search', search)
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/users?${params}`)
-      const json = await res.json().catch(() => ({}))
-      const data = json?.data
-      if (data) {
-        setUsers(data.content ?? [])
-        setPageInfo({ totalElements: data.totalElements ?? 0, totalPages: data.totalPages ?? 0, number: data.number ?? 0 })
+  const users = data?.content ?? []
+  const selected = users.find((u) => u.id === selectedId) ?? null
+  const panelOpen = !!selected
+
+  function onSaved(next: AdminUser) {
+    mutate((d) => (d ? { ...d, content: d.content.map((u) => (u.id === next.id ? next : u)) } : d))
+  }
+
+  function onDeleted(u: AdminUser) {
+    setSelectedId(null)
+    show(`${u.name} 님을 삭제했어요.`)
+    load()
+  }
+
+  const total = data?.totalElements ?? 0
+  const filtered = filter !== 'ALL' || !!search
+
+  return (
+    <div className={panelPad(panelOpen)}>
+      <PageHeader
+        path="users"
+        title="회원 관리"
+        description={<>{filtered ? '조건에 맞는 부원' : '승인된 부원'} <span className="font-mono text-white">{total}</span>명</>}
+        actions={
+          <form
+            role="search"
+            onSubmit={(e) => { e.preventDefault(); setSearch(searchInput.trim()); setPage(0) }}
+            className="relative w-full sm:w-[240px]"
+          >
+            <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-brand-soft">/</span>
+            <TextInput
+              type="search"
+              aria-label="이름·닉네임·이메일 검색 (Enter)"
+              placeholder="이름·닉네임·이메일"
+              value={searchInput}
+              onChange={(e) => {
+                setSearchInput(e.target.value)
+                // 검색어를 지우면 바로 전체로
+                if (!e.target.value && search) { setSearch(''); setPage(0) }
+              }}
+              className="pl-7 font-mono text-[13px]"
+            />
+          </form>
+        }
+      />
+
+      <FilterTabs label="상태별 보기" items={FILTERS} value={filter} onChange={(k) => { setFilter(k); setPage(0) }} />
+
+      {error && !data ? (
+        <ErrorState command="fetch users" error={error} onRetry={load} />
+      ) : loading && !data ? (
+        <LoadingState command="fetch users" />
+      ) : users.length === 0 ? (
+        <EmptyState command={`ls users/${search ? ` | grep "${search}"` : ''}`} text={search ? '검색 결과가 없어요' : '해당하는 부원이 없어요'} />
+      ) : (
+        <>
+          {error && <p role="alert" className="mb-3 text-xs text-danger">새로 불러오지 못했어요: {error} <button type="button" onClick={load} className="cursor-pointer underline">다시 시도</button></p>}
+          <div className={loading ? 'opacity-60 transition-opacity' : ''}>
+            <Table label="회원 목록">
+              <thead>
+                <tr>
+                  <Th>Name</Th>
+                  <Th className="hidden md:table-cell">Nick</Th>
+                  <Th className={panelOpen ? 'hidden' : 'hidden lg:table-cell'}>Email</Th>
+                  <Th className="hidden sm:table-cell">Gen</Th>
+                  <Th>Status</Th>
+                  <Th className="hidden sm:table-cell">Role</Th>
+                  <Th className={panelOpen ? 'hidden' : 'hidden xl:table-cell'}>Joined</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <SelectableRow key={u.id} selected={u.id === selectedId} onSelect={() => setSelectedId(u.id)} label={`${u.name} 상세 열기`}>
+                    <Td className="font-semibold text-white">
+                      {u.name}
+                      {/* 좁은 화면에선 닉네임 · 기수를 이름 아래에 */}
+                      <span className="mt-1 block font-mono text-[11px] font-normal text-fg-faint md:hidden">
+                        {u.nickname}{u.generation ? ` · ${u.generation}기` : ''}{isAdminUser(u) ? ' · admin' : ''}
+                      </span>
+                    </Td>
+                    <Td className={`hidden font-mono md:table-cell ${u.id === selectedId ? 'text-white' : 'text-fg-subtle'}`}>{u.nickname}</Td>
+                    <Td className={`text-fg-subtle ${panelOpen ? 'hidden' : 'hidden lg:table-cell'}`}>{u.email}</Td>
+                    <Td className="hidden font-mono sm:table-cell">{u.generation ?? '—'}</Td>
+                    <Td><StatusLabel tone={STATUS[u.status]?.tone ?? 'off'}>{STATUS[u.status]?.label ?? u.status}</StatusLabel></Td>
+                    <Td className={`hidden font-mono sm:table-cell ${isAdminUser(u) ? 'text-brand-soft' : 'text-fg-faint'}`}>{isAdminUser(u) ? 'admin' : 'member'}</Td>
+                    <Td className={`whitespace-nowrap font-mono text-fg-faint ${panelOpen ? 'hidden' : 'hidden xl:table-cell'}`}>{formatDate(u.createdAt)}</Td>
+                  </SelectableRow>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+
+          {(data?.totalPages ?? 0) > 1 && (
+            <nav aria-label="페이지" className="mt-4 flex items-center gap-3 font-mono text-xs">
+              <button type="button" disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="cursor-pointer text-fg-subtle hover:text-white disabled:cursor-not-allowed disabled:text-fg-faint/50">‹ prev</button>
+              <span><span className="text-white">{page + 1}</span> <span className="text-fg-faint">/ {data?.totalPages}</span></span>
+              <button type="button" disabled={page + 1 >= (data?.totalPages ?? 1)} onClick={() => setPage((p) => p + 1)} className="cursor-pointer text-fg-subtle hover:text-white disabled:cursor-not-allowed disabled:text-fg-faint/50">next ›</button>
+            </nav>
+          )}
+          <p className="mt-4 hidden font-mono text-[11px] text-fg-faint md:block">↑↓ 이동 · enter 열기 · esc 닫기</p>
+        </>
+      )}
+
+      {selected && (
+        // key 로 사람이 바뀔 때마다 패널 안의 입력 상태를 새로 시작한다
+        <UserPanel
+          key={selected.id}
+          user={selected}
+          isSelf={me?.id === selected.id}
+          onClose={() => setSelectedId(null)}
+          onSaved={(u, msg) => { onSaved(u); show(msg) }}
+          onDeleted={onDeleted}
+        />
+      )}
+
+      <Toast toast={toast} />
+    </div>
+  )
+}
+
+function UserPanel({
+  user, isSelf, onClose, onSaved, onDeleted,
+}: {
+  user: AdminUser
+  isSelf: boolean
+  onClose: () => void
+  onSaved: (u: AdminUser, msg: string) => void
+  onDeleted: (u: AdminUser) => void
+}) {
+  const wasAdmin = isAdminUser(user)
+  const [status, setStatus] = useState<UserStatus>(user.status)
+  const [role, setRole] = useState<'MEMBER' | 'ADMIN'>(wasAdmin ? 'ADMIN' : 'MEMBER')
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState<{ tone: Tone; text: string } | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  const statusChanged = status !== user.status
+  const roleChanged = (role === 'ADMIN') !== wasAdmin
+  const dirty = statusChanged || roleChanged
+
+  async function save() {
+    setSaving(true)
+    setNotice(null)
+    let next = user
+    // 바뀐 것만 보낸다. 상태는 저장되고 권한만 실패하면 표에도 바뀐 상태를 반영해야 하므로 단계별로 기록한다.
+    if (statusChanged) {
+      const r = await adminFetch(`/v1/admin/users/${user.id}/status`, { method: 'PATCH', json: { status } })
+      if (!r.ok) {
+        setNotice({ tone: 'danger', text: `저장하지 못했어요: ${r.error}` })
+        setSaving(false)
+        return
       }
-    } catch {
-      setUsers([])
-    } finally {
-      setLoading(false)
+      next = { ...next, status }
     }
-  }, [page, statusFilter, search])
-
-  useEffect(() => { loadUsers() }, [loadUsers])
-
-  async function handleDelete() {
-    if (!deletingUser) return
-    try {
-      await fetchWithAuth(`${API_URL}/v1/admin/users/${deletingUser.id}`, { method: 'DELETE' })
-      setDeletingUser(null)
-      loadUsers()
-    } catch {}
+    if (roleChanged) {
+      const r = await adminFetch(`/v1/admin/users/${user.id}/role`, { method: 'PATCH', json: { grant: role === 'ADMIN' } })
+      if (!r.ok) {
+        if (next !== user) onSaved(next, '상태만 저장했어요.')
+        setNotice({ tone: 'soon', text: `${statusChanged ? '상태는 저장했지만, ' : ''}권한은 바꾸지 못했어요: ${r.error}` })
+        setRole(wasAdmin ? 'ADMIN' : 'MEMBER')
+        setSaving(false)
+        return
+      }
+      next = { ...next, roles: role === 'ADMIN' ? [...new Set([...(next.roles ?? []), 'ADMIN'])] : (next.roles ?? []).filter((r) => r !== 'ADMIN') }
+    }
+    onSaved(next, `${user.name} 님 정보를 저장했어요.`)
+    setNotice({ tone: 'live', text: '저장했어요.' })
+    setSaving(false)
   }
 
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
-    setSearch(searchInput)
-    setPage(0)
-  }
-
-  const cell: React.CSSProperties = {
-    padding: '12px 14px', fontSize: '13px', color: 'rgba(255,255,255,0.75)',
-    borderBottom: '1px solid rgba(255,255,255,0.05)', verticalAlign: 'middle',
-  }
-  const hCell: React.CSSProperties = {
-    padding: '10px 14px', fontSize: '11px', fontWeight: 700,
-    color: 'rgba(255,255,255,0.3)', letterSpacing: '0.08em', textTransform: 'uppercase',
-    borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)',
+  async function remove() {
+    setDeleting(true)
+    setDeleteError('')
+    const r = await adminFetch(`/v1/admin/users/${user.id}`, { method: 'DELETE' })
+    setDeleting(false)
+    if (!r.ok) { setDeleteError(r.error); return }
+    setConfirmOpen(false)
+    onDeleted(user)
   }
 
   return (
-    <div style={{ maxWidth: '1100px' }}>
-      <div style={{ marginBottom: '28px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>회원 관리</h1>
-        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.35)' }}>전체 {pageInfo.totalElements}명</p>
-      </div>
-
-      {/* Filters */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: '4px' }}>
-          {STATUS_OPTIONS.map(o => (
-            <button
-              key={o.value}
-              onClick={() => { setStatusFilter(o.value); setPage(0) }}
-              style={{
-                padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                cursor: 'pointer', transition: 'all 0.15s',
-                background: statusFilter === o.value ? 'rgba(28,90,255,0.3)' : 'rgba(255,255,255,0.05)',
-                border: statusFilter === o.value ? '1px solid rgba(28,90,255,0.5)' : '1px solid rgba(255,255,255,0.1)',
-                color: statusFilter === o.value ? '#7aa3ff' : 'rgba(255,255,255,0.45)',
-              }}
+    <>
+      <DetailPanel
+        open
+        onClose={onClose}
+        path={`users/${user.nickname}`}
+        label={`${user.name} 회원 상세`}
+        busy={saving || deleting}
+        notice={notice}
+        footer={
+          <>
+            <Button
+              variant="dangerText"
+              disabled={isSelf || saving}
+              title={isSelf ? '본인 계정은 여기서 삭제할 수 없어요' : undefined}
+              onClick={() => { setDeleteError(''); setConfirmOpen(true) }}
             >
-              {o.label}
-            </button>
-          ))}
-        </div>
+              회원 삭제…
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" disabled={!dirty || saving} onClick={() => { setStatus(user.status); setRole(wasAdmin ? 'ADMIN' : 'MEMBER'); setNotice(null) }}>되돌리기</Button>
+              <Button disabled={!dirty} loading={saving} onClick={save}>저장</Button>
+            </div>
+          </>
+        }
+      >
+        <h2 className="text-2xl font-bold text-white">{user.name}</h2>
+        <p className="mb-5 mt-1 font-mono text-xs text-fg-faint">
+          {user.nickname}{user.generation ? ` · ${user.generation}기` : ''} · {formatDate(user.createdAt)} 가입
+        </p>
+        <InfoGrid rows={[['email', user.email], ['dept', user.department || '—'], ['id', user.studentId || '—']]} />
 
-        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
-          <input
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            placeholder="이름, 닉네임, 이메일 검색"
-            style={{
-              padding: '7px 12px', borderRadius: '7px', fontSize: '12px',
-              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-              color: '#fff', outline: 'none', width: '220px',
-            }}
+        <p className="mb-2 text-xs text-fg-subtle">활동 상태</p>
+        <div className="mb-5">
+          <Choice
+            label="활동 상태"
+            value={status}
+            onChange={setStatus}
+            disabled={saving}
+            options={(Object.keys(STATUS) as UserStatus[]).map((k) => ({ key: k, label: STATUS[k].label, tone: STATUS[k].tone }))}
           />
-          <button
-            type="submit"
-            style={{
-              padding: '7px 14px', borderRadius: '7px', fontSize: '12px', fontWeight: 600,
-              background: 'rgba(28,90,255,0.3)', border: '1px solid rgba(28,90,255,0.4)',
-              color: '#7aa3ff', cursor: 'pointer',
-            }}
-          >검색</button>
-        </form>
-      </div>
-
-      {/* Table */}
-      <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              {['이름', '닉네임', '이메일', '학과', '학번', '기수', '상태', '권한', '가입일', ''].map(h => (
-                <th key={h} style={hCell}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={10} style={{ ...cell, textAlign: 'center', color: 'rgba(255,255,255,0.25)', padding: '40px' }}>
-                  불러오는 중...
-                </td>
-              </tr>
-            ) : users.length === 0 ? (
-              <tr>
-                <td colSpan={10} style={{ ...cell, textAlign: 'center', color: 'rgba(255,255,255,0.25)', padding: '40px' }}>
-                  회원이 없습니다.
-                </td>
-              </tr>
-            ) : users.map(u => (
-              <tr key={u.id} style={{ transition: 'background 0.1s' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <td style={cell}>{u.name}</td>
-                <td style={cell}>{u.nickname}</td>
-                <td style={{ ...cell, color: 'rgba(255,255,255,0.45)', fontSize: '12px' }}>{u.email}</td>
-                <td style={{ ...cell, color: 'rgba(255,255,255,0.45)' }}>{u.department || '—'}</td>
-                <td style={{ ...cell, color: 'rgba(255,255,255,0.45)' }}>{u.studentId || '—'}</td>
-                <td style={{ ...cell, color: 'rgba(255,255,255,0.45)' }}>{u.generation ? `${u.generation}기` : '—'}</td>
-                <td style={cell}>
-                  <Badge style={STATUS_STYLE[u.status]}>{STATUS_LABEL[u.status]}</Badge>
-                </td>
-                <td style={cell}>
-                  {u.roles.includes('ADMIN') ? (
-                    <Badge style={{ color: '#f59e0b', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>ADMIN</Badge>
-                  ) : (
-                    <Badge style={{ color: 'rgba(255,255,255,0.35)', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)' }}>MEMBER</Badge>
-                  )}
-                </td>
-                <td style={{ ...cell, fontSize: '12px', color: 'rgba(255,255,255,0.35)', whiteSpace: 'nowrap' }}>
-                  {u.createdAt ? new Date(u.createdAt).toLocaleDateString('ko-KR') : '—'}
-                </td>
-                <td style={{ ...cell, whiteSpace: 'nowrap' }}>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                      onClick={() => setEditingUser(u)}
-                      style={{
-                        padding: '4px 10px', borderRadius: '5px', fontSize: '11px', fontWeight: 600,
-                        background: 'rgba(28,90,255,0.2)', border: '1px solid rgba(28,90,255,0.35)',
-                        color: '#7aa3ff', cursor: 'pointer',
-                      }}
-                    >편집</button>
-                    <button
-                      onClick={() => setDeletingUser(u)}
-                      style={{
-                        padding: '4px 10px', borderRadius: '5px', fontSize: '11px', fontWeight: 600,
-                        background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)',
-                        color: '#f87171', cursor: 'pointer',
-                      }}
-                    >삭제</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      {pageInfo.totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '6px', marginTop: '20px' }}>
-          {Array.from({ length: pageInfo.totalPages }, (_, i) => (
-            <button
-              key={i}
-              onClick={() => setPage(i)}
-              style={{
-                width: '32px', height: '32px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                cursor: 'pointer', border: 'none', transition: 'all 0.15s',
-                background: i === pageInfo.number ? 'rgba(28,90,255,0.4)' : 'rgba(255,255,255,0.06)',
-                color: i === pageInfo.number ? '#7aa3ff' : 'rgba(255,255,255,0.4)',
-              }}
-            >{i + 1}</button>
-          ))}
         </div>
-      )}
 
-      {editingUser && (
-        <StatusModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={loadUsers} />
-      )}
-
-      {deletingUser && (
-        <ConfirmModal
-          message={`${deletingUser.name}(${deletingUser.email}) 회원을 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다.`}
-          danger
-          onConfirm={handleDelete}
-          onCancel={() => setDeletingUser(null)}
+        <p className="mb-2 text-xs text-fg-subtle">권한</p>
+        <Choice
+          label="권한"
+          value={role}
+          onChange={setRole}
+          disabled={saving || isSelf}
+          options={[{ key: 'MEMBER', label: '부원' }, { key: 'ADMIN', label: '관리자' }]}
         />
-      )}
-    </div>
+        <p className="mt-2 text-xs text-fg-faint">
+          {isSelf ? '본인 권한은 다른 관리자가 바꿔야 해요.' : '관리자는 이 콘솔에서 가입 승인·회원 관리를 할 수 있어요. 관리자가 한 명뿐이면 해제할 수 없어요.'}
+        </p>
+      </DetailPanel>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="회원 삭제"
+        confirmLabel="영구 삭제"
+        busy={deleting}
+        error={deleteError}
+        onConfirm={remove}
+        onClose={() => setConfirmOpen(false)}
+      >
+        <b className="text-white">{user.name}</b> ({user.email}) 님의 계정이 영구 삭제됩니다. 되돌릴 수 없어요.
+      </ConfirmDialog>
+    </>
   )
 }

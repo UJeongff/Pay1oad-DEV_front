@@ -155,14 +155,15 @@ export default async function Home() {
             <div className="mt-10">
               <Link
                 href={cta.href}
-                className="group inline-flex flex-wrap items-center border border-fg-muted bg-[#040d1f]/35 backdrop-blur-sm text-white rounded-full text-sm hover-brand transition-all duration-200"
+                className="group inline-flex flex-nowrap items-center max-w-full whitespace-nowrap border border-fg-muted bg-[#040d1f]/35 backdrop-blur-sm text-white rounded-full text-[13px] sm:text-sm hover-brand transition-all duration-200"
               >
-                <span className={`inline-flex items-center gap-2.5 py-3.5 pl-[22px] pr-5 font-mono text-[13px] font-medium tracking-[0.04em] group-hover:text-white transition-colors duration-200 ${cta.statusClass}`}>
+                {/* 모바일에선 여백·글자를 한 단계 줄여 상태와 버튼 글자가 한 줄에 들어가게 한다 */}
+                <span className={`inline-flex items-center gap-2 sm:gap-2.5 py-3 sm:py-3.5 pl-4 sm:pl-[22px] pr-3.5 sm:pr-5 font-mono text-[11.5px] sm:text-[13px] font-medium tracking-[0.04em] group-hover:text-white transition-colors duration-200 ${cta.statusClass}`}>
                   <span aria-hidden="true" className={`w-2 h-2 rounded-full ${cta.dotClass}`} />
                   {cta.status}
                 </span>
-                <span aria-hidden="true" className="w-px h-[18px] bg-line-strong" />
-                <span className="inline-flex items-center gap-2.5 py-3.5 pl-5 pr-[26px] font-bold tracking-[0.05em]">
+                <span aria-hidden="true" className="w-px h-4 sm:h-[18px] bg-line-strong shrink-0" />
+                <span className="inline-flex items-center gap-2 sm:gap-2.5 py-3 sm:py-3.5 pl-3.5 sm:pl-5 pr-5 sm:pr-[26px] font-bold tracking-[0.03em] sm:tracking-[0.05em]">
                   {cta.label}
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                     <path

@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://pay1oad.com'
+import { useState, type FormEvent } from 'react'
+import {
+  adminFetch, asList, Button, ConfirmDialog, DetailPanel, EmptyState, ErrorState, Field, formatDate,
+  formatDateTime, InfoGrid, LoadingState, PageHeader, panelPad, SelectableRow, StatusLabel, Table, Td,
+  TextInput, Th, Toast, useAdminQuery, useToast, type Tone,
+} from '../_components/AdminUI'
 
 interface InviteToken {
   id: number
@@ -18,280 +19,315 @@ interface InviteToken {
   usable: boolean
 }
 
-function formatDate(iso: string) {
-  const d = new Date(iso)
+type InviteStatus = 'live' | 'expired' | 'revoked'
+
+const STATUS: Record<InviteStatus, { label: string; tone: Tone }> = {
+  live: { label: '사용 가능', tone: 'live' },
+  expired: { label: '만료', tone: 'soon' },
+  revoked: { label: '폐기', tone: 'off' },
+}
+
+function statusOf(t: InviteToken): InviteStatus {
+  if (t.revokedAt) return 'revoked'
+  return t.usable ? 'live' : 'expired'
+}
+
+const MEMO_MAX = 200
+
+/** 브라우저 기준 오늘(+days) 을 yyyy-MM-dd 로 */
+function localYmd(days = 0): string {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function formatDateTime(iso: string) {
-  const d = new Date(iso)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-function defaultExpiry(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 14)
-  return formatDate(d.toISOString())
+function inviteLink(code: string): string {
+  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? (typeof window !== 'undefined' ? window.location.origin : 'https://pay1oad.com')
+  return `${origin}/register?invite=${encodeURIComponent(code)}`
 }
 
 export default function AdminInvitesPage() {
-  const [tokens, setTokens] = useState<InviteToken[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showCreate, setShowCreate] = useState(false)
-  const [expiresOn, setExpiresOn] = useState(defaultExpiry())
-  const [memo, setMemo] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [confirmRevoke, setConfirmRevoke] = useState<InviteToken | null>(null)
+  const { toast, show } = useToast()
+  const { data, error, loading, reload, mutate } = useAdminQuery<InviteToken[]>('/v1/admin/invites')
+  /** 선택한 코드 id, 'new' 면 새로 만들기 */
+  const [selectedId, setSelectedId] = useState<number | 'new' | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/invites`, { cache: 'no-store' })
-      if (res.ok) {
-        const json = await res.json()
-        setTokens(json.data ?? [])
-      }
-    } catch {} finally {
-      setLoading(false)
-    }
-  }, [])
+  const invites = asList<InviteToken>(data)
+  const selected = typeof selectedId === 'number' ? invites.find((t) => t.id === selectedId) ?? null : null
+  const creating = selectedId === 'new'
+  const panelOpen = creating || !!selected
+  const liveCount = invites.filter((t) => statusOf(t) === 'live').length
 
-  useEffect(() => { load() }, [load])
-
-  const showToast = (msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2400)
+  function onCreated(t: InviteToken) {
+    // 다시 불러오기 전에 바로 목록에 넣어 패널이 새 코드로 넘어가게 한다
+    mutate((d) => [t, ...asList<InviteToken>(d).filter((x) => x.id !== t.id)])
+    setSelectedId(t.id)
+    show('초대 코드를 만들었어요. 링크를 복사해 보내주세요.')
+    reload()
   }
 
-  const handleCreate = async () => {
-    setError(null)
-    if (!expiresOn) { setError('만료일을 선택해주세요.'); return }
-    setSubmitting(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/invites`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expiresOn, memo: memo.trim() || null }),
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        setError(j?.message ?? '발급에 실패했습니다.')
-        return
-      }
-      showToast('초대 코드가 발급되었습니다.')
-      setShowCreate(false)
-      setMemo('')
-      setExpiresOn(defaultExpiry())
-      await load()
-    } finally {
-      setSubmitting(false)
-    }
+  function onRevoked(t: InviteToken) {
+    mutate((d) => asList<InviteToken>(d).map((x) => (x.id === t.id ? { ...x, revokedAt: x.revokedAt ?? new Date().toISOString(), usable: false } : x)))
+    show('초대 코드를 폐기했어요.')
+    reload()
   }
 
-  const handleRevoke = async (id: number) => {
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/invites/${id}`, { method: 'DELETE' })
-      if (res.ok) {
-        showToast('폐기되었습니다.')
-        await load()
-      } else {
-        showToast('폐기에 실패했습니다.')
-      }
-    } finally {
-      setConfirmRevoke(null)
-    }
-  }
-
-  const copyLink = async (code: string) => {
-    const link = `${SITE_URL}/register?invite=${encodeURIComponent(code)}`
-    try {
-      await navigator.clipboard.writeText(link)
-      showToast('초대 링크가 복사되었습니다.')
-    } catch {
-      showToast('복사 실패 — 수동으로 복사해주세요.')
-    }
-  }
+  const newButton = <Button onClick={() => setSelectedId('new')}>+ 새 초대 코드</Button>
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>초대 코드</h1>
-          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
-            코드로 가입하면 관리자 승인 없이 바로 활성 회원이 됩니다. 만료일까지 다회 사용 가능.
-          </p>
-        </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{
-            padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-            background: 'rgba(28,90,255,0.85)', border: '1px solid rgba(28,90,255,0.6)',
-            color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap',
-          }}
-        >+ 새 코드 발급</button>
-      </div>
+    <div className={panelPad(panelOpen)}>
+      <PageHeader
+        path="invites"
+        title="초대 코드"
+        description={<>코드로 가입하면 승인 없이 바로 회원이 돼요. 사용 가능 <span className="font-mono text-white">{liveCount}</span>개</>}
+        actions={newButton}
+      />
 
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: 'fixed', top: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 200,
-          padding: '11px 24px', borderRadius: '8px',
-          background: 'rgba(0, 65, 239, 0.95)', border: '1px solid rgba(28,90,255,0.6)',
-          color: '#fff', fontSize: '14px', fontWeight: 500,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-        }}>{toast}</div>
-      )}
-
-      {/* Create modal */}
-      {showCreate && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ background: '#0d1b35', borderRadius: '16px', padding: '28px', border: '1px solid rgba(255,255,255,0.1)', maxWidth: '420px', width: '100%' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#fff', marginBottom: '18px' }}>초대 코드 발급</h3>
-
-            <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.55)', marginBottom: '6px' }}>만료일</label>
-            <input
-              type="date"
-              value={expiresOn}
-              onChange={e => setExpiresOn(e.target.value)}
-              min={formatDate(new Date().toISOString())}
-              style={{
-                width: '100%', padding: '8px 12px', marginBottom: '16px',
-                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '6px', color: '#fff', fontSize: '13px', outline: 'none',
-              }}
-            />
-
-            <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255,255,255,0.55)', marginBottom: '6px' }}>메모 (선택)</label>
-            <input
-              type="text"
-              value={memo}
-              onChange={e => setMemo(e.target.value)}
-              placeholder="예: 2026 신입 OT"
-              maxLength={200}
-              style={{
-                width: '100%', padding: '8px 12px', marginBottom: '20px',
-                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '6px', color: '#fff', fontSize: '13px', outline: 'none',
-              }}
-            />
-
-            {error && <p style={{ color: '#f87171', fontSize: '12px', marginBottom: '12px' }}>{error}</p>}
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => { setShowCreate(false); setError(null) }}
-                style={{ padding: '8px 18px', borderRadius: '8px', fontSize: '13px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}
-              >취소</button>
-              <button
-                onClick={handleCreate}
-                disabled={submitting}
-                style={{
-                  padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-                  background: 'rgba(28,90,255,0.85)', border: 'none', color: '#fff',
-                  cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1,
-                }}
-              >발급</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Revoke confirm */}
-      {confirmRevoke && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ background: '#0d1b35', borderRadius: '16px', padding: '28px', border: '1px solid rgba(255,255,255,0.1)', maxWidth: '380px', width: '100%' }}>
-            <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
-              <strong style={{ color: '#fff' }}>{confirmRevoke.memo || confirmRevoke.code.slice(0, 8) + '...'}</strong> 코드를 폐기하시겠습니까?<br />
-              <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>이미 이 코드로 가입한 사용자는 영향받지 않습니다.</span>
-            </p>
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setConfirmRevoke(null)} style={{ padding: '8px 18px', borderRadius: '8px', fontSize: '13px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>취소</button>
-              <button onClick={() => handleRevoke(confirmRevoke.id)} style={{ padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, background: 'rgba(239,68,68,0.85)', border: 'none', color: '#fff', cursor: 'pointer' }}>폐기</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Table */}
-      <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>불러오는 중...</div>
-        ) : tokens.length === 0 ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>발급된 초대 코드가 없습니다.</div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.03)', fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>
-                <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 600 }}>코드 / 메모</th>
-                <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 600 }}>상태</th>
-                <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 600 }}>사용 / 만료</th>
-                <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 600 }}>발급일</th>
-                <th style={{ textAlign: 'right', padding: '12px 16px', fontWeight: 600 }}>작업</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tokens.map(t => (
-                <tr key={t.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>
-                  <td style={{ padding: '14px 16px' }}>
-                    <div style={{ fontFamily: 'Geist Mono, monospace', fontSize: '12px', color: '#fff' }}>{t.code}</div>
-                    {t.memo && <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>{t.memo}</div>}
-                  </td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <Badge usable={t.usable} revoked={!!t.revokedAt} />
-                  </td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <div>{t.usedCount}회 사용</div>
-                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)' }}>만료 {formatDate(t.expiresAt)}</div>
-                  </td>
-                  <td style={{ padding: '14px 16px', color: 'rgba(255,255,255,0.5)' }}>{formatDateTime(t.createdAt)}</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                    <button
-                      onClick={() => copyLink(t.code)}
-                      disabled={!t.usable}
-                      style={{
-                        padding: '5px 12px', marginRight: '6px', borderRadius: '6px',
-                        background: 'rgba(28,90,255,0.15)', border: '1px solid rgba(28,90,255,0.4)',
-                        color: '#7aa3ff', fontSize: '12px', fontWeight: 600,
-                        cursor: t.usable ? 'pointer' : 'not-allowed', opacity: t.usable ? 1 : 0.4,
-                      }}
-                    >링크 복사</button>
-                    {!t.revokedAt && (
-                      <button
-                        onClick={() => setConfirmRevoke(t)}
-                        style={{
-                          padding: '5px 12px', borderRadius: '6px',
-                          background: 'transparent', border: '1px solid rgba(239,68,68,0.4)',
-                          color: '#f87171', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                        }}
-                      >폐기</button>
-                    )}
-                  </td>
+      {error && !data ? (
+        <ErrorState command="fetch invites" error={error} onRetry={reload} />
+      ) : loading && !data ? (
+        <LoadingState command="fetch invites" />
+      ) : invites.length === 0 ? (
+        <EmptyState command="ls invites/" text="만든 초대 코드가 없어요" action={newButton} />
+      ) : (
+        <>
+          {error && <p role="alert" className="mb-3 text-xs text-danger">새로 불러오지 못했어요: {error} <button type="button" onClick={reload} className="cursor-pointer underline">다시 시도</button></p>}
+          <div className={loading ? 'opacity-60 transition-opacity' : ''}>
+            <Table label="초대 코드 목록">
+              <thead>
+                <tr>
+                  <Th>Label</Th>
+                  <Th className={panelOpen ? 'hidden' : 'hidden md:table-cell'}>Code</Th>
+                  <Th className="hidden sm:table-cell">Uses</Th>
+                  <Th className={panelOpen ? 'hidden' : 'hidden lg:table-cell'}>Expires</Th>
+                  <Th>Status</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {invites.map((t) => {
+                  const st = STATUS[statusOf(t)]
+                  return (
+                    <SelectableRow
+                      key={t.id}
+                      selected={t.id === selectedId}
+                      onSelect={() => setSelectedId(t.id)}
+                      dim={statusOf(t) !== 'live'}
+                      label={`${t.memo || t.code} 초대 코드 열기`}
+                    >
+                      <Td className="max-w-[260px]">
+                        <span className={`block truncate ${t.memo ? 'font-semibold text-white' : 'text-fg-faint'}`}>{t.memo || '메모 없음'}</span>
+                        {/* 좁은 화면에선 코드 · 사용 횟수를 아래에 */}
+                        <span className="mt-1 block truncate font-mono text-[11px] text-fg-faint md:hidden">
+                          {t.code} · {t.usedCount}회
+                        </span>
+                      </Td>
+                      <Td className={`max-w-[160px] font-mono text-fg-subtle ${panelOpen ? 'hidden' : 'hidden md:table-cell'}`}>
+                        <span className="block truncate">{t.code}</span>
+                      </Td>
+                      <Td className="hidden whitespace-nowrap font-mono sm:table-cell">{t.usedCount}<span className="text-fg-faint">회</span></Td>
+                      <Td className={`whitespace-nowrap font-mono text-fg-faint ${panelOpen ? 'hidden' : 'hidden lg:table-cell'}`}>{formatDate(t.expiresAt)}</Td>
+                      <Td><StatusLabel tone={st.tone}>{st.label}</StatusLabel></Td>
+                    </SelectableRow>
+                  )
+                })}
+              </tbody>
+            </Table>
+          </div>
+          <p className="mt-4 hidden font-mono text-[11px] text-fg-faint md:block">↑↓ 이동 · enter 열기 · esc 닫기</p>
+        </>
+      )}
+
+      {creating && <CreatePanel onClose={() => setSelectedId(null)} onCreated={onCreated} />}
+      {selected && (
+        <InvitePanel
+          key={selected.id}
+          invite={selected}
+          onClose={() => setSelectedId(null)}
+          onRevoked={onRevoked}
+          onToast={show}
+        />
+      )}
+
+      <Toast toast={toast} />
     </div>
   )
 }
 
-function Badge({ usable, revoked }: { usable: boolean; revoked: boolean }) {
-  let label = '사용 가능'
-  let style: React.CSSProperties = { color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)' }
-  if (revoked) {
-    label = '폐기됨'
-    style = { color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }
-  } else if (!usable) {
-    label = '만료'
-    style = { color: '#facc15', background: 'rgba(250,204,21,0.1)', border: '1px solid rgba(250,204,21,0.3)' }
+function InvitePanel({
+  invite, onClose, onRevoked, onToast,
+}: {
+  invite: InviteToken
+  onClose: () => void
+  onRevoked: (t: InviteToken) => void
+  onToast: (text: string, tone?: Tone) => void
+}) {
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [revoking, setRevoking] = useState(false)
+  const [revokeError, setRevokeError] = useState('')
+
+  const status = statusOf(invite)
+  const st = STATUS[status]
+  const link = inviteLink(invite.code)
+  const usable = status === 'live'
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link)
+      onToast('초대 링크를 복사했어요.')
+    } catch {
+      onToast('복사하지 못했어요. 링크를 직접 선택해 복사해주세요.', 'danger')
+    }
   }
+
+  async function revoke() {
+    setRevoking(true)
+    setRevokeError('')
+    const r = await adminFetch(`/v1/admin/invites/${invite.id}`, { method: 'DELETE' })
+    setRevoking(false)
+    if (!r.ok) { setRevokeError(r.error); return }
+    setConfirmOpen(false)
+    onRevoked(invite)
+  }
+
   return (
-    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, ...style }}>
-      {label}
-    </span>
+    <>
+      <DetailPanel
+        open
+        onClose={onClose}
+        path={`invites/${invite.id}`}
+        label={`${invite.memo || '초대 코드'} 상세`}
+        busy={revoking}
+        footer={
+          <>
+            <Button
+              variant="dangerGhost"
+              disabled={!usable}
+              title={!usable ? '이미 쓸 수 없는 코드예요' : undefined}
+              onClick={() => { setRevokeError(''); setConfirmOpen(true) }}
+            >
+              폐기…
+            </Button>
+            <Button disabled={!usable} onClick={copy}>링크 복사</Button>
+          </>
+        }
+      >
+        <h2 className="break-words text-2xl font-bold text-white">{invite.memo || '메모 없음'}</h2>
+        <p className="mb-5 mt-1.5"><StatusLabel tone={st.tone}>{st.label}</StatusLabel></p>
+
+        <p className="mb-2 text-xs text-fg-subtle">초대 링크</p>
+        <p className={`mb-1.5 select-all break-all rounded-lg border border-line bg-surface-raised px-3 py-2.5 font-mono text-xs ${usable ? 'text-white' : 'text-fg-faint line-through'}`}>
+          {link}
+        </p>
+        <p className="mb-5 text-xs text-fg-faint">
+          {usable ? '이 링크로 가입하면 승인 없이 바로 회원이 돼요. 만료일까지 횟수 제한 없이 쓸 수 있어요.' : '이 코드로는 더 이상 가입할 수 없어요.'}
+        </p>
+
+        <InfoGrid
+          rows={[
+            ['code', invite.code],
+            ['uses', `${invite.usedCount}회`],
+            ['expires', formatDateTime(invite.expiresAt)],
+            ['created', formatDateTime(invite.createdAt)],
+            ...(invite.revokedAt ? [['revoked', formatDateTime(invite.revokedAt)] as [string, string]] : []),
+            ['by', `#${invite.createdByUserId}`],
+          ]}
+        />
+      </DetailPanel>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="초대 코드 폐기"
+        confirmLabel="폐기"
+        busy={revoking}
+        error={revokeError}
+        onConfirm={revoke}
+        onClose={() => setConfirmOpen(false)}
+      >
+        <b className="text-white">{invite.memo || invite.code}</b> 코드를 폐기하면 이 링크로는 바로 가입할 수 없게 돼요.
+        이미 이 코드로 가입한 부원에게는 영향이 없어요. 되돌릴 수 없어요.
+      </ConfirmDialog>
+    </>
+  )
+}
+
+function CreatePanel({ onClose, onCreated }: { onClose: () => void; onCreated: (t: InviteToken) => void }) {
+  const [memo, setMemo] = useState('')
+  const [expiresOn, setExpiresOn] = useState(() => localYmd(14))
+  const [errors, setErrors] = useState<{ memo?: string; expiresOn?: string }>({})
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState<{ tone: Tone; text: string } | null>(null)
+
+  const today = localYmd()
+
+  function validate() {
+    const e: typeof errors = {}
+    if (!expiresOn) e.expiresOn = '만료일을 골라주세요.'
+    else if (!/^\d{4}-\d{2}-\d{2}$/.test(expiresOn)) e.expiresOn = '날짜 형식이 올바르지 않아요.'
+    else if (expiresOn < today) e.expiresOn = '만료일은 오늘 이후여야 해요.'
+    if (memo.trim().length > MEMO_MAX) e.memo = `메모는 ${MEMO_MAX}자까지 쓸 수 있어요.`
+    return e
+  }
+
+  async function submit(ev: FormEvent) {
+    ev.preventDefault()
+    const e = validate()
+    setErrors(e)
+    setNotice(null)
+    if (Object.keys(e).length) return
+    setSaving(true)
+    const r = await adminFetch<InviteToken>('/v1/admin/invites', {
+      method: 'POST',
+      json: { expiresOn, memo: memo.trim() || null },
+    })
+    setSaving(false)
+    if (!r.ok) { setNotice({ tone: 'danger', text: `만들지 못했어요: ${r.error}` }); return }
+    onCreated(r.data)
+  }
+
+  return (
+    <DetailPanel
+      open
+      onClose={onClose}
+      path="invites/new"
+      label="새 초대 코드"
+      busy={saving}
+      notice={notice}
+      footer={
+        <>
+          <Button variant="ghost" disabled={saving} onClick={onClose}>취소</Button>
+          <Button type="submit" form="invite-create" loading={saving}>만들기</Button>
+        </>
+      }
+    >
+      <h2 className="mb-5 text-2xl font-bold text-white">새 초대 코드</h2>
+      <form id="invite-create" onSubmit={submit} noValidate className="flex flex-col gap-4">
+        <Field label="메모" optional hint="어디에 쓰는 코드인지 적어두면 나중에 찾기 쉬워요." error={errors.memo}>
+          {(a11y) => (
+            <TextInput
+              {...a11y}
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="예: 10기 신입 OT"
+              maxLength={MEMO_MAX}
+              disabled={saving}
+            />
+          )}
+        </Field>
+        <Field label="만료일" hint="이 날 23:59 까지 쓸 수 있어요. 기간 안에는 횟수 제한이 없어요." error={errors.expiresOn}>
+          {(a11y) => (
+            <TextInput
+              {...a11y}
+              type="date"
+              required
+              value={expiresOn}
+              min={today}
+              onChange={(e) => setExpiresOn(e.target.value)}
+              disabled={saving}
+              className="font-mono"
+            />
+          )}
+        </Field>
+      </form>
+    </DetailPanel>
   )
 }

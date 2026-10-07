@@ -13,7 +13,17 @@ const CATEGORY_TINT: Record<PostCategory, string> = {
  * 오른쪽 아래의 용 엠블럼과 왼쪽 위 "PAY1OAD / 분류" 로 빈칸이 아니라 의도한 표지처럼 보이게 한다.
  * 부모는 position: relative 여야 한다.
  */
-export default function PostTitleCover({ title, category }: { title: string; category: PostCategory }) {
+export default function PostTitleCover({
+  title,
+  category,
+  compactOnMobile = false,
+}: {
+  title: string
+  category: PostCategory
+  /** 모바일 목록의 작은 썸네일 칸: 글자는 옆에 따로 있으니 숨기고 문양만 작게 */
+  compactOnMobile?: boolean
+}) {
+  const textClass = compactOnMobile ? 'hidden sm:block' : ''
   return (
     <div
       aria-hidden="true"
@@ -22,7 +32,7 @@ export default function PostTitleCover({ title, category }: { title: string; cat
     >
       {/* 용 엠블럼(public/blog_cover_mark.webp)을 마스크로 써서 분류 색을 입힌다 */}
       <div
-        className="absolute -right-10 -bottom-12 h-[210px] w-[210px] opacity-[0.22]"
+        className={`absolute opacity-[0.22] ${compactOnMobile ? '-right-5 -bottom-5 h-[96px] w-[96px] sm:-right-10 sm:-bottom-12 sm:h-[210px] sm:w-[210px]' : '-right-10 -bottom-12 h-[210px] w-[210px]'}`}
         style={{
           background: `var(--color-cat-${category.toLowerCase()})`,
           WebkitMaskImage: 'url(/blog_cover_mark.webp)',
@@ -35,11 +45,11 @@ export default function PostTitleCover({ title, category }: { title: string; cat
           maskPosition: 'center',
         }}
       />
-      <p className="absolute left-5 top-4 font-mono text-[11px] tracking-[0.14em] text-fg-faint">
+      <p className={`absolute left-5 top-4 font-mono text-[11px] tracking-[0.14em] text-fg-faint ${textClass}`}>
         PAY1OAD / {CATEGORY_LABEL[category].toUpperCase()}
       </p>
       <p
-        className="absolute left-5 right-14 bottom-[18px] line-clamp-2 text-[21px] font-bold leading-[1.35] tracking-[-0.01em] text-white"
+        className={`absolute left-5 right-14 bottom-[18px] line-clamp-2 text-[21px] font-bold leading-[1.35] tracking-[-0.01em] text-white ${textClass}`}
         style={{ wordBreak: 'keep-all' }}
       >
         {title}

@@ -54,14 +54,14 @@ export default function DocCollabWritePage() {
 
   if (loading) {
     return (
-      <main style={{ minHeight: '100vh', background: '#040d1f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>불러오는 중...</span>
+      <main className="min-h-screen flex items-center justify-center bg-background">
+        <span className="text-fg-subtle text-sm">불러오는 중...</span>
       </main>
     )
   }
 
   return (
-    <main className="relative min-h-screen select-none" style={{ background: '#040d1f' }}>
+    <main className="relative min-h-screen" style={{ background: 'linear-gradient(to bottom, #040d1f 0%, #040d1f 50vh, #0F0F0F 100%)' }}>
       <div
         className="absolute inset-x-0 top-0 pointer-events-none"
         style={{
@@ -75,31 +75,24 @@ export default function DocCollabWritePage() {
         }}
       />
 
-      {/* Breadcrumb */}
-      <div
-        className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 gap-1.5 text-[13px] mt-40 rounded-t-[100px]"
-        style={{ background: 'rgba(0, 65, 239, 0.4)' }}
-      >
-        <Link href="/content" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
-        >
-          Content
-        </Link>
-        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <Link href={`/content/${contentId}`} style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
-        >
-          {contentTitle || '...'}
-        </Link>
-        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <span style={{ color: '#fff' }}>
-          {docType === 'REPORT' ? '보고서 편집' : docType === 'POST' ? '게시글 편집' : '문서 편집'}
-        </span>
+      {/* Breadcrumb: 블로그와 같은 터미널 경로. 상위 경로는 눌러서 이동 (docs 목록 페이지는 없어서 docs 는 글자만) */}
+      <div className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 text-[13px] mt-40 rounded-t-[100px] bg-brand/40">
+        <nav aria-label="현재 위치" className="font-mono tracking-[0.02em] truncate">
+          <span className="text-fg-faint">~/</span>
+          <Link href="/content" className="text-fg-subtle transition-colors hover:text-white">content</Link>
+          <span className="text-fg-faint">/</span>
+          <Link href={`/content/${contentId}`} title={contentTitle || undefined} className="text-fg-subtle transition-colors hover:text-white">{contentId}</Link>
+          <span className="text-fg-faint">/docs/</span>
+          <Link href={`/content/${contentId}/docs/${docId}`} className="text-fg-subtle transition-colors hover:text-white">{docId}</Link>
+          <span className="text-fg-faint">/</span>
+          <span aria-current="page" className="text-white">write</span>
+        </nav>
       </div>
 
       <div className="relative max-w-4xl mx-auto px-[5vw] py-12">
+        <p className="text-fg-subtle text-[13px] mb-2.5">
+          {docType === 'REPORT' ? '보고서 편집' : docType === 'POST' ? '게시글 편집' : '문서 편집'}
+        </p>
         <DocCollabEditor
           contentId={contentId}
           docId={docId}

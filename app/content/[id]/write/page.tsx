@@ -7,6 +7,7 @@ import DOMPurify from 'dompurify'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { FG, LINE_STRONG, SURFACE_RAISED, BRAND, BRAND_SOFT, DANGER, TONE } from '@/app/lib/tokens'
 import { BlogEditorToolbar } from '@/app/components/BlogEditorToolbar'
 
 const SANITIZE_CONFIG = {
@@ -21,7 +22,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 const NOTICE_MAX_CHARS = 200
 
 function formatDate(d: Date) {
-  return `${d.getFullYear()}. ${String(d.getMonth() + 1).padStart(2, '0')}. ${String(d.getDate()).padStart(2, '0')}`
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
 }
 
 function toIsoDate(d: Date) {
@@ -387,18 +388,18 @@ export default function ContentWritePage() {
     gap: '12px',
     padding: '10px 0',
     fontSize: '14px',
-    color: 'rgba(255,255,255,0.7)',
+    color: FG.muted,
   }
 
   const labelStyle: React.CSSProperties = {
     width: '72px',
     flexShrink: 0,
-    color: 'rgba(255,255,255,0.45)',
+    color: FG.subtle,
     fontSize: '13px',
   }
 
   return (
-    <main className="relative min-h-screen select-none" style={{ background: '#040d1f' }}>
+    <main className="relative min-h-screen" style={{ background: 'linear-gradient(to bottom, #040d1f 0%, #040d1f 50vh, #0F0F0F 100%)' }}>
 
       {/* Background */}
       <div
@@ -414,26 +415,16 @@ export default function ContentWritePage() {
         }}
       />
 
-      {/* ── Breadcrumb bar ──────────────────────────── */}
-      <div
-        className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 gap-1.5 text-[13px] mt-40 rounded-t-[100px]"
-        style={{ background: 'rgba(0, 65, 239, 0.4)' }}
-      >
-        <Link href="/content" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
-        >
-          Content
-        </Link>
-        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <Link href={`/content/${contentId}`} style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', transition: 'color 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)' }}
-        >
-          {contentTitle || '...'}
-        </Link>
-        <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;</span>
-        <span style={{ color: '#fff' }}>{isNotice ? '공지 작성하기' : isEdit ? '게시글 수정하기' : docType === 'REPORT' ? '보고서 작성하기' : '게시글 작성하기'}</span>
+      {/* ── Breadcrumb bar: 블로그와 같은 터미널 경로. 상위 경로는 눌러서 이동 ── */}
+      <div className="w-full h-[49px] flex items-center px-5 sm:px-10 lg:px-20 text-[13px] mt-40 rounded-t-[100px] bg-brand/40">
+        <nav aria-label="현재 위치" className="font-mono tracking-[0.02em]">
+          <span className="text-fg-faint">~/</span>
+          <Link href="/content" className="text-fg-subtle transition-colors hover:text-white">content</Link>
+          <span className="text-fg-faint">/</span>
+          <Link href={`/content/${contentId}`} title={contentTitle || undefined} className="text-fg-subtle transition-colors hover:text-white">{contentId}</Link>
+          <span className="text-fg-faint">/</span>
+          <span aria-current="page" className="text-white">write</span>
+        </nav>
       </div>
 
       {/* ── Write form ──────────────────────────────── */}
@@ -441,7 +432,7 @@ export default function ContentWritePage() {
 
         {/* Notice badge */}
         {isNotice && (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '12px', padding: '4px 12px', borderRadius: '100px', background: 'rgba(28,90,255,0.15)', border: '1px solid rgba(28,90,255,0.35)', color: '#91CDFF', fontSize: '12px', fontWeight: 600 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '12px', padding: '4px 12px', borderRadius: '9999px', background: 'rgba(28,90,255,0.15)', border: '1px solid rgba(28,90,255,0.35)', color: BRAND_SOFT, fontSize: '12px', fontWeight: 600 }}>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
             </svg>
@@ -450,7 +441,7 @@ export default function ContentWritePage() {
         )}
 
         {/* Section label */}
-        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.45)', marginBottom: '10px' }}>
+        <p style={{ fontSize: '13px', color: FG.subtle, marginBottom: '10px' }}>
           {isNotice ? '공지 작성하기' : isEdit ? '게시글 수정하기' : docType === 'REPORT' ? '보고서 작성하기' : '게시글 작성하기'}
         </p>
 
@@ -479,14 +470,14 @@ export default function ContentWritePage() {
           <div style={rowStyle}>
             <span style={labelStyle}>작성자</span>
             <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
-            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{user?.name ?? user?.nickname ?? '—'}</span>
+            <span style={{ color: FG.muted, fontSize: '14px' }}>{user?.name ?? user?.nickname ?? '—'}</span>
           </div>
 
           {/* Date */}
           <div style={rowStyle}>
             <span style={labelStyle}>작성일</span>
             <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
-            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{today}</span>
+            <span style={{ color: FG.muted, fontSize: '14px' }}>{today}</span>
           </div>
 
           {/* 공지 전용: 날짜 + 수신자 */}
@@ -501,7 +492,7 @@ export default function ContentWritePage() {
                   onChange={e => setStartAt(e.target.value)}
                   style={{
                     background: 'transparent', border: 'none', outline: 'none',
-                    color: 'rgba(255,255,255,0.7)', fontSize: '14px',
+                    color: FG.muted, fontSize: '14px',
                     colorScheme: 'dark', cursor: 'pointer',
                   }}
                 />
@@ -516,7 +507,7 @@ export default function ContentWritePage() {
                   min={startAt}
                   style={{
                     background: 'transparent', border: 'none', outline: 'none',
-                    color: 'rgba(255,255,255,0.7)', fontSize: '14px',
+                    color: FG.muted, fontSize: '14px',
                     colorScheme: 'dark', cursor: 'pointer',
                   }}
                 />
@@ -526,7 +517,7 @@ export default function ContentWritePage() {
               <div style={{ ...rowStyle, alignItems: 'flex-start', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={labelStyle}>알림 수신</span>
-                  <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
+                  <span style={{ fontSize: '12px', color: FG.subtle }}>
                     {selectedRecipients.length === 0
                       ? '전체 팀원'
                       : `${selectedRecipients.length}명 선택됨`}
@@ -535,7 +526,7 @@ export default function ContentWritePage() {
                   {members.length > 0 && selectedRecipients.length < members.length && (
                     <button
                       onClick={selectAllRecipients}
-                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#91CDFF', fontSize: '12px', padding: 0 }}
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: BRAND_SOFT, fontSize: '12px', padding: 0 }}
                     >
                       전체 선택
                     </button>
@@ -543,7 +534,7 @@ export default function ContentWritePage() {
                   {selectedRecipients.length > 0 && (
                     <button
                       onClick={() => setSelectedRecipients([])}
-                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.35)', fontSize: '12px', padding: 0 }}
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: FG.subtle, fontSize: '12px', padding: 0 }}
                     >
                       전체 해제
                     </button>
@@ -558,10 +549,10 @@ export default function ContentWritePage() {
                           key={m.userId}
                           onClick={() => toggleRecipient(m.userId)}
                           style={{
-                            padding: '4px 12px', borderRadius: '100px', fontSize: '12px', cursor: 'pointer',
-                            border: `1px solid ${selected ? 'rgba(28,90,255,0.6)' : 'rgba(255,255,255,0.15)'}`,
+                            padding: '4px 12px', borderRadius: '9999px', fontSize: '12px', cursor: 'pointer',
+                            border: `1px solid ${selected ? 'rgba(28,90,255,0.6)' : LINE_STRONG}`,
                             background: selected ? 'rgba(28,90,255,0.2)' : 'transparent',
-                            color: selected ? '#91CDFF' : 'rgba(255,255,255,0.5)',
+                            color: selected ? '#fff' : FG.subtle,
                             transition: 'all 0.15s',
                           }}
                         >
@@ -571,7 +562,7 @@ export default function ContentWritePage() {
                     })}
                   </div>
                 )}
-                <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>
+                <p style={{ fontSize: '11px', color: FG.subtle, margin: 0 }}>
                   선택하지 않으면 전체 팀원에게 알림이 전송됩니다.
                 </p>
               </div>
@@ -583,30 +574,26 @@ export default function ContentWritePage() {
             <div style={{ ...rowStyle, alignItems: 'flex-start', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={labelStyle}>파일첨부</span>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.55)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: 0 }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-                  </svg>
-                </button>
                 <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileChange} />
               </div>
 
-              <div
+              <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
-                style={{ width: '100%', padding: '14px 16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.3)', fontSize: '13px', cursor: 'pointer' }}
+                className="w-full flex items-center gap-2 px-4 py-3.5 rounded-lg border border-dashed border-line-strong bg-surface text-fg-subtle text-[13px] text-left transition-colors hover:text-white hover:border-fg-faint hover:bg-surface-raised focus-visible:outline-none focus-visible:border-brand"
               >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                </svg>
                 첨부할 파일을 선택하세요
-              </div>
+              </button>
 
               {attachedFiles.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
                   {attachedFiles.map((file, idx) => (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', borderRadius: '6px', background: SURFACE_RAISED, fontSize: '13px', color: FG.muted }}>
                       <span>{file.name}</span>
-                      <button onClick={() => removeFile(idx)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: '16px', lineHeight: 1 }}>×</button>
+                      <button onClick={() => removeFile(idx)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: FG.subtle, fontSize: '16px', lineHeight: 1 }}>×</button>
                     </div>
                   ))}
                 </div>
@@ -635,7 +622,7 @@ export default function ContentWritePage() {
                 border: 'none',
                 outline: 'none',
                 resize: 'none',
-                color: 'rgba(255,255,255,0.8)',
+                color: FG.muted,
                 fontSize: '15px',
                 lineHeight: 1.75,
                 caretColor: '#1C5AFF',
@@ -645,7 +632,7 @@ export default function ContentWritePage() {
               <span style={{
                 fontSize: '12px',
                 color: noticeText.length > NOTICE_MAX_CHARS * 0.9
-                  ? (noticeText.length >= NOTICE_MAX_CHARS ? '#f87171' : '#FFD700')
+                  ? (noticeText.length >= NOTICE_MAX_CHARS ? DANGER : TONE.yellow)
                   : 'rgba(255,255,255,0.25)',
               }}>
                 {noticeText.length} / {NOTICE_MAX_CHARS}
@@ -665,10 +652,10 @@ export default function ContentWritePage() {
               onPaste={handleEditorPaste}
               onDrop={handleEditorDrop}
               onDragOver={e => e.preventDefault()}
-              style={{ minHeight: '280px', outline: 'none', color: 'rgba(255,255,255,0.8)', fontSize: '15px', lineHeight: 1.75, caretColor: '#1C5AFF', marginTop: '12px' }}
+              style={{ minHeight: '280px', outline: 'none', color: FG.muted, fontSize: '15px', lineHeight: 1.75, caretColor: '#1C5AFF', marginTop: '12px' }}
             />
             {(!editorRef.current || !editorRef.current.textContent?.trim()) && (
-              <div style={{ position: 'absolute', top: '20px', left: '0', color: 'rgba(255,255,255,0.2)', fontSize: '15px', lineHeight: 1.75, pointerEvents: 'none', userSelect: 'none' }}>
+              <div style={{ position: 'absolute', top: '20px', left: '0', color: FG.faint, fontSize: '15px', lineHeight: 1.75, pointerEvents: 'none', userSelect: 'none' }}>
                 <p>본문을 작성해 보세요.</p>
                 <p style={{ fontSize: '13px', marginTop: '4px' }}>*이미지는 드롭다운 / 복사 붙여넣기로 첨부할 수 있습니다.</p>
               </div>
@@ -676,7 +663,7 @@ export default function ContentWritePage() {
             {/* 자동 저장 상태 */}
             {lastSaved && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)' }}>
+                <span style={{ fontSize: '11px', color: FG.subtle }}>
                   마지막 임시 저장: {formatDate(lastSaved)} {lastSaved.getHours().toString().padStart(2,'0')}:{lastSaved.getMinutes().toString().padStart(2,'0')}
                 </span>
               </div>
@@ -685,22 +672,22 @@ export default function ContentWritePage() {
         )}
 
         {/* Error */}
-        {error && <p style={{ color: '#FF6060', fontSize: '13px', marginTop: '12px' }}>{error}</p>}
+        {error && <p style={{ color: DANGER, fontSize: '13px', marginTop: '12px' }}>{error}</p>}
 
         {/* Action buttons */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px', marginBottom: '48px' }}>
           <Link
             href={`/content/${contentId}`}
-            style={{ padding: '10px 24px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontWeight: 500, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', transition: 'border-color 0.15s, color 0.15s' }}
+            style={{ padding: '10px 24px', borderRadius: '8px', border: `1px solid ${LINE_STRONG}`, background: 'transparent', color: FG.subtle, fontSize: '14px', fontWeight: 500, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', transition: 'border-color 0.15s, color 0.15s' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.5)'; (e.currentTarget as HTMLElement).style.color = '#fff' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.2)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.6)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = LINE_STRONG; (e.currentTarget as HTMLElement).style.color = FG.subtle }}
           >
             취소
           </Link>
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            style={{ padding: '10px 28px', borderRadius: '8px', border: '0.734px solid rgba(0, 65, 239, 0.6)', background: 'rgba(0, 65, 239, 0.4)', color: '#fff', fontSize: '14px', fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
+            style={{ padding: '10px 28px', borderRadius: '8px', border: 'none', background: BRAND, color: '#fff', fontSize: '14px', fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}
           >
             {submitting ? (isEdit ? '수정 중...' : '등록 중...') : (isEdit ? '수정하기' : '등록하기')}
           </button>

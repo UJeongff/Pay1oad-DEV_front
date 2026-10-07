@@ -1,19 +1,20 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { useState } from 'react'
 import { notifyPendingApprovalsChanged } from '@/app/lib/usePendingApprovals'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
+import {
+  adminFetch, Button, ConfirmDialog, DetailPanel, EmptyState, ErrorState, InfoGrid, LoadingState,
+  PageHeader, panelPad, SelectableRow, since, Table, Td, Th, Toast, useAdminQuery, useToast, type Tone,
+} from '../_components/AdminUI'
 
 interface PendingUser {
   id: number
   email: string
   name: string
   nickname: string
-  department: string
-  studentId: string
-  generation: number
+  department: string | null
+  studentId: string | null
+  generation: number | null
   createdAt: string
 }
 
@@ -24,180 +25,265 @@ interface PendingPage {
   number: number
 }
 
-function formatDateTime(iso: string) {
-  const d = new Date(iso)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
+type Outcome = 'approved' | 'rejected'
+
+const PAGE_SIZE = 20
+const FIRST_PAGE = `/v1/admin/approvals/pending?page=0&size=${PAGE_SIZE}`
+
+const gen = (g: number | null | undefined) => (g ? `${g}기` : '—')
 
 export default function AdminApprovalsPage() {
-  const [data, setData] = useState<PendingPage | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [actingId, setActingId] = useState<number | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
-  const [confirmAction, setConfirmAction] = useState<{ id: number; type: 'approve' | 'reject'; nickname: string } | null>(null)
+  const { toast, show } = useToast()
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/approvals/pending`, { cache: 'no-store' })
-      if (res.ok) {
-        const json = await res.json()
-        setData(json.data)
-      }
-    } catch {} finally {
-      setLoading(false)
-    }
-  }, [])
+  // 첫 페이지는 useAdminQuery 로, 그 뒤 페이지는 "더 보기"를 누를 때 직접 불러와 이어 붙인다
+  const { data, error, loading, reload } = useAdminQuery<PendingPage>(FIRST_PAGE)
+  const [extra, setExtra] = useState<PendingUser[]>([])
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [moreError, setMoreError] = useState('')
+  /** 가장 최근 응답의 전체 건수와, 그 응답을 받을 때까지 처리한 건수 */
+  const [latestTotal, setLatestTotal] = useState<{ total: number; processedAt: number } | null>(null)
 
-  useEffect(() => { load() }, [load])
+  const [processed, setProcessed] = useState<Record<number, Outcome>>({})
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
-  const showToast = (msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2400)
+  // 첫 페이지 + 더 불러온 것 (id 로 중복 제거)
+  const seen = new Set<number>()
+  const applicants: PendingUser[] = []
+  for (const u of [...(data?.content ?? []), ...extra]) {
+    if (seen.has(u.id)) continue
+    seen.add(u.id)
+    applicants.push(u)
   }
 
-  const handleAction = async (id: number, type: 'approve' | 'reject') => {
-    setActingId(id)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/approvals/${id}/${type}`, { method: 'POST' })
-      if (res.ok) {
-        showToast(type === 'approve' ? '승인 완료' : '거부 완료')
-        await load()
-        // 헤더의 CONSOLE 뱃지를 즉시 갱신한다 (다음 폴링까지 기다리지 않도록)
-        notifyPendingApprovalsChanged()
-      } else {
-        showToast('처리에 실패했습니다.')
-      }
-    } catch {
-      showToast('네트워크 오류')
-    } finally {
-      setActingId(null)
-      setConfirmAction(null)
-    }
+  const processedCount = Object.keys(processed).length
+  const base = latestTotal ?? (data ? { total: data.totalElements, processedAt: 0 } : null)
+  /** 서버에 아직 남은 대기 건수 (이 화면에서 처리한 만큼 뺀다) */
+  const remaining = base ? Math.max(0, base.total - (processedCount - base.processedAt)) : 0
+  const unprocessedLoaded = applicants.filter((u) => !processed[u.id]).length
+  const hasMore = remaining > unprocessedLoaded
+
+  const selected = applicants.find((u) => u.id === selectedId) ?? null
+  const panelOpen = !!selected
+
+  /** 처음부터 다시: 처리한 줄은 서버 목록에서 빠지므로 표시도 함께 지운다 */
+  function refresh() {
+    setExtra([])
+    setProcessed({})
+    setLatestTotal(null)
+    setMoreError('')
+    setSelectedId(null)
+    reload()
+  }
+
+  async function loadMore() {
+    // 처리한 사람은 서버 대기 목록에서 빠져 뒤 항목이 앞으로 당겨진다.
+    // 건너뛰지 않도록 "아직 대기 중인 것으로 불러온 수" 기준으로 페이지를 고르고, 겹치는 건 id 로 걸러낸다.
+    const offset = applicants.length - processedCount
+    const page = Math.max(0, Math.floor(offset / PAGE_SIZE))
+    setLoadingMore(true)
+    setMoreError('')
+    const r = await adminFetch<PendingPage>(`/v1/admin/approvals/pending?page=${page}&size=${PAGE_SIZE}`)
+    setLoadingMore(false)
+    if (!r.ok) { setMoreError(r.error); return }
+    setExtra((prev) => [...prev, ...(r.data.content ?? [])])
+    setLatestTotal({ total: r.data.totalElements, processedAt: processedCount })
+  }
+
+  function onDone(u: PendingUser, outcome: Outcome) {
+    const nextProcessed = { ...processed, [u.id]: outcome }
+    setProcessed(nextProcessed)
+    notifyPendingApprovalsChanged()
+    show(outcome === 'approved' ? `${u.name} 님을 승인했어요.` : `${u.name} 님의 신청을 거부했어요.`, outcome === 'approved' ? 'live' : 'off')
+    // 다음 미처리 신청자를 바로 연다: 아래쪽 먼저, 없으면 위쪽
+    const idx = applicants.findIndex((a) => a.id === u.id)
+    const rest = [...applicants.slice(idx + 1), ...applicants.slice(0, Math.max(0, idx))]
+    const next = rest.find((a) => !nextProcessed[a.id])
+    setSelectedId(next ? next.id : null)
   }
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>가입 승인</h1>
-        <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
-          초대 코드 없이 가입한 신청자입니다. 검토 후 승인 또는 거부하세요.
-        </p>
-      </div>
+    <div className={panelPad(panelOpen)}>
+      <PageHeader
+        path="approvals"
+        title="가입 승인"
+        description={<>초대 코드 없이 가입한 신청자예요. 대기 <span className="font-mono text-white">{remaining}</span>건</>}
+        actions={<Button variant="ghost" size="sm" onClick={refresh} disabled={loading}>새로고침</Button>}
+      />
 
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: 'fixed', top: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 200,
-          padding: '11px 24px', borderRadius: '8px',
-          background: 'rgba(0, 65, 239, 0.95)', border: '1px solid rgba(28,90,255,0.6)',
-          color: '#fff', fontSize: '14px', fontWeight: 500,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-        }}>
-          {toast}
-        </div>
-      )}
-
-      {/* Confirm modal */}
-      {confirmAction && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-          <div style={{ background: '#0d1b35', borderRadius: '16px', padding: '28px', border: '1px solid rgba(255,255,255,0.1)', maxWidth: '380px', width: '100%' }}>
-            <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
-              <strong style={{ color: '#fff' }}>{confirmAction.nickname}</strong> 님의 가입을{' '}
-              {confirmAction.type === 'approve' ? '승인' : '거부'}하시겠습니까?
-              {confirmAction.type === 'reject' && (
-                <span style={{ display: 'block', marginTop: '8px', fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>
-                  거부 후에도 같은 이메일로 재가입은 불가능합니다.
-                </span>
-              )}
-            </p>
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setConfirmAction(null)}
-                style={{ padding: '8px 18px', borderRadius: '8px', fontSize: '13px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}
-              >취소</button>
-              <button
-                onClick={() => handleAction(confirmAction.id, confirmAction.type)}
-                disabled={actingId === confirmAction.id}
-                style={{
-                  padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-                  background: confirmAction.type === 'reject' ? 'rgba(239,68,68,0.85)' : 'rgba(34,197,94,0.85)',
-                  border: 'none', color: '#fff', cursor: 'pointer',
-                  opacity: actingId === confirmAction.id ? 0.6 : 1,
-                }}
-              >{confirmAction.type === 'approve' ? '승인' : '거부'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Table */}
-      <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>불러오는 중...</div>
-        ) : !data || data.content.length === 0 ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>대기 중인 신청이 없습니다.</div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.03)', fontSize: '12px', color: 'rgba(255,255,255,0.45)' }}>
-                <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 600 }}>이름 (닉네임)</th>
-                <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 600 }}>이메일</th>
-                <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 600 }}>학과 / 학번</th>
-                <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 600 }}>기수</th>
-                <th style={{ textAlign: 'left', padding: '12px 16px', fontWeight: 600 }}>신청일</th>
-                <th style={{ textAlign: 'right', padding: '12px 16px', fontWeight: 600 }}>처리</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.content.map(u => (
-                <tr key={u.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>
-                  <td style={{ padding: '14px 16px' }}>
-                    <div style={{ fontWeight: 600 }}>{u.name}</div>
-                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>@{u.nickname}</div>
-                  </td>
-                  <td style={{ padding: '14px 16px' }}>{u.email}</td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <div>{u.department}</div>
-                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>{u.studentId}</div>
-                  </td>
-                  <td style={{ padding: '14px 16px' }}>{u.generation}기</td>
-                  <td style={{ padding: '14px 16px', color: 'rgba(255,255,255,0.5)' }}>{formatDateTime(u.createdAt)}</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                    <button
-                      onClick={() => setConfirmAction({ id: u.id, type: 'approve', nickname: u.nickname })}
-                      disabled={actingId !== null}
-                      style={{
-                        padding: '5px 12px', marginRight: '6px', borderRadius: '6px',
-                        background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.4)',
-                        color: '#4ade80', fontSize: '12px', fontWeight: 600, cursor: actingId === null ? 'pointer' : 'not-allowed',
-                        opacity: actingId !== null ? 0.5 : 1,
-                      }}
-                    >승인</button>
-                    <button
-                      onClick={() => setConfirmAction({ id: u.id, type: 'reject', nickname: u.nickname })}
-                      disabled={actingId !== null}
-                      style={{
-                        padding: '5px 12px', borderRadius: '6px',
-                        background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
-                        color: '#f87171', fontSize: '12px', fontWeight: 600, cursor: actingId === null ? 'pointer' : 'not-allowed',
-                        opacity: actingId !== null ? 0.5 : 1,
-                      }}
-                    >거부</button>
-                  </td>
+      {error && !data ? (
+        <ErrorState command="fetch approvals --pending" error={error} onRetry={refresh} />
+      ) : loading && !data ? (
+        <LoadingState command="fetch approvals --pending" />
+      ) : applicants.length === 0 ? (
+        <EmptyState command="ls approvals/pending/" text="대기 중인 신청이 없어요" />
+      ) : (
+        <>
+          {error && <p role="alert" className="mb-3 text-xs text-danger">새로 불러오지 못했어요: {error} <button type="button" onClick={refresh} className="cursor-pointer underline">다시 시도</button></p>}
+          <div className={loading ? 'opacity-60 transition-opacity' : ''}>
+            <Table label="가입 신청 목록">
+              <thead>
+                <tr>
+                  <Th>Name</Th>
+                  <Th className="hidden sm:table-cell">Gen</Th>
+                  <Th className={panelOpen ? 'hidden' : 'hidden lg:table-cell'}>Dept</Th>
+                  <Th>Waiting</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {applicants.map((u) => {
+                  const done = processed[u.id]
+                  return (
+                    <SelectableRow
+                      key={u.id}
+                      selected={u.id === selectedId}
+                      onSelect={() => setSelectedId(u.id)}
+                      dim={!!done}
+                      label={`${u.name} 신청 ${done ? '결과 보기' : '열기'}`}
+                    >
+                      <Td className="font-semibold text-white">
+                        {u.name}
+                        <span className="mt-1 block font-mono text-[11px] font-normal text-fg-faint">
+                          {u.nickname}<span className="sm:hidden"> · {gen(u.generation)}</span>
+                        </span>
+                      </Td>
+                      <Td className="hidden font-mono sm:table-cell">{u.generation ?? '—'}</Td>
+                      <Td className={`text-fg-subtle ${panelOpen ? 'hidden' : 'hidden lg:table-cell'}`}>{u.department || '—'}</Td>
+                      <Td className="whitespace-nowrap font-mono">
+                        {done === 'approved' ? <span className="text-status-live-text">✓ 승인됨</span>
+                          : done === 'rejected' ? <span className="text-fg-subtle">✕ 거부됨</span>
+                            : <span className="text-fg-subtle">{since(u.createdAt)}</span>}
+                      </Td>
+                    </SelectableRow>
+                  )
+                })}
+              </tbody>
+            </Table>
+          </div>
 
-      {data && data.totalElements > 0 && (
-        <p style={{ marginTop: '12px', fontSize: '12px', color: 'rgba(255,255,255,0.35)' }}>
-          총 {data.totalElements}건
-        </p>
+          {(hasMore || moreError) && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button variant="ghost" size="sm" loading={loadingMore} onClick={loadMore}>
+                더 보기 <span className="font-mono text-fg-faint">{Math.max(0, remaining - unprocessedLoaded)}</span>
+              </Button>
+              {moreError && <p role="alert" className="text-xs text-danger">더 불러오지 못했어요: {moreError}</p>}
+            </div>
+          )}
+          <p className="mt-4 hidden font-mono text-[11px] text-fg-faint md:block">↑↓ 이동 · enter 열기 · esc 닫기</p>
+        </>
       )}
+
+      {selected && (
+        <ApplicantPanel
+          key={selected.id}
+          user={selected}
+          outcome={processed[selected.id] ?? null}
+          onClose={() => setSelectedId(null)}
+          onDone={onDone}
+        />
+      )}
+
+      <Toast toast={toast} />
     </div>
+  )
+}
+
+function ApplicantPanel({
+  user, outcome, onClose, onDone,
+}: {
+  user: PendingUser
+  outcome: Outcome | null
+  onClose: () => void
+  onDone: (u: PendingUser, outcome: Outcome) => void
+}) {
+  const [approving, setApproving] = useState(false)
+  const [notice, setNotice] = useState<{ tone: Tone; text: string } | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
+  const [rejectError, setRejectError] = useState('')
+
+  const busy = approving || rejecting
+  const waited = since(user.createdAt)
+
+  async function approve() {
+    setApproving(true)
+    setNotice(null)
+    const r = await adminFetch(`/v1/admin/approvals/${user.id}/approve`, { method: 'POST' })
+    setApproving(false)
+    if (!r.ok) { setNotice({ tone: 'danger', text: `승인하지 못했어요: ${r.error}` }); return }
+    onDone(user, 'approved')
+  }
+
+  async function reject() {
+    setRejecting(true)
+    setRejectError('')
+    const r = await adminFetch(`/v1/admin/approvals/${user.id}/reject`, { method: 'POST' })
+    setRejecting(false)
+    if (!r.ok) { setRejectError(r.error); return }
+    setConfirmOpen(false)
+    onDone(user, 'rejected')
+  }
+
+  const resultNotice = outcome === 'approved'
+    ? { tone: 'live' as Tone, text: '승인했어요. 이제 로그인해 활동할 수 있어요.' }
+    : outcome === 'rejected'
+      ? { tone: 'off' as Tone, text: '거부했어요.' }
+      : null
+
+  return (
+    <>
+      <DetailPanel
+        open
+        onClose={onClose}
+        path={`approvals/${user.nickname}`}
+        label={`${user.name} 가입 신청`}
+        busy={busy}
+        notice={resultNotice ?? notice}
+        footer={outcome ? undefined : (
+          <>
+            <Button
+              variant="dangerGhost"
+              disabled={approving}
+              onClick={() => { setRejectError(''); setConfirmOpen(true) }}
+            >
+              거부…
+            </Button>
+            <Button variant="success" loading={approving} disabled={rejecting} onClick={approve}>승인하고 다음 →</Button>
+          </>
+        )}
+      >
+        <h2 className="text-2xl font-bold text-white">{user.name}</h2>
+        <p className="mb-5 mt-1 font-mono text-xs text-fg-faint">
+          {waited === '—' ? '신청일 정보 없음' : waited === '방금' ? '방금 신청' : `${waited} 전 신청`}
+        </p>
+        <InfoGrid
+          rows={[
+            ['email', user.email],
+            ['nick', user.nickname],
+            ['dept', user.department || '—'],
+            ['id', user.studentId || '—'],
+            ['gen', gen(user.generation)],
+          ]}
+        />
+        {!outcome && (
+          <p className="text-xs leading-relaxed text-fg-faint">
+            승인하면 신청자에게 안내 메일이 가고 바로 로그인할 수 있어요.
+          </p>
+        )}
+      </DetailPanel>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="가입 거부"
+        confirmLabel="거부"
+        busy={rejecting}
+        error={rejectError}
+        onConfirm={reject}
+        onClose={() => setConfirmOpen(false)}
+      >
+        <b className="text-white">{user.name}</b> ({user.email}) 님의 가입 신청을 거부합니다.
+        신청자에게 반려 안내 메일이 가고, 이 계정으로는 로그인할 수 없어요.
+        계정이 그대로 남아 있어 같은 이메일로 다시 가입할 수도 없고, 이 화면에서 되돌릴 수 없어요.
+      </ConfirmDialog>
+    </>
   )
 }

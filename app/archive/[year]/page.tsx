@@ -146,9 +146,17 @@ function ItemRow({
   return (
     // 줄 전체가 링크처럼 눌린다: 제목 링크의 ::after 가 줄을 덮고, 메뉴만 그 위(z-10)에 올라온다.
     // hover 바탕(::before)만 양옆으로 12px 넓히고, 구분선은 섹션 선과 같은 폭에 맞춘다
-    <div className="relative flex items-center justify-between gap-3 border-b border-line py-3 before:pointer-events-none before:absolute before:inset-y-0 before:-inset-x-3 before:rounded before:transition-colors hover:before:bg-white/[0.03]">
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex min-w-0 items-baseline gap-2">
+    // 모바일은 두 줄: 제목(최대 두 줄) 아래에 종류·날짜·공개 범위. sm 이상은 예전처럼 한 줄
+    <div className="relative flex items-start justify-between gap-3 border-b border-line py-3.5 before:pointer-events-none before:absolute before:inset-y-0 before:-inset-x-3 before:rounded before:transition-colors hover:before:bg-white/[0.03] sm:items-center sm:py-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:gap-0.5">
+        {/* 제목 링크는 화면 폭마다 하나씩만 보인다(숨은 쪽은 display:none 이라 탭·스크린리더에서 빠진다) */}
+        <Link
+          href={href}
+          className="line-clamp-2 break-keep text-[15px] font-semibold leading-[1.45] text-white/90 transition-colors after:absolute after:inset-0 after:rounded hover:text-white sm:hidden"
+        >
+          {item.title}
+        </Link>
+        <div className="hidden min-w-0 items-baseline gap-2 sm:flex">
           <span className="flex-shrink-0 text-[11px] uppercase tracking-wide text-fg-subtle">
             {item.type}
           </span>
@@ -162,6 +170,19 @@ function ItemRow({
         {item.description && (
           <p className="truncate text-[13px] text-fg-subtle">{item.description}</p>
         )}
+        <div className="flex items-baseline gap-2 text-xs text-fg-subtle sm:hidden">
+          {/* 블로그 탭에선 모두 BLOG 라 종류를 생략한다 */}
+          {item.type !== 'BLOG' && (
+            <>
+              <span className="text-[11px] uppercase tracking-wide">{item.type}</span>
+              <span aria-hidden="true" className="text-fg-faint">·</span>
+            </>
+          )}
+          <span className="tabular-nums">{formatDate(item.archivedAt)}</span>
+          {visibilityLabel && (
+            <span className="rounded border border-line px-1.5 py-px text-[11px]">{visibilityLabel}</span>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-shrink-0 items-center gap-3">
@@ -170,7 +191,7 @@ function ItemRow({
             {visibilityLabel}
           </span>
         )}
-        <span className="text-xs tabular-nums text-fg-subtle">
+        <span className="hidden text-xs tabular-nums text-fg-subtle sm:inline">
           {formatDate(item.archivedAt)}
         </span>
 
@@ -191,7 +212,7 @@ function ItemRow({
 
             {menuOpen && (
               // 반투명이면 아래 줄의 날짜가 비쳐 보여서 불투명 면(panel)을 쓴다
-              <div className="absolute right-0 top-[calc(100%+4px)] z-50 flex min-w-[110px] flex-col gap-1 rounded-lg border border-line bg-panel p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+              <div className="absolute right-0 top-[calc(100%+4px)] z-50 flex min-w-[110px] flex-col gap-1 rounded-lg border border-line bg-panel p-1.5 shadow-pop">
                 <button
                   type="button"
                   className="w-full rounded-md bg-surface px-3 py-[7px] text-left text-xs font-medium text-fg-muted transition-colors hover:bg-surface-raised hover:text-white"
@@ -304,6 +325,7 @@ export default function ArchiveYearPage() {
   const [search, setSearch] = useState('')
   const [pageB, setPageB] = useState(1)
   const [pageC, setPageC] = useState(1)
+  const [mobileTab, setMobileTab] = useState<'B' | 'C'>('B')
   const router = useRouter()
 
   useEffect(() => {
@@ -436,14 +458,37 @@ export default function ArchiveYearPage() {
           {loading ? (
             <p className="text-fg-subtle text-sm text-center py-20">불러오는 중...</p>
           ) : (
+            <>
+            {/* 모바일(sm 미만)은 B/C 칸 대신 탭으로 한 종류씩 보여준다. 숫자는 검색 결과 기준 */}
+            <div role="tablist" aria-label="종류" className="-mt-2 mb-1 flex border-b border-line sm:hidden">
+              {sections.map(({ key }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  id={`archive-tab-${key}`}
+                  aria-selected={mobileTab === key}
+                  aria-controls={`archive-panel-${key}`}
+                  onClick={() => setMobileTab(key)}
+                  className={`-mb-px flex h-12 flex-1 items-baseline justify-center gap-2 border-b-2 pt-3.5 text-[15px] font-semibold transition-colors ${
+                    mobileTab === key ? 'border-brand text-white' : 'border-transparent text-fg-subtle hover:text-white'
+                  }`}
+                >
+                  {SECTION_LABEL[key]}
+                  <span className="text-[13px] font-medium tabular-nums text-fg-subtle">{grouped[key].length}</span>
+                </button>
+              ))}
+            </div>
+
             <div className="flex flex-col gap-10">
               {sections.map(({ key, items: sectionItems, page, totalPages, setPage }) => (
                 <section
                   key={key}
+                  id={`archive-panel-${key}`}
                   aria-label={SECTION_LABEL[key]}
-                  className="flex gap-8 border-t border-line-strong pt-6"
+                  className={`${mobileTab === key ? 'flex' : 'hidden sm:flex'} gap-8 sm:border-t sm:border-line-strong sm:pt-6`}
                 >
-                  <div className="flex-shrink-0 w-16">
+                  <div className="hidden flex-shrink-0 w-16 sm:block">
                     <span
                       className="block text-white font-black leading-none"
                       style={{ fontSize: 'clamp(2.5rem, 5vw, 3.5rem)', fontFamily: "var(--font-archivo-black), 'Archivo Black', sans-serif", opacity: 0.9 }}
@@ -478,6 +523,7 @@ export default function ArchiveYearPage() {
                 </section>
               ))}
             </div>
+            </>
           )}
         </div>
       </section>

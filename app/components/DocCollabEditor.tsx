@@ -12,6 +12,7 @@ import * as Y from 'yjs'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { SimpleYjsProvider, type ProviderStatus } from '@/app/lib/SimpleYjsProvider'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { FG, LINE, LINE_STRONG, SURFACE_RAISED, BRAND, BRAND_SOFT, DANGER, TONE } from '@/app/lib/tokens'
 import { useAuthContext } from '@/app/context/AuthContext'
 
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect
@@ -671,24 +672,24 @@ export default function DocCollabEditor({
     setLinkUrl('')
   }
 
-  const statusStyle = !collaborative
-    ? { label: '제출됨 — 실시간 동기화 없음', fg: 'rgba(255,255,255,0.45)', bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.12)' }
+  const statusStyle: { label: string; fg: string; dot: string; glow: boolean } = !collaborative
+    ? { label: '제출됨 — 실시간 동기화 없음', fg: FG.subtle, dot: FG.faint, glow: false }
     : offlineMode
-    ? { label: '오프라인 편집 — 실시간 공유되지 않습니다', fg: '#FFB86B', bg: 'rgba(255,184,107,0.08)', border: 'rgba(255,184,107,0.25)' }
+    ? { label: '오프라인 편집 — 실시간 공유되지 않습니다', fg: TONE.yellow, dot: TONE.yellow, glow: true }
     : !ready
-      ? { label: '동기화 중...', fg: 'rgba(255,255,255,0.45)', bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.1)' }
+      ? { label: '동기화 중...', fg: FG.subtle, dot: FG.faint, glow: false }
       : status === 'connected'
-        ? { label: '실시간 연결됨', fg: '#74FF89', bg: 'rgba(116,255,137,0.08)', border: 'rgba(116,255,137,0.25)' }
+        ? { label: '실시간 연결됨', fg: TONE.green, dot: TONE.green, glow: true }
         : status === 'connecting'
-          ? { label: '재연결 중...', fg: '#FFD93D', bg: 'rgba(255,217,61,0.08)', border: 'rgba(255,217,61,0.25)' }
-          : { label: '연결 끊김 — 복구되면 자동 반영', fg: 'rgba(255,255,255,0.3)', bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.1)' }
+          ? { label: '재연결 중...', fg: TONE.yellow, dot: TONE.yellow, glow: true }
+          : { label: '연결 끊김 — 복구되면 자동 반영', fg: FG.subtle, dot: FG.faint, glow: false }
 
   const rowStyle: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: '12px',
-    padding: '10px 0', fontSize: '14px', color: 'rgba(255,255,255,0.7)',
+    padding: '10px 0', fontSize: '14px', color: FG.muted,
   }
   const labelStyle: React.CSSProperties = {
-    width: '72px', flexShrink: 0, color: 'rgba(255,255,255,0.45)', fontSize: '13px',
+    width: '72px', flexShrink: 0, color: FG.subtle, fontSize: '13px',
   }
 
   const toolbarButtons = editor ? [
@@ -708,25 +709,28 @@ export default function DocCollabEditor({
       {/* 연결 상태 배지 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
         <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: '5px',
-          padding: '3px 10px', borderRadius: '100px', fontSize: '11px', fontWeight: 600,
-          background: statusStyle.bg,
+          display: 'inline-flex', alignItems: 'center', gap: '8px',
+          fontSize: '12px', fontWeight: 500,
           color: statusStyle.fg,
-          border: `1px solid ${statusStyle.border}`,
         }}>
-          <span style={{
-            width: '6px', height: '6px', borderRadius: '50%',
-            background: statusStyle.fg,
-          }} />
+          <span
+            aria-hidden="true"
+            className={statusStyle.glow && status === 'connected' && !offlineMode ? 'live-dot' : undefined}
+            style={{
+              width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0,
+              background: statusStyle.dot,
+              boxShadow: statusStyle.glow ? `0 0 8px ${statusStyle.dot}` : 'none',
+            }}
+          />
           {statusStyle.label}
         </span>
         {lastSaved && (
-          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.25)' }}>
+          <span style={{ fontSize: '11px', color: FG.subtle }}>
             자동 저장: {lastSaved.getHours().toString().padStart(2, '0')}:{lastSaved.getMinutes().toString().padStart(2, '0')}
           </span>
         )}
         {autoSaveFailed && (
-          <span style={{ fontSize: '11px', color: '#FFB86B' }}>
+          <span style={{ fontSize: '11px', color: TONE.yellow }}>
             자동 저장 실패 — 편집 내용은 서버에 보관되지만 문서 본문은 갱신되지 않았습니다
           </span>
         )}
@@ -767,13 +771,13 @@ export default function DocCollabEditor({
       {metaSlot ?? (
         <div style={rowStyle}>
           <span style={labelStyle}>편집 모드</span>
-          <span style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.25)', flexShrink: 0 }} />
-          <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>공동 편집</span>
+          <span style={{ width: '1px', height: '12px', background: '${LINE_STRONG}', flexShrink: 0 }} />
+          <span style={{ color: FG.muted, fontSize: '14px' }}>공동 편집</span>
         </div>
       )}
 
       {/* 구분선 */}
-      <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.12)', margin: '16px 0' }} />
+      <div style={{ width: '100%', height: '1px', background: '${LINE}', margin: '16px 0' }} />
 
       {/* Tiptap 에디터 */}
       <div style={{ marginTop: '20px', minHeight: '320px', padding: '20px 0', position: 'relative' }}>
@@ -786,10 +790,10 @@ export default function DocCollabEditor({
                 onClick={btn.action}
                 title={btn.title}
                 style={{
-                  padding: '4px 10px', borderRadius: '5px', fontSize: '12px', fontWeight: 600,
-                  border: `1px solid ${btn.active ? 'rgba(28,90,255,0.6)' : 'rgba(255,255,255,0.12)'}`,
-                  background: btn.active ? 'rgba(28,90,255,0.25)' : 'rgba(255,255,255,0.04)',
-                  color: btn.active ? '#91CDFF' : 'rgba(255,255,255,0.5)',
+                  padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                  border: `1px solid ${btn.active ? 'rgba(28,90,255,0.6)' : LINE}`,
+                  background: btn.active ? 'rgba(28,90,255,0.25)' : SURFACE_RAISED,
+                  color: btn.active ? BRAND_SOFT : 'rgba(255,255,255,0.5)',
                   cursor: 'pointer',
                 }}
               >
@@ -798,7 +802,7 @@ export default function DocCollabEditor({
             ))}
 
             {(uploadingImages > 0 || uploadError) && (
-              <span style={{ marginLeft: 'auto', fontSize: '11px', color: uploadError ? '#f87171' : 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap' }}>
+              <span style={{ marginLeft: 'auto', fontSize: '11px', color: uploadError ? DANGER : 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap' }}>
                 {uploadError ?? `이미지 올리는 중… (${uploadingImages})`}
               </span>
             )}
@@ -827,38 +831,38 @@ export default function DocCollabEditor({
                 color: '#fff', fontSize: '13px',
               }}
             />
-            <button onClick={applyLink} style={{ padding: '4px 12px', borderRadius: '5px', background: '#1C5AFF', border: 'none', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>적용</button>
+            <button onClick={applyLink} style={{ padding: '4px 12px', borderRadius: '6px', background: '#1C5AFF', border: 'none', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>적용</button>
             {editor?.isActive('link') && (
               <button
                 onClick={() => { editor.chain().focus().unsetLink().run(); setShowLinkInput(false) }}
-                style={{ padding: '4px 10px', borderRadius: '5px', background: 'rgba(255,80,80,0.15)', border: '1px solid rgba(255,80,80,0.3)', color: '#ff9a9a', fontSize: '12px', cursor: 'pointer' }}
+                style={{ padding: '4px 10px', borderRadius: '6px', background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.35)', color: DANGER, fontSize: '12px', cursor: 'pointer' }}
               >
                 링크 제거
               </button>
             )}
-            <button onClick={() => { setShowLinkInput(false); setLinkUrl('') }} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}>×</button>
+            <button onClick={() => { setShowLinkInput(false); setLinkUrl('') }} style={{ background: 'transparent', border: 'none', color: FG.subtle, cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}>×</button>
           </div>
         )}
 
         {/* 에디터 영역 */}
-        <div style={{ border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '16px', minHeight: '280px' }}>
+        <div style={{ border: `1px solid ${LINE}`, borderRadius: '8px', padding: '16px', minHeight: '280px' }}>
           <EditorContent editor={editor} />
         </div>
       </div>
 
       {footerSlot}
 
-      {error && <p style={{ color: '#FF6060', fontSize: '13px', marginTop: '12px' }}>{error}</p>}
-      {saveSuccess && <p style={{ color: '#74FF89', fontSize: '13px', marginTop: '12px' }}>저장되었습니다.</p>}
+      {error && <p style={{ color: DANGER, fontSize: '13px', marginTop: '12px' }}>{error}</p>}
+      {saveSuccess && <p style={{ color: TONE.green, fontSize: '13px', marginTop: '12px' }}>저장되었습니다.</p>}
 
       {/* 버튼 */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px', marginBottom: '48px' }}>
         {onBack && (
           <button
             onClick={onBack}
-            style={{ padding: '10px 24px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.6)', fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}
+            style={{ padding: '10px 24px', borderRadius: '8px', border: `1px solid ${LINE_STRONG}`, background: 'transparent', color: FG.subtle, fontSize: '14px', fontWeight: 500, cursor: 'pointer' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.5)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.6)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.2)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = FG.subtle; (e.currentTarget as HTMLElement).style.borderColor = LINE_STRONG }}
           >
             취소
           </button>
@@ -867,7 +871,7 @@ export default function DocCollabEditor({
         <button
           onClick={() => saveDoc(false)}
           disabled={saving}
-          style={{ padding: '10px 28px', borderRadius: '8px', border: '0.734px solid rgba(0,65,239,0.6)', background: 'rgba(0,65,239,0.4)', color: '#fff', fontSize: '14px', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+          style={{ padding: '10px 28px', borderRadius: '8px', border: 'none', background: BRAND, color: '#fff', fontSize: '14px', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
         >
           {saving ? '저장 중...' : '저장하기'}
         </button>

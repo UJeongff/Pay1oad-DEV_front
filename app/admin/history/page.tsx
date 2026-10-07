@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
+import { useState } from 'react'
+import {
+  adminFetch, asList, Button, Choice, ConfirmDialog, DetailPanel, EmptyState, ErrorState, Field, FilterTabs,
+  LoadingState, PageHeader, panelPad, TextArea, TextInput, Toast, useAdminQuery, useToast, type Tone,
+} from '../_components/AdminUI'
 
 type HistoryCategory = 'SELECTION' | 'EDUCATION' | 'PRESENTATION' | 'ACHIEVEMENT'
 
@@ -12,466 +13,342 @@ interface HistoryItem {
   year: number
   category: HistoryCategory
   summary: string
-  detail: string
+  detail: string | null
   displayOrder: number
 }
 
-const CATEGORY_OPTIONS: { value: HistoryCategory; label: string; color: string }[] = [
-  { value: 'SELECTION',    label: '선정', color: '#7aa3ff' },
-  { value: 'EDUCATION',    label: '교육', color: '#74FF89' },
-  { value: 'PRESENTATION', label: '발표', color: '#FFB877' },
-  { value: 'ACHIEVEMENT',  label: '성과', color: '#FF9193' },
-]
+// 분류 점 색은 globals.css 토큰만: 선정=brand-soft · 교육=tone-green · 발표=tone-yellow · 성과=tone-red
+const CATEGORY: Record<HistoryCategory, { label: string; dot: string; hint: string }> = {
+  SELECTION: { label: '선정', dot: 'bg-brand-soft', hint: '지원 사업·프로그램 선정' },
+  EDUCATION: { label: '교육', dot: 'bg-tone-green', hint: '교육·스터디 수료' },
+  PRESENTATION: { label: '발표', dot: 'bg-tone-yellow', hint: '세미나·컨퍼런스 발표' },
+  ACHIEVEMENT: { label: '성과', dot: 'bg-tone-red', hint: '대회 수상·성과' },
+}
+const CATEGORIES = Object.keys(CATEGORY) as HistoryCategory[]
 
-const KO_LABEL: Record<HistoryCategory, string> = {
-  SELECTION: '선정',
-  EDUCATION: '교육',
-  PRESENTATION: '발표',
-  ACHIEVEMENT: '성과',
+const YEAR_MIN = 2000
+const YEAR_MAX = 2100
+
+function CatDot({ category }: { category: HistoryCategory }) {
+  return <span aria-hidden="true" className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${CATEGORY[category].dot}`} />
 }
 
-type FormState = {
-  year: string
-  category: HistoryCategory
-  summary: string
-  detail: string
-  displayOrder: string
-}
+const byOrder = (a: HistoryItem, b: HistoryItem) => a.displayOrder - b.displayOrder || a.id - b.id
 
-const EMPTY_FORM: FormState = {
-  year: String(new Date().getFullYear()),
-  category: 'SELECTION',
-  summary: '',
-  detail: '',
-  displayOrder: '0',
-}
+type PanelTarget = { mode: 'edit'; id: number } | { mode: 'create'; year: number; category: HistoryCategory }
 
 export default function AdminHistoryPage() {
-  const [items, setItems] = useState<HistoryItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedYear, setSelectedYear] = useState<number | null>(null)
+  const { toast, show } = useToast()
+  // 연도 탭을 바꿀 때마다 다시 불러오던 문제: 전체를 한 번만 불러오고 연도는 화면에서 거른다
+  const { data, error, loading, reload, mutate } = useAdminQuery<HistoryItem[]>('/v1/admin/history/items')
+  const items = asList<HistoryItem>(data)
 
-  // 모달
-  const [createOpen, setCreateOpen] = useState(false)
-  const [editItem, setEditItem] = useState<HistoryItem | null>(null)
-  const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [form, setForm] = useState<FormState>(EMPTY_FORM)
-  const [actionLoading, setActionLoading] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [yearPick, setYearPick] = useState<number | null>(null)
+  const [panel, setPanel] = useState<PanelTarget | null>(null)
 
-  const showToast = (m: string) => {
-    setToast(m)
-    setTimeout(() => setToast(null), 2400)
+  const years = Array.from(new Set(items.map((i) => i.year))).sort((a, b) => b - a)
+  // 고른 연도의 마지막 항목을 지우면 그 연도가 사라진다 → 남아 있는 첫 연도로
+  const year = yearPick !== null && years.includes(yearPick) ? yearPick : (years[0] ?? null)
+  const inYear = items.filter((i) => i.year === year).sort(byOrder)
+
+  const editing = panel?.mode === 'edit' ? items.find((i) => i.id === panel.id) ?? null : null
+  const panelOpen = panel?.mode === 'create' || !!editing
+  const selectedId = editing?.id ?? null
+
+  function openCreate(category: HistoryCategory = 'SELECTION') {
+    setPanel({ mode: 'create', year: year ?? new Date().getFullYear(), category })
   }
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/history/items`, { cache: 'no-store' })
-      if (res.ok) {
-        const json = await res.json()
-        const data: HistoryItem[] = json?.data ?? []
-        setItems(data)
-        if (selectedYear == null && data.length > 0) {
-          const years = Array.from(new Set(data.map(d => d.year))).sort((a, b) => b - a)
-          setSelectedYear(years[0])
-        }
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedYear])
-
-  useEffect(() => { load() }, [load])
-
-  // 연도별 그룹
-  const years = useMemo(
-    () => Array.from(new Set(items.map(i => i.year))).sort((a, b) => b - a),
-    [items],
-  )
-
-  const itemsByCategory = useMemo(() => {
-    const map: Record<HistoryCategory, HistoryItem[]> = {
-      SELECTION: [], EDUCATION: [], PRESENTATION: [], ACHIEVEMENT: [],
-    }
-    if (selectedYear == null) return map
-    items
-      .filter(i => i.year === selectedYear)
-      .sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id)
-      .forEach(i => { map[i.category].push(i) })
-    return map
-  }, [items, selectedYear])
-
-  function openCreate(presetCategory?: HistoryCategory) {
-    setError(null)
-    setForm({
-      ...EMPTY_FORM,
-      year: selectedYear ? String(selectedYear) : EMPTY_FORM.year,
-      category: presetCategory ?? EMPTY_FORM.category,
-    })
-    setCreateOpen(true)
+  function onCreated(item: HistoryItem) {
+    mutate((d) => [...asList<HistoryItem>(d), item])
+    setYearPick(item.year)
+    setPanel(null)
+    show(`${item.year}년 ${CATEGORY[item.category]?.label ?? ''} 항목을 추가했어요.`)
   }
 
-  function openEdit(item: HistoryItem) {
-    setError(null)
-    setForm({
-      year: String(item.year),
-      category: item.category,
-      summary: item.summary,
-      detail: item.detail,
-      displayOrder: String(item.displayOrder),
-    })
-    setEditItem(item)
+  function onSaved(item: HistoryItem) {
+    mutate((d) => asList<HistoryItem>(d).map((i) => (i.id === item.id ? item : i)))
+    // 연도를 옮겼으면 그 연도로 따라간다 (항목이 화면에서 사라지지 않게)
+    setYearPick(item.year)
+    show('저장했어요.')
   }
 
-  function buildBody() {
-    return JSON.stringify({
-      year: parseInt(form.year, 10),
-      category: form.category,
-      summary: form.summary.trim(),
-      detail: form.detail.trim(),
-      displayOrder: form.displayOrder ? parseInt(form.displayOrder, 10) : 0,
-    })
-  }
-
-  function validate(): string | null {
-    const y = parseInt(form.year, 10)
-    if (!y || y < 2000 || y > 2100) return '연도는 2000~2100 사이여야 합니다.'
-    if (!form.summary.trim()) return '요약은 필수입니다.'
-    if (!form.detail.trim()) return '상세 설명은 필수입니다.'
-    if (form.summary.length > 200) return '요약은 200자 이하여야 합니다.'
-    if (form.detail.length > 500) return '상세는 500자 이하여야 합니다.'
-    return null
-  }
-
-  async function handleCreate() {
-    const v = validate()
-    if (v) { setError(v); return }
-    setError(null)
-    setActionLoading(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/history/items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: buildBody(),
-      })
-      if (res.ok) {
-        const created = (await res.json())?.data
-        showToast('히스토리가 추가되었습니다.')
-        setCreateOpen(false)
-        setSelectedYear(created?.year ?? parseInt(form.year, 10))
-        await load()
-      } else {
-        const j = await res.json().catch(() => ({}))
-        setError(j?.message ?? '추가에 실패했습니다.')
-      }
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  async function handleEdit() {
-    if (!editItem) return
-    const v = validate()
-    if (v) { setError(v); return }
-    setError(null)
-    setActionLoading(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/history/items/${editItem.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: buildBody(),
-      })
-      if (res.ok) {
-        showToast('수정되었습니다.')
-        setEditItem(null)
-        await load()
-      } else {
-        const j = await res.json().catch(() => ({}))
-        setError(j?.message ?? '수정에 실패했습니다.')
-      }
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  async function handleDelete(id: number) {
-    setActionLoading(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/history/items/${id}`, { method: 'DELETE' })
-      if (res.ok) {
-        showToast('삭제되었습니다.')
-        setDeleteId(null)
-        await load()
-      } else {
-        showToast('삭제에 실패했습니다.')
-      }
-    } finally {
-      setActionLoading(false)
-    }
+  function onDeleted(item: HistoryItem) {
+    setPanel(null)
+    mutate((d) => asList<HistoryItem>(d).filter((i) => i.id !== item.id))
+    show('항목을 삭제했어요.')
   }
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', gap: '16px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>History 관리</h1>
-          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
-            About Us 페이지의 연도별 History 항목을 관리합니다. (선정/교육/발표/성과)
-          </p>
-        </div>
-        <button
-          onClick={() => openCreate()}
-          style={{
-            padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-            background: 'rgba(28,90,255,0.85)', border: 'none', color: '#fff', cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >+ 항목 추가</button>
-      </div>
+    <div className={panelPad(panelOpen)}>
+      <PageHeader
+        path="history"
+        title="연혁"
+        description={<>About 페이지의 연도별 활동 기록 · 전체 <span className="font-mono text-white">{items.length}</span>개</>}
+        actions={<Button onClick={() => openCreate()}>+ 항목 추가</Button>}
+      />
 
-      {toast && (
-        <div style={{
-          position: 'fixed', top: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 200,
-          padding: '11px 24px', borderRadius: '8px',
-          background: 'rgba(0, 65, 239, 0.95)', border: '1px solid rgba(28,90,255,0.6)',
-          color: '#fff', fontSize: '14px', fontWeight: 500,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-        }}>{toast}</div>
-      )}
-
-      {loading ? (
-        <div style={{ padding: '48px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>불러오는 중...</div>
-      ) : items.length === 0 ? (
-        <div style={{ padding: '48px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '13px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          등록된 항목이 없습니다. 우측 상단 &quot;+ 항목 추가&quot;로 시작하세요.
-        </div>
+      {error && !data ? (
+        <ErrorState command="fetch history" error={error} onRetry={reload} />
+      ) : loading && !data ? (
+        <LoadingState command="fetch history" />
+      ) : items.length === 0 || year === null ? (
+        <EmptyState command="ls history/" text="등록된 연혁이 없어요" action={<Button variant="ghost" onClick={() => openCreate()}>+ 첫 항목 추가</Button>} />
       ) : (
         <>
-          {/* 연도 선택 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
-            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', marginRight: '4px' }}>연도:</span>
-            {years.map(y => {
-              const active = selectedYear === y
-              return (
-                <button
-                  key={y}
-                  onClick={() => setSelectedYear(y)}
-                  style={{
-                    padding: '6px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-                    background: active ? 'rgba(28,90,255,0.85)' : 'rgba(255,255,255,0.04)',
-                    color: active ? '#fff' : 'rgba(255,255,255,0.6)',
-                    border: active ? '1px solid rgba(28,90,255,0.85)' : '1px solid rgba(255,255,255,0.1)',
-                    cursor: 'pointer',
-                  }}
-                >{y}</button>
-              )
-            })}
-          </div>
+          {error && <p role="alert" className="mb-3 text-xs text-danger">새로 불러오지 못했어요: {error} <button type="button" onClick={reload} className="cursor-pointer underline">다시 시도</button></p>}
 
-          {/* 카테고리별 그리드 */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
-            {CATEGORY_OPTIONS.map(({ value, label, color }) => {
-              const list = itemsByCategory[value]
+          <FilterTabs
+            label="연도별 보기"
+            items={years.map((y) => ({ key: String(y), label: String(y), count: items.filter((i) => i.year === y).length }))}
+            value={String(year)}
+            onChange={(k) => setYearPick(Number(k))}
+          />
+
+          <div className={`grid gap-3 ${panelOpen ? 'xl:grid-cols-2' : 'sm:grid-cols-2'} ${loading ? 'opacity-60 transition-opacity' : ''}`}>
+            {CATEGORIES.map((cat) => {
+              const list = inYear.filter((i) => i.category === cat)
               return (
-                <div key={value} style={{
-                  background: 'rgba(255,255,255,0.02)', borderRadius: '12px',
-                  border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden',
-                }}>
-                  <div style={{
-                    padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: color }} />
-                      <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{label}</span>
-                      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>({list.length})</span>
-                    </div>
-                    <button
-                      onClick={() => openCreate(value)}
-                      style={{
-                        padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
-                        background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-                        color: 'rgba(255,255,255,0.6)', cursor: 'pointer',
-                      }}
-                    >+ 추가</button>
+                <section key={cat} aria-label={`${year}년 ${CATEGORY[cat].label}`} className="rounded-xl border border-line">
+                  <div className="flex items-center justify-between gap-2 border-b border-line px-3.5 py-2.5">
+                    <h2 className="flex items-center gap-2 text-[13px] font-semibold text-white">
+                      <CatDot category={cat} />
+                      {CATEGORY[cat].label}
+                      <span className="font-mono text-[11px] font-normal text-fg-faint">{list.length}</span>
+                    </h2>
+                    <Button variant="text" aria-label={`${year}년 ${CATEGORY[cat].label} 항목 추가`} onClick={() => openCreate(cat)}>+ 추가</Button>
                   </div>
-
                   {list.length === 0 ? (
-                    <div style={{ padding: '24px', textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: '12px' }}>
-                      없음
-                    </div>
+                    <p className="px-3.5 py-3 font-mono text-xs text-fg-faint"># 없음</p>
                   ) : (
-                    <div>
-                      {list.map(item => (
-                        <div key={item.id} style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ color: '#fff', fontSize: '13px', fontWeight: 600, wordBreak: 'keep-all' }}>{item.summary}</p>
-                              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', marginTop: '2px', lineHeight: 1.5, wordBreak: 'keep-all' }}>{item.detail}</p>
-                              <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '10px', marginTop: '4px' }}>순서 {item.displayOrder}</p>
-                            </div>
-                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                              <button
-                                onClick={() => openEdit(item)}
-                                style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '11px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}
-                              >수정</button>
-                              <button
-                                onClick={() => setDeleteId(item.id)}
-                                style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '11px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171', cursor: 'pointer' }}
-                              >삭제</button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <ul>
+                      {list.map((it) => {
+                        const on = it.id === selectedId
+                        return (
+                          <li key={it.id} className="border-t border-white/[0.06] first:border-t-0">
+                            <button
+                              type="button"
+                              aria-pressed={on}
+                              aria-label={`${it.summary} 수정`}
+                              onClick={() => setPanel({ mode: 'edit', id: it.id })}
+                              className={`flex w-full cursor-pointer items-start gap-3 px-3.5 py-2.5 text-left outline-none transition-colors focus-visible:bg-surface-raised ${on ? 'bg-brand/12 shadow-[inset_2px_0_0_var(--color-brand)]' : 'hover:bg-surface'}`}
+                            >
+                              <span className="min-w-0 flex-1">
+                                <span className="block break-keep text-[13px] text-white">{it.summary}</span>
+                                {it.detail && <span className="mt-0.5 block truncate text-xs text-fg-subtle">{it.detail}</span>}
+                              </span>
+                              <span className="shrink-0 pt-0.5 font-mono text-[11px] text-fg-faint" title="표시 순서">#{it.displayOrder}</span>
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
                   )}
-                </div>
+                </section>
               )
             })}
           </div>
+          <p className="mt-4 hidden font-mono text-[11px] text-fg-faint md:block">tab 이동 · enter 열기 · esc 닫기 · #숫자 = 표시 순서</p>
         </>
       )}
 
-      {/* 추가/수정 모달 */}
-      {(createOpen || editItem) && (
-        <Modal title={editItem ? '히스토리 수정' : '히스토리 추가'} onClose={() => { setCreateOpen(false); setEditItem(null); setError(null) }}>
-          <FormFields form={form} setForm={setForm} />
-          {error && <p style={{ color: '#f87171', fontSize: '12px', marginTop: '12px' }}>{error}</p>}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '16px' }}>
-            <button onClick={() => { setCreateOpen(false); setEditItem(null); setError(null) }} style={cancelBtnStyle}>취소</button>
-            <button
-              onClick={editItem ? handleEdit : handleCreate}
-              disabled={actionLoading}
-              style={{ ...primaryBtnStyle, opacity: actionLoading ? 0.6 : 1 }}
-            >
-              {actionLoading ? '저장 중...' : (editItem ? '수정 완료' : '추가')}
-            </button>
-          </div>
-        </Modal>
+      {panel?.mode === 'create' && (
+        <HistoryPanel
+          key={`new-${panel.year}-${panel.category}`}
+          initial={{ year: panel.year, category: panel.category }}
+          onClose={() => setPanel(null)}
+          onCreated={onCreated}
+          onSaved={onSaved}
+          onDeleted={onDeleted}
+        />
+      )}
+      {editing && (
+        <HistoryPanel
+          key={editing.id}
+          item={editing}
+          onClose={() => setPanel(null)}
+          onCreated={onCreated}
+          onSaved={onSaved}
+          onDeleted={onDeleted}
+        />
       )}
 
-      {/* 삭제 확인 */}
-      {deleteId !== null && (
-        <Modal title="히스토리 삭제" onClose={() => setDeleteId(null)}>
-          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '14px', marginBottom: '24px' }}>
-            이 항목을 삭제하시겠습니까? 되돌릴 수 없습니다.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-            <button onClick={() => setDeleteId(null)} style={cancelBtnStyle}>취소</button>
-            <button
-              onClick={() => handleDelete(deleteId)}
-              disabled={actionLoading}
-              style={{ ...dangerBtnStyle, opacity: actionLoading ? 0.6 : 1 }}
-            >
-              {actionLoading ? '삭제 중...' : '삭제'}
-            </button>
-          </div>
-        </Modal>
-      )}
+      <Toast toast={toast} />
     </div>
   )
 }
 
-// ─── subcomponents / styles ────────────────────
+type Form = { year: string; category: HistoryCategory; summary: string; detail: string; displayOrder: string }
+type Errors = Partial<Record<keyof Form, string>>
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function toForm(item: HistoryItem): Form {
+  return {
+    year: String(item.year),
+    category: item.category,
+    summary: item.summary,
+    detail: item.detail ?? '',
+    displayOrder: String(item.displayOrder ?? 0),
+  }
+}
+
+function validate(f: Form): Errors {
+  const e: Errors = {}
+  const y = Number(f.year)
+  if (!f.year.trim() || !Number.isInteger(y) || y < YEAR_MIN || y > YEAR_MAX) e.year = `${YEAR_MIN}~${YEAR_MAX} 사이 연도를 입력해주세요.`
+  if (!f.summary.trim()) e.summary = '요약을 입력해주세요.'
+  else if (f.summary.trim().length > 200) e.summary = '요약은 200자 이하여야 해요.'
+  if (f.detail.trim().length > 500) e.detail = '상세는 500자 이하여야 해요.'
+  const o = Number(f.displayOrder)
+  if (f.displayOrder.trim() && (!Number.isInteger(o) || o < 0)) e.displayOrder = '0 이상의 정수를 입력해주세요.'
+  return e
+}
+
+function HistoryPanel({
+  item, initial, onClose, onCreated, onSaved, onDeleted,
+}: {
+  item?: HistoryItem
+  initial?: { year: number; category: HistoryCategory }
+  onClose: () => void
+  onCreated: (i: HistoryItem) => void
+  onSaved: (i: HistoryItem) => void
+  onDeleted: (i: HistoryItem) => void
+}) {
+  const isNew = !item
+  const base: Form = item
+    ? toForm(item)
+    : { year: String(initial?.year ?? new Date().getFullYear()), category: initial?.category ?? 'SELECTION', summary: '', detail: '', displayOrder: '0' }
+
+  const [form, setForm] = useState<Form>(base)
+  const [errors, setErrors] = useState<Errors>({})
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState<{ tone: Tone; text: string } | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  const dirty = (Object.keys(base) as (keyof Form)[]).some((k) => base[k] !== form[k])
+
+  function set<K extends keyof Form>(k: K, v: Form[K]) {
+    setForm((f) => ({ ...f, [k]: v }))
+    if (errors[k]) setErrors((e) => ({ ...e, [k]: undefined }))
+  }
+
+  async function save() {
+    const errs = validate(form)
+    setErrors(errs)
+    if (Object.keys(errs).length) return
+    setSaving(true)
+    setNotice(null)
+    const json = {
+      year: Number(form.year),
+      category: form.category,
+      summary: form.summary.trim(),
+      detail: form.detail.trim(),
+      displayOrder: form.displayOrder.trim() ? Number(form.displayOrder) : 0,
+    }
+    const r = isNew
+      ? await adminFetch<HistoryItem>('/v1/admin/history/items', { method: 'POST', json })
+      : await adminFetch<HistoryItem>(`/v1/admin/history/items/${item.id}`, { method: 'PATCH', json })
+    setSaving(false)
+    if (!r.ok) { setNotice({ tone: 'danger', text: `저장하지 못했어요: ${r.error}` }); return }
+    if (isNew) { onCreated(r.data); return }
+    onSaved(r.data)
+    setForm(toForm(r.data))
+    setNotice({ tone: 'live', text: '저장했어요.' })
+  }
+
+  async function remove() {
+    if (!item) return
+    setDeleting(true)
+    setDeleteError('')
+    const r = await adminFetch(`/v1/admin/history/items/${item.id}`, { method: 'DELETE' })
+    setDeleting(false)
+    if (!r.ok) { setDeleteError(r.error); return }
+    setConfirmOpen(false)
+    onDeleted(item)
+  }
+
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-      <div style={{ background: '#0b1630', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.1)', maxWidth: '480px', width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
-          <h3 style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>{title}</h3>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '22px', cursor: 'pointer', lineHeight: 1 }}>&times;</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
+    <>
+      <DetailPanel
+        open
+        onClose={onClose}
+        path={isNew ? 'history/new' : `history/${item.year}/${item.id}`}
+        label={isNew ? '연혁 항목 추가' : '연혁 항목 수정'}
+        busy={saving || deleting}
+        notice={notice}
+        footer={
+          <>
+            {isNew ? <span /> : (
+              <Button variant="dangerText" disabled={saving} onClick={() => { setDeleteError(''); setConfirmOpen(true) }}>삭제…</Button>
+            )}
+            <div className="flex gap-2">
+              {isNew ? (
+                <Button variant="ghost" disabled={saving} onClick={onClose}>취소</Button>
+              ) : (
+                <Button variant="ghost" disabled={!dirty || saving} onClick={() => { setForm(base); setErrors({}); setNotice(null) }}>되돌리기</Button>
+              )}
+              <Button disabled={!isNew && !dirty} loading={saving} onClick={save}>{isNew ? '추가' : '저장'}</Button>
+            </div>
+          </>
+        }
+      >
+        <h2 className="mb-5 text-2xl font-bold text-white">{isNew ? '새 항목' : '항목 수정'}</h2>
 
-const fieldLabelStyle: React.CSSProperties = {
-  display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 600, marginBottom: '6px',
-}
-const inputStyleObj: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', borderRadius: '8px',
-  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-  color: '#fff', fontSize: '13px', outline: 'none',
-}
-const cancelBtnStyle: React.CSSProperties = {
-  padding: '8px 16px', borderRadius: '8px', fontSize: '13px',
-  background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-  color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
-}
-const primaryBtnStyle: React.CSSProperties = {
-  padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-  background: 'rgba(28,90,255,0.85)', border: 'none', color: '#fff', cursor: 'pointer',
-}
-const dangerBtnStyle: React.CSSProperties = {
-  padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-  background: 'rgba(239,68,68,0.85)', border: 'none', color: '#fff', cursor: 'pointer',
-}
+        <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); if (!saving) save() }}>
+          <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3">
+            <Field label="연도" error={errors.year}>
+              {(a) => (
+                <TextInput {...a} inputMode="numeric" value={form.year} disabled={saving} onChange={(e) => set('year', e.target.value)} className="font-mono" />
+              )}
+            </Field>
+            <Field label="표시 순서" hint="작을수록 위에 나와요" error={errors.displayOrder}>
+              {(a) => (
+                <TextInput {...a} inputMode="numeric" value={form.displayOrder} disabled={saving} onChange={(e) => set('displayOrder', e.target.value)} className="font-mono" />
+              )}
+            </Field>
+          </div>
 
-function FormFields({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <div>
-          <label style={fieldLabelStyle}>연도</label>
-          <input
-            type="number"
-            min="2000"
-            max="2100"
-            value={form.year}
-            onChange={e => setForm({ ...form, year: e.target.value })}
-            style={inputStyleObj}
-          />
-        </div>
-        <div>
-          <label style={fieldLabelStyle}>카테고리</label>
-          <select
-            value={form.category}
-            onChange={e => setForm({ ...form, category: e.target.value as HistoryCategory })}
-            style={inputStyleObj}
-          >
-            {CATEGORY_OPTIONS.map(c => (
-              <option key={c.value} value={c.value}>{KO_LABEL[c.value]}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div>
-        <label style={fieldLabelStyle}>요약 <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>(카드에 노출, 최대 200자)</span></label>
-        <input
-          type="text"
-          value={form.summary}
-          maxLength={200}
-          placeholder="예) BoB 수료"
-          onChange={e => setForm({ ...form, summary: e.target.value })}
-          style={inputStyleObj}
-        />
-      </div>
-      <div>
-        <label style={fieldLabelStyle}>상세 <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>(hover 툴팁에 노출, 최대 500자)</span></label>
-        <textarea
-          value={form.detail}
-          maxLength={500}
-          placeholder="예) BoB 12기 수료: *기 김지성, *기 원신영"
-          rows={3}
-          onChange={e => setForm({ ...form, detail: e.target.value })}
-          style={{ ...inputStyleObj, resize: 'none', fontFamily: 'inherit' }}
-        />
-      </div>
-      <div>
-        <label style={fieldLabelStyle}>표시 순서 <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>(낮을수록 위에 노출, 같은 카테고리 내)</span></label>
-        <input
-          type="number"
-          min="0"
-          value={form.displayOrder}
-          onChange={e => setForm({ ...form, displayOrder: e.target.value })}
-          style={inputStyleObj}
-        />
-      </div>
-    </div>
+          <div>
+            <p className="mb-1.5 text-xs text-fg-subtle">분류</p>
+            <Choice
+              label="분류"
+              value={form.category}
+              onChange={(k) => set('category', k)}
+              disabled={saving}
+              options={CATEGORIES.map((k) => ({ key: k, label: CATEGORY[k].label }))}
+            />
+            <p className="mt-1.5 text-xs text-fg-faint">{CATEGORY[form.category].hint}</p>
+          </div>
+
+          <Field label="요약" hint={`카드에 보이는 한 줄 · ${form.summary.trim().length}/200`} error={errors.summary}>
+            {(a) => (
+              <TextInput {...a} value={form.summary} maxLength={200} placeholder="예) BoB 수료" disabled={saving} onChange={(e) => set('summary', e.target.value)} />
+            )}
+          </Field>
+
+          <Field label="상세" optional hint={`카드에서 항목을 눌러 펼치면 보여요 · ${form.detail.trim().length}/500`} error={errors.detail}>
+            {(a) => (
+              <TextArea {...a} rows={4} value={form.detail} maxLength={500} placeholder="예) BoB 12기 수료: 1기 홍길동" disabled={saving} onChange={(e) => set('detail', e.target.value)} />
+            )}
+          </Field>
+          <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
+        </form>
+      </DetailPanel>
+
+      {item && (
+        <ConfirmDialog
+          open={confirmOpen}
+          title="연혁 항목 삭제"
+          confirmLabel="삭제"
+          busy={deleting}
+          error={deleteError}
+          onConfirm={remove}
+          onClose={() => setConfirmOpen(false)}
+        >
+          <b className="text-white">{item.year}년 · {CATEGORY[item.category]?.label}</b> “{item.summary}” 항목을 삭제합니다. 되돌릴 수 없어요.
+        </ConfirmDialog>
+      )}
+    </>
   )
 }

@@ -639,18 +639,18 @@ export default function MypagePage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <main className="relative min-h-screen pt-24 px-4 sm:px-8 lg:px-12" style={{ background: '#040d1f' }}>
-      <div className="max-w-5xl mx-auto py-16">
+    <main className="relative min-h-screen pt-20 sm:pt-24 px-4 sm:px-8 lg:px-12" style={{ background: '#040d1f' }}>
+      <div className="max-w-5xl mx-auto py-8 sm:py-16">
 
         {/* Profile header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-12">
-          <div className="flex items-center gap-6">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-black flex-shrink-0 bg-brand shadow-[0_0_24px_rgba(28,90,255,0.35)]">
+        <div className="flex items-start sm:items-center justify-between gap-4 mb-8 sm:mb-12">
+          <div className="flex items-center gap-4 sm:gap-6 min-w-0">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white text-xl sm:text-2xl font-black flex-shrink-0 bg-brand shadow-[0_0_24px_rgba(28,90,255,0.35)]">
               {user.nickname?.[0]?.toUpperCase()}
             </div>
-            <div>
-              <h1 className="text-white text-3xl font-black">{user.nickname}</h1>
-              <p className="text-fg-subtle text-sm mt-1">{user.email}</p>
+            <div className="min-w-0">
+              <h1 className="text-white text-2xl sm:text-3xl font-black truncate">{user.nickname}</h1>
+              <p className="text-fg-subtle text-[13px] sm:text-sm mt-1 truncate">{user.email}</p>
               {/* 역할: 내비게이션 바와 같은 이름(ADMIN / MEMBER), 홈의 ● ACTIVE 와 같은 점 표기 */}
               <span className="inline-flex items-center gap-2 mt-2 text-xs font-semibold tracking-[0.08em]">
                 <span
@@ -664,14 +664,16 @@ export default function MypagePage() {
           <button
             onClick={handleLogout}
             disabled={logoutLoading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-fg-subtle hover:text-white border border-line hover:border-line-strong transition-colors disabled:opacity-40"
+            aria-label="로그아웃"
+            className="flex items-center gap-2 p-2.5 sm:px-4 sm:py-2 rounded-lg text-sm text-fg-subtle hover:text-white border border-line hover:border-line-strong transition-colors disabled:opacity-40 shrink-0"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            {logoutLoading ? '로그아웃 중...' : '로그아웃'}
+            {/* 모바일은 아이콘만 */}
+            <span className="hidden sm:inline">{logoutLoading ? '로그아웃 중...' : '로그아웃'}</span>
           </button>
         </div>
 
@@ -683,7 +685,7 @@ export default function MypagePage() {
               role="tab"
               aria-selected={tab === key}
               onClick={() => setTab(key)}
-              className={`px-6 py-3 text-sm font-semibold tracking-wider transition-colors whitespace-nowrap -mb-px border-b-2 ${
+              className={`px-3.5 sm:px-6 py-3 text-[13px] sm:text-sm font-semibold sm:tracking-wider transition-colors whitespace-nowrap -mb-px border-b-2 ${
                 tab === key
                   ? 'text-white border-brand'
                   : 'text-fg-subtle border-transparent hover:text-white'
@@ -1282,15 +1284,15 @@ function PostList({ items, emptyMessage }: { items: MyPost[]; emptyMessage: stri
           <Link
             key={post.id}
             href={`/blog/${post.id}`}
-            className="flex items-center gap-4 py-4 hover:bg-surface-raised px-4 -mx-4 rounded-lg transition-colors"
+            className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 sm:flex sm:items-center sm:gap-4 py-3.5 sm:py-4 hover:bg-surface-raised px-4 -mx-4 rounded-lg transition-colors"
           >
             {/* 분류: 블로그 목록과 같은 ● Knowledge 표기 */}
-            <span className={`inline-flex items-center gap-2 w-[92px] text-xs font-medium flex-shrink-0 ${style?.text ?? 'text-fg-subtle'}`}>
+            <span className={`inline-flex items-center gap-2 sm:w-[92px] text-xs font-medium flex-shrink-0 ${style?.text ?? 'text-fg-subtle'}`}>
               <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${style?.dot ?? 'bg-fg-faint'}`} />
               {CATEGORY_LABEL[post.category] ?? post.category}
             </span>
-            <span className="text-white font-medium flex-1 truncate text-sm">{post.title}</span>
-            <span className="text-fg-subtle text-xs flex-shrink-0 tabular-nums">{fmtDate(post.createdAt)}</span>
+            <span className="col-span-2 row-start-2 sm:flex-1 min-w-0 text-white font-medium truncate text-sm">{post.title}</span>
+            <span className="col-start-2 row-start-1 text-fg-subtle text-xs flex-shrink-0 tabular-nums">{fmtDate(post.createdAt)}</span>
           </Link>
         )
       })}

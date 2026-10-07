@@ -1,328 +1,235 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { useRef, useState, type KeyboardEvent } from 'react'
+import {
+  adminFetch, asList, Button, ConfirmDialog, EmptyState, ErrorState, LoadingState, PageHeader, Table, Td,
+  TextInput, Th, Toast, useAdminQuery, useToast,
+} from '../_components/AdminUI'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
+// 백엔드 Create/UpdateArchiveYearRequest 와 같은 범위
+const YEAR_MIN = 2000
+const YEAR_MAX = 2100
 
-function YearInput({
-  value,
-  onChange,
-  onConfirm,
-  onCancel,
-  error,
-  placeholder,
-}: {
-  value: string
-  onChange: (v: string) => void
-  onConfirm: () => void
-  onCancel: () => void
-  error: string
-  placeholder?: string
-}) {
-  const ref = useRef<HTMLInputElement>(null)
-  useEffect(() => { ref.current?.focus() }, [])
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <input
-          ref={ref}
-          type="number"
-          min={2000}
-          max={2099}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') onConfirm()
-            if (e.key === 'Escape') onCancel()
-          }}
-          placeholder={placeholder ?? '연도 입력 (예: 2026)'}
-          style={{
-            width: '180px', padding: '8px 12px', borderRadius: '8px', fontSize: '14px',
-            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(28,90,255,0.5)',
-            color: '#fff', outline: 'none',
-          }}
-        />
-        <button
-          onClick={onConfirm}
-          style={{
-            padding: '8px 14px', borderRadius: '7px', fontSize: '12px', fontWeight: 600,
-            background: 'rgba(28,90,255,0.85)', border: 'none', color: '#fff', cursor: 'pointer',
-          }}
-        >확인</button>
-        <button
-          onClick={onCancel}
-          style={{
-            padding: '8px 12px', borderRadius: '7px', fontSize: '12px',
-            background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-            color: 'rgba(255,255,255,0.4)', cursor: 'pointer',
-          }}
-        >취소</button>
-      </div>
-      {error && <p style={{ color: '#f87171', fontSize: '12px' }}>{error}</p>}
-    </div>
-  )
+/** 연도 입력 검사. 통과하면 숫자, 아니면 오류 문구 */
+function parseYear(raw: string, existing: number[], current?: number): number | string {
+  const v = raw.trim()
+  const y = Number(v)
+  if (!v || !Number.isInteger(y) || y < YEAR_MIN || y > YEAR_MAX) return `${YEAR_MIN}~${YEAR_MAX} 사이 연도를 입력해주세요.`
+  if (y !== current && existing.includes(y)) return `${y} 아카이브는 이미 있어요.`
+  return y
 }
 
 export default function AdminArchivePage() {
-  const [years, setYears] = useState<number[]>([])
-  const [loading, setLoading] = useState(true)
+  const { toast, show } = useToast()
+  const { data, error, loading, reload, mutate } = useAdminQuery<number[]>('/v1/archive/years')
+  const years = asList<number>(data).slice().sort((a, b) => b - a)
 
-  const [isAdding, setIsAdding] = useState(false)
+  // 추가
   const [newYear, setNewYear] = useState('')
-  const [newYearError, setNewYearError] = useState('')
+  const [addError, setAddError] = useState('')
+  const [adding, setAdding] = useState(false)
 
-  const [editingYear, setEditingYear] = useState<number | null>(null)
+  // 줄 안에서 수정
+  const [editing, setEditing] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
   const [editError, setEditError] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
 
-  const [deletingYear, setDeletingYear] = useState<number | null>(null)
-  const [deleteLoading, setDeleteLoading] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch(`${API_URL}/v1/archive/years`, { credentials: 'include', cache: 'no-store' })
-      const json = await res.json().catch(() => ({}))
-      const data = json?.data
-      setYears(Array.isArray(data) ? [...data].sort((a, b) => b - a) : [])
-    } catch {
-      setYears([])
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  async function handleAdd() {
-    const y = Number(newYear)
-    if (!newYear || y < 2000 || y > 2099) {
-      setNewYearError('2000~2099 사이의 유효한 연도를 입력하세요.')
-      return
-    }
-    if (years.includes(y)) {
-      setNewYearError('이미 존재하는 연도입니다.')
-      return
-    }
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/archive/years`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: y }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        setNewYearError(d?.message ?? '추가 실패')
-        return
-      }
-      setIsAdding(false)
-      setNewYear('')
-      setNewYearError('')
-      load()
-    } catch {
-      setNewYearError('네트워크 오류')
-    }
-  }
-
-  async function handleEdit() {
-    const y = Number(editValue)
-    if (!editValue || y < 2000 || y > 2099) {
-      setEditError('2000~2099 사이의 유효한 연도를 입력하세요.')
-      return
-    }
-    if (y !== editingYear && years.includes(y)) {
-      setEditError('이미 존재하는 연도입니다.')
-      return
-    }
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/archive/years/${editingYear}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: y }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        setEditError(d?.message ?? '수정 실패')
-        return
-      }
-      setEditingYear(null)
-      setEditValue('')
-      setEditError('')
-      load()
-    } catch {
-      setEditError('네트워크 오류')
-    }
-  }
-
+  // 삭제
+  const [deleting, setDeleting] = useState<number | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState('')
 
-  async function handleDelete() {
-    if (!deletingYear) return
-    setDeleteLoading(true)
+  // Enter 를 연타해도 요청은 하나만 (state 는 다음 렌더까지 반영되지 않으므로 ref 로 잠근다)
+  const busyRef = useRef(false)
+
+  async function add() {
+    if (busyRef.current) return
+    const y = parseYear(newYear, years)
+    if (typeof y === 'string') { setAddError(y); return }
+    busyRef.current = true
+    setAdding(true)
+    setAddError('')
+    const r = await adminFetch<{ year: number }>('/v1/archive/years', { method: 'POST', json: { year: y } })
+    busyRef.current = false
+    setAdding(false)
+    if (!r.ok) { setAddError(r.error); return }
+    const created = r.data?.year ?? y
+    mutate((d) => [...asList<number>(d).filter((v) => v !== created), created])
+    setNewYear('')
+    show(`${created} 아카이브를 만들었어요.`)
+  }
+
+  function startEdit(year: number) {
+    setEditing(year)
+    setEditValue(String(year))
+    setEditError('')
+  }
+
+  function cancelEdit() {
+    if (savingEdit) return
+    setEditing(null)
+    setEditError('')
+  }
+
+  async function saveEdit() {
+    if (editing === null || busyRef.current) return
+    const y = parseYear(editValue, years, editing)
+    if (typeof y === 'string') { setEditError(y); return }
+    if (y === editing) { setEditing(null); return }
+    busyRef.current = true
+    setSavingEdit(true)
+    setEditError('')
+    const from = editing
+    const r = await adminFetch<{ year: number }>(`/v1/archive/years/${from}`, { method: 'PATCH', json: { year: y } })
+    busyRef.current = false
+    setSavingEdit(false)
+    if (!r.ok) { setEditError(r.error); return }
+    const to = r.data?.year ?? y
+    mutate((d) => asList<number>(d).map((v) => (v === from ? to : v)))
+    setEditing(null)
+    show(`${from} → ${to} 로 바꿨어요.`)
+  }
+
+  function onEditKey(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') { e.preventDefault(); saveEdit() }
+    if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
+  }
+
+  async function remove() {
+    if (deleting === null) return
+    setDeleteBusy(true)
     setDeleteError('')
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/archive/years/${deletingYear}`, { method: 'DELETE' })
-      if (!res.ok) {
-        // 응답을 안 보고 넘어가면 실패해도 성공한 것처럼 보인다
-        const data = await res.json().catch(() => null)
-        setDeleteError(data?.message ?? `삭제에 실패했습니다. (HTTP ${res.status})`)
-        return
-      }
-      setDeletingYear(null)
-      load()
-    } catch {
-      setDeleteError('네트워크 오류')
-    } finally {
-      setDeleteLoading(false)
-    }
+    const year = deleting
+    const r = await adminFetch<{ restored?: number }>(`/v1/archive/years/${year}`, { method: 'DELETE' })
+    setDeleteBusy(false)
+    if (!r.ok) { setDeleteError(r.error); return }
+    mutate((d) => asList<number>(d).filter((v) => v !== year))
+    setDeleting(null)
+    const restored = r.data?.restored
+    show(`${year} 아카이브를 삭제했어요.${restored ? ` 글·자료 ${restored}건이 원래 목록으로 돌아갔어요.` : ''}`)
   }
 
   return (
-    <div style={{ maxWidth: '700px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
-        <div>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '4px' }}>Archive 관리</h1>
-          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.35)' }}>연도별 아카이브 생성·수정·삭제</p>
-        </div>
-        {!isAdding && (
-          <button
-            onClick={() => { setIsAdding(true); setNewYear(''); setNewYearError('') }}
-            style={{
-              padding: '9px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-              background: 'rgba(28,90,255,0.85)', border: 'none', color: '#fff', cursor: 'pointer',
-            }}
-          >+ 연도 추가</button>
-        )}
-      </div>
+    <div>
+      <PageHeader
+        path="archive"
+        title="아카이브"
+        description={<>연도별 아카이브 <span className="font-mono text-white">{years.length}</span>개 · 지난 해 글과 자료를 연도로 묶어 보관해요</>}
+        actions={
+          <form
+            onSubmit={(e) => { e.preventDefault(); add() }}
+            className="flex items-center gap-2"
+          >
+            <TextInput
+              aria-label="새 아카이브 연도"
+              aria-invalid={addError ? true : undefined}
+              aria-describedby={addError ? 'archive-add-error' : undefined}
+              inputMode="numeric"
+              placeholder={String(new Date().getFullYear())}
+              value={newYear}
+              disabled={adding}
+              onChange={(e) => { setNewYear(e.target.value); if (addError) setAddError('') }}
+              className="w-[110px] font-mono"
+            />
+            <Button type="submit" loading={adding}>추가</Button>
+          </form>
+        }
+      />
+      {addError && <p id="archive-add-error" role="alert" className="-mt-2 mb-4 text-xs text-danger sm:text-right">{addError}</p>}
 
-      {isAdding && (
-        <div style={{
-          padding: '16px 20px', borderRadius: '10px', marginBottom: '16px',
-          background: 'rgba(28,90,255,0.06)', border: '1px solid rgba(28,90,255,0.25)',
-        }}>
-          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '12px', marginBottom: '10px' }}>새 아카이브 연도</p>
-          <YearInput
-            value={newYear}
-            onChange={v => { setNewYear(v); setNewYearError('') }}
-            onConfirm={handleAdd}
-            onCancel={() => { setIsAdding(false); setNewYear(''); setNewYearError('') }}
-            error={newYearError}
-          />
-        </div>
-      )}
-
-      {loading ? (
-        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', textAlign: 'center', padding: '60px 0' }}>불러오는 중...</p>
+      {error && !data ? (
+        <ErrorState command="fetch archive/years" error={error} onRetry={reload} />
+      ) : loading && !data ? (
+        <LoadingState command="fetch archive/years" rows={3} />
       ) : years.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: '60px 0',
-          border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '12px',
-        }}>
-          <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>아카이브 연도가 없습니다.</p>
-          <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: '12px', marginTop: '6px' }}>위의 &quot;연도 추가&quot; 버튼을 눌러 시작하세요.</p>
-        </div>
+        <EmptyState command="ls archive/" text="아카이브 연도가 없어요. 위 입력칸에 연도를 넣고 추가해주세요" />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {years.map(year => (
-            <div
-              key={year}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '14px 18px', borderRadius: '10px',
-                background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
-                transition: 'border-color 0.15s',
-              }}
-            >
-              {editingYear === year ? (
-                <div style={{ flex: 1 }}>
-                  <YearInput
-                    value={editValue}
-                    onChange={v => { setEditValue(v); setEditError('') }}
-                    onConfirm={handleEdit}
-                    onCancel={() => { setEditingYear(null); setEditValue(''); setEditError('') }}
-                    error={editError}
-                    placeholder={String(year)}
-                  />
-                </div>
-              ) : (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <span style={{
-                      fontSize: '22px', fontWeight: 800, color: '#fff',
-                      fontFamily: "'Archivo Black', sans-serif", letterSpacing: '-0.5px',
-                    }}>{year}</span>
-                    <a
-                      href={`/archive/${year}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ fontSize: '11px', color: '#7aa3ff', textDecoration: 'none', opacity: 0.8 }}
-                    >
-                      /archive/{year} ↗
-                    </a>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => { setEditingYear(year); setEditValue(String(year)); setEditError('') }}
-                      style={{
-                        padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                        background: 'rgba(28,90,255,0.15)', border: '1px solid rgba(28,90,255,0.3)',
-                        color: '#7aa3ff', cursor: 'pointer',
-                      }}
-                    >수정</button>
-                    <button
-                      onClick={() => setDeletingYear(year)}
-                      style={{
-                        padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
-                        background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
-                        color: '#f87171', cursor: 'pointer',
-                      }}
-                    >삭제</button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {deletingYear !== null && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 100,
-          background: 'rgba(0,0,0,0.65)', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', padding: '16px',
-        }}>
-          <div style={{
-            background: '#0d1b35', borderRadius: '16px', padding: '28px',
-            border: '1px solid rgba(255,255,255,0.1)', maxWidth: '380px', width: '100%',
-          }}>
-            <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', lineHeight: 1.6, marginBottom: '24px' }}>
-              <strong style={{ color: '#fff' }}>{deletingYear}</strong> 아카이브를 삭제합니다.
-              이 연도로 보관된 글과 content 는 <strong style={{ color: '#fff' }}>삭제되지 않고</strong>{' '}
-              아카이브에서 해제되어 원래 목록으로 돌아갑니다.
-            </p>
-            {deleteError && (
-              <p style={{ color: '#f87171', fontSize: '12px', marginTop: '-12px', marginBottom: '16px' }}>
-                {deleteError}
-              </p>
-            )}
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button onClick={() => setDeletingYear(null)} style={{
-                padding: '8px 18px', borderRadius: '8px', fontSize: '13px',
-                background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-                color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
-              }}>취소</button>
-              <button onClick={handleDelete} disabled={deleteLoading} style={{
-                padding: '8px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-                background: 'rgba(239,68,68,0.85)', border: 'none',
-                color: '#fff', cursor: deleteLoading ? 'not-allowed' : 'pointer', opacity: deleteLoading ? 0.6 : 1,
-              }}>{deleteLoading ? '삭제 중...' : '삭제'}</button>
-            </div>
+        <>
+          {error && <p role="alert" className="mb-3 text-xs text-danger">새로 불러오지 못했어요: {error} <button type="button" onClick={reload} className="cursor-pointer underline">다시 시도</button></p>}
+          <div className={`max-w-[640px] ${loading ? 'opacity-60 transition-opacity' : ''}`}>
+            <Table label="아카이브 연도 목록">
+              <thead>
+                <tr>
+                  <Th>Year</Th>
+                  <Th className="hidden sm:table-cell">Page</Th>
+                  <Th className="text-right"><span className="sr-only">동작</span></Th>
+                </tr>
+              </thead>
+              <tbody>
+                {years.map((year) => {
+                  const isEditing = editing === year
+                  return (
+                    <tr key={year} className={`border-t border-white/[0.06] ${isEditing ? 'bg-brand/12 shadow-[inset_2px_0_0_var(--color-brand)]' : ''}`}>
+                      {isEditing ? (
+                        <Td className="py-2.5" >
+                          <div className="flex flex-col gap-1.5">
+                            <TextInput
+                              autoFocus
+                              aria-label={`${year} 아카이브의 새 연도 (Enter 저장 · Esc 취소)`}
+                              aria-invalid={editError ? true : undefined}
+                              aria-describedby={editError ? `archive-edit-error-${year}` : undefined}
+                              inputMode="numeric"
+                              value={editValue}
+                              disabled={savingEdit}
+                              onChange={(e) => { setEditValue(e.target.value); if (editError) setEditError('') }}
+                              onKeyDown={onEditKey}
+                              className="w-[110px] font-mono"
+                            />
+                            {editError && <p id={`archive-edit-error-${year}`} role="alert" className="text-xs text-danger">{editError}</p>}
+                          </div>
+                        </Td>
+                      ) : (
+                        <Td className="font-mono text-base font-semibold text-white">{year}</Td>
+                      )}
+                      <Td className="hidden sm:table-cell">
+                        <a
+                          href={`/archive/${year}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono text-xs text-brand-soft hover:underline"
+                        >
+                          /archive/{year} ↗
+                        </a>
+                      </Td>
+                      <Td className="text-right">
+                        <div className="flex items-center justify-end gap-4">
+                          {isEditing ? (
+                            <>
+                              <Button variant="text" disabled={savingEdit} onClick={cancelEdit}>취소</Button>
+                              <Button size="sm" loading={savingEdit} onClick={saveEdit}>저장</Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button variant="text" disabled={savingEdit} onClick={() => startEdit(year)} aria-label={`${year} 수정`}>수정</Button>
+                              <Button variant="dangerText" onClick={() => { setDeleteError(''); setDeleting(year) }} aria-label={`${year} 삭제`}>삭제</Button>
+                            </>
+                          )}
+                        </div>
+                      </Td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </Table>
           </div>
-        </div>
+          <p className="mt-4 hidden font-mono text-[11px] text-fg-faint md:block">수정 중 enter 저장 · esc 취소</p>
+        </>
       )}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="아카이브 삭제"
+        confirmLabel="삭제"
+        busy={deleteBusy}
+        error={deleteError}
+        onConfirm={remove}
+        onClose={() => setDeleting(null)}
+      >
+        <b className="text-white">{deleting}</b> 아카이브를 삭제합니다. 이 연도로 보관된 글과 자료는 <b className="text-white">지워지지 않고</b> 아카이브에서 풀려 원래 목록으로 돌아가요.
+      </ConfirmDialog>
+
+      <Toast toast={toast} />
     </div>
   )
 }

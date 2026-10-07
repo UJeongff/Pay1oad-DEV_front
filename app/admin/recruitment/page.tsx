@@ -1,30 +1,13 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { useState } from 'react'
+import {
+  adminFetch, asList, Button, Choice, ConfirmDialog, DetailPanel, EmptyState, ErrorState, Field,
+  formatDateTime, InfoGrid, LoadingState, PageHeader, panelPad, SelectableRow, StatusLabel, Table, Td, TextInput,
+  Th, toDatetimeLocal, Toast, useAdminQuery, useToast, type Tone,
+} from '../_components/AdminUI'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
-
-type RecruitStatus = 'RECRUITING' | 'UPCOMING' | 'CLOSED'
-
-/**
- * 모집 기간으로부터 상태를 정한다.
- *
- * 홈/어바웃의 "지원하기" 버튼은 isActive 와 기간을 함께 보기 때문에,
- * 상태를 손으로 고르게 두면 "모집중으로 해놨는데 버튼이 안 뜬다" 같은 어긋남이 생긴다.
- * 날짜에서 유도하는 것을 기본값으로 삼는다.
- */
-function deriveStatus(startAt: string, endAt: string): RecruitStatus | null {
-  if (!startAt || !endAt) return null
-
-  // 날짜 문자열끼리 비교한다 (YYYY-MM-DD 는 사전순 = 시간순)
-  const today = new Date()
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-
-  if (todayStr < startAt) return 'UPCOMING'
-  if (todayStr > endAt) return 'CLOSED'
-  return 'RECRUITING'
-}
+type RecruitStatus = 'UPCOMING' | 'RECRUITING' | 'CLOSED'
 
 interface Recruitment {
   id: number
@@ -33,454 +16,389 @@ interface Recruitment {
   startAt: string
   endAt: string
   isActive: boolean
-  status?: RecruitStatus
-  generation?: number
+  status?: RecruitStatus | null
+  generation?: number | null
   createdAt: string
 }
 
-type RecruitForm = {
-  title: string
-  applyUrl: string
-  startAt: string
-  endAt: string
-  status: RecruitStatus
-  generation: string
+const STATUS: Record<RecruitStatus, { label: string; tone: Tone }> = {
+  UPCOMING: { label: '모집 예정', tone: 'soon' },
+  RECRUITING: { label: '모집 중', tone: 'live' },
+  CLOSED: { label: '마감', tone: 'off' },
+}
+const STATUS_KEYS: RecruitStatus[] = ['UPCOMING', 'RECRUITING', 'CLOSED']
+
+/** 서버 UrlSafetyValidator 의 모집 공고 허용 도메인 (하위 도메인 포함) */
+const ALLOWED_HOSTS = ['docs.google.com', 'forms.gle', 'form.naver.com', 'naver.me']
+
+/** 예전 데이터처럼 status 가 없으면 isActive 로 정한다 */
+function statusOf(r: Recruitment): RecruitStatus {
+  return r.status ?? (r.isActive ? 'RECRUITING' : 'CLOSED')
 }
 
-const EMPTY_FORM: RecruitForm = {
-  title: '', applyUrl: '', startAt: '', endAt: '',
-  status: 'UPCOMING', generation: '',
+/** 지금 시각 (yyyy-MM-ddTHH:mm, 브라우저 시간 = KST 가정) */
+function nowLocal(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-function parseList<T>(json: unknown): T[] {
-  if (!json) return []
-  const j = json as Record<string, unknown>
-  if (Array.isArray(j)) return j as T[]
-  if (j.data) {
-    const d = j.data as Record<string, unknown>
-    if (Array.isArray(d)) return d as T[]
-    if (d.content && Array.isArray(d.content)) return d.content as T[]
+/** 기간으로 본 상태 — 날짜를 바꾸면 상태를 이 값으로 맞춰 준다 (직접 바꾸는 건 자유) */
+function deriveStatus(startAt: string, endAt: string): RecruitStatus | null {
+  if (!startAt || !endAt) return null
+  const now = nowLocal()
+  if (now < startAt) return 'UPCOMING'
+  if (now > endAt) return 'CLOSED'
+  return 'RECRUITING'
+}
+
+function hostOf(url: string): string | null {
+  try { return new URL(url).hostname.toLowerCase() } catch { return null }
+}
+
+function hostAllowed(host: string): boolean {
+  return ALLOWED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))
+}
+
+type Form = { title: string; generation: string; applyUrl: string; startAt: string; endAt: string; status: RecruitStatus }
+
+const EMPTY_FORM: Form = { title: '', generation: '', applyUrl: '', startAt: '', endAt: '', status: 'UPCOMING' }
+
+function toForm(r: Recruitment): Form {
+  return {
+    title: r.title ?? '',
+    generation: r.generation != null ? String(r.generation) : '',
+    applyUrl: r.applyUrl ?? '',
+    startAt: toDatetimeLocal(r.startAt),
+    endAt: toDatetimeLocal(r.endAt),
+    status: statusOf(r),
   }
-  if (j.content && Array.isArray(j.content)) return j.content as T[]
-  return []
 }
 
-function fmtDateTime(s: string) {
-  return new Date(s).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
+/** 저장을 막는 이유 — 서버가 400 을 돌려주기 전에 보여준다 */
+function formProblem(f: Form): string | null {
+  if (!f.title.trim()) return '제목을 입력해주세요.'
+  if (f.generation.trim()) {
+    const g = Number(f.generation)
+    if (!Number.isInteger(g) || g < 1 || g > 100) return '기수는 1~100 사이 정수여야 해요.'
+  }
+  if (!f.applyUrl.trim()) return '지원서 링크를 입력해주세요.'
+  if (!/^https:\/\/.+/.test(f.applyUrl.trim()) || !hostOf(f.applyUrl.trim())) return '지원서 링크는 https:// 로 시작해야 해요.'
+  if (!f.startAt || !f.endAt) return '모집 시작과 마감 시각을 모두 입력해주세요.'
+  if (f.endAt <= f.startAt) return '마감 시각은 시작 시각 이후여야 해요.'
+  return null
 }
 
-function toDateInput(s: string) {
-  return s ? s.slice(0, 10) : ''
+/** datetime-local 값에 초를 붙여 LocalDateTime 으로 보낸다 */
+function toServerDateTime(v: string): string {
+  return v.length === 16 ? `${v}:00` : v
 }
 
 export default function AdminRecruitmentPage() {
-  const [items, setItems] = useState<Recruitment[]>([])
-  const [loading, setLoading] = useState(false)
+  const { toast, show } = useToast()
+  const { data, error, loading, reload, mutate } = useAdminQuery<unknown>('/v1/admin/recruitment')
+  const items = asList<Recruitment>(data)
+    .slice()
+    .sort((a, b) => (b.startAt ?? '').localeCompare(a.startAt ?? ''))
 
-  const [createOpen, setCreateOpen] = useState(false)
-  const [editItem, setEditItem] = useState<Recruitment | null>(null)
-  const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [form, setForm] = useState<RecruitForm>(EMPTY_FORM)
-  const [actionLoading, setActionLoading] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [creating, setCreating] = useState(false)
+  const selected = items.find((r) => r.id === selectedId) ?? null
+  const panelOpen = creating || !!selected
 
-  const showToast = (msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast(null), 2400)
-  }
+  const recruitingCount = items.filter((r) => statusOf(r) === 'RECRUITING').length
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/recruitment`)
-      if (!res.ok) return
-      const json = await res.json()
-      setItems(parseList<Recruitment>(json))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  return (
+    <div className={panelPad(panelOpen)}>
+      <PageHeader
+        path="recruitment"
+        title="모집 공고"
+        description={
+          data
+            ? <>신규 부원 모집 기간과 지원서 링크 · 모집 중 <span className="font-mono text-white">{recruitingCount}</span>건</>
+            : '신규 부원 모집 기간과 지원서 링크를 관리합니다.'
+        }
+        actions={<Button onClick={() => { setSelectedId(null); setCreating(true) }}>+ 모집 공고</Button>}
+      />
 
-  useEffect(() => { load() }, [load])
+      {error && !data ? (
+        <ErrorState command="fetch recruitment" error={error} onRetry={reload} />
+      ) : loading && !data ? (
+        <LoadingState command="fetch recruitment" />
+      ) : items.length === 0 ? (
+        <EmptyState command="ls recruitment/" text="등록된 모집 공고가 없어요" />
+      ) : (
+        <>
+          {error && <p role="alert" className="mb-3 text-xs text-danger">새로 불러오지 못했어요: {error} <button type="button" onClick={reload} className="cursor-pointer underline">다시 시도</button></p>}
+          <div className={loading ? 'opacity-60 transition-opacity' : ''}>
+            <Table label="모집 공고 목록">
+              <thead>
+                <tr>
+                  <Th>Title</Th>
+                  <Th className="hidden sm:table-cell">Gen</Th>
+                  <Th className={panelOpen ? 'hidden' : 'hidden lg:table-cell'}>Period</Th>
+                  <Th className="hidden sm:table-cell">Status</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((r) => {
+                  const st = STATUS[statusOf(r)]
+                  return (
+                    <SelectableRow key={r.id} selected={r.id === selectedId} onSelect={() => { setCreating(false); setSelectedId(r.id) }} label={`${r.title} 모집 공고 열기`}>
+                      <Td className="font-semibold text-white">
+                        <span className="break-all">{r.title}</span>
+                        {/* 좁은 화면(또는 패널이 열렸을 때)엔 상태 · 기간을 제목 아래에 */}
+                        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-normal sm:hidden">
+                          <StatusLabel tone={st.tone}>{st.label}</StatusLabel>
+                          {r.generation != null && <span className="font-mono text-[11px] text-fg-faint">{r.generation}기</span>}
+                        </span>
+                        <span className={`mt-1 block font-mono text-[11px] font-normal text-fg-faint ${panelOpen ? '' : 'lg:hidden'}`}>
+                          {formatDateTime(r.startAt)} ~ {formatDateTime(r.endAt)}
+                        </span>
+                      </Td>
+                      <Td className="hidden whitespace-nowrap font-mono text-fg-subtle sm:table-cell">{r.generation != null ? `${r.generation}기` : '—'}</Td>
+                      <Td className={`whitespace-nowrap font-mono text-fg-subtle ${panelOpen ? 'hidden' : 'hidden lg:table-cell'}`}>
+                        {formatDateTime(r.startAt)} ~ {formatDateTime(r.endAt)}
+                      </Td>
+                      <Td className="hidden sm:table-cell"><StatusLabel tone={st.tone}>{st.label}</StatusLabel></Td>
+                    </SelectableRow>
+                  )
+                })}
+              </tbody>
+            </Table>
+          </div>
+          <p className="mt-4 hidden font-mono text-[11px] text-fg-faint md:block">↑↓ 이동 · enter 열기 · esc 닫기</p>
+        </>
+      )}
 
-  /**
-   * 서버가 왜 거절했는지 그대로 보여준다.
-   * "등록에 실패했습니다" 한 줄이면 지원서 URL 이 허용 도메인이 아니라는 걸 알 길이 없다.
-   */
-  async function failureReason(res: Response, fallback: string): Promise<string> {
-    const data = await res.json().catch(() => null)
-    const fieldMsg = data?.errors?.[0]?.message
-    return fieldMsg ?? data?.message ?? `${fallback} (HTTP ${res.status})`
-  }
+      {(creating || selected) && (
+        <RecruitPanel
+          key={selected ? selected.id : 'new'}
+          item={creating ? null : selected}
+          onClose={() => { setCreating(false); setSelectedId(null) }}
+          onSaved={(next, isNew) => {
+            if (isNew) {
+              setCreating(false)
+              setSelectedId(next.id)
+              mutate((d) => [...asList<Recruitment>(d), next])
+              show('모집 공고를 등록했어요.')
+            } else {
+              mutate((d) => asList<Recruitment>(d).map((r) => (r.id === next.id ? next : r)))
+              show('모집 공고를 저장했어요.')
+            }
+          }}
+          onDeleted={(r) => {
+            setSelectedId(null)
+            show(`${r.title} 공고를 삭제했어요.`)
+            reload()
+          }}
+        />
+      )}
 
-  function buildBody() {
-    return JSON.stringify({
-      title: form.title,
-      applyUrl: form.applyUrl,
-      startAt: form.startAt ? `${form.startAt}T00:00:00` : undefined,
-      endAt: form.endAt ? `${form.endAt}T23:59:59` : undefined,
-      isActive: form.status === 'RECRUITING',
-      status: form.status,
-      generation: form.generation ? parseInt(form.generation) : undefined,
+      <Toast toast={toast} />
+    </div>
+  )
+}
+
+function RecruitPanel({
+  item, onClose, onSaved, onDeleted,
+}: {
+  /** null 이면 새 공고 */
+  item: Recruitment | null
+  onClose: () => void
+  onSaved: (r: Recruitment, isNew: boolean) => void
+  onDeleted: (r: Recruitment) => void
+}) {
+  const initial = item ? toForm(item) : EMPTY_FORM
+  const [form, setForm] = useState<Form>(initial)
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState<{ tone: Tone; text: string } | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  const dirty = (Object.keys(initial) as (keyof Form)[]).some((k) => form[k] !== initial[k])
+  const problem = formProblem(form)
+  const url = form.applyUrl.trim()
+  const host = url ? hostOf(url) : null
+  const hostWarn = host && /^https:\/\//.test(url) && !hostAllowed(host)
+  const datesBad = !!form.startAt && !!form.endAt && form.endAt <= form.startAt
+  const derived = deriveStatus(form.startAt, form.endAt)
+  const mismatch = derived !== null && derived !== form.status
+
+  // 날짜를 바꾸면 상태를 기간에 맞춰 준다. 이후 직접 고른 상태는 그대로 둔다(조기 마감 등).
+  function setDates(next: Partial<Pick<Form, 'startAt' | 'endAt'>>) {
+    setForm((f) => {
+      const merged = { ...f, ...next }
+      const d = deriveStatus(merged.startAt, merged.endAt)
+      return d ? { ...merged, status: d } : merged
     })
   }
 
-  async function handleCreate() {
-    if (!form.title.trim() || !form.applyUrl.trim()) return
-    setActionLoading(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/recruitment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: buildBody(),
-      })
-      if (res.ok) {
-        setCreateOpen(false)
-        setForm(EMPTY_FORM)
-        showToast('모집이 등록되었습니다.')
-        await load()
-      } else {
-        showToast(await failureReason(res, '등록에 실패했습니다.'))
-      }
-    } finally {
-      setActionLoading(false)
+  async function save() {
+    if (problem) return
+    setSaving(true)
+    setNotice(null)
+    const g = form.generation.trim()
+    const json = {
+      title: form.title.trim(),
+      applyUrl: url,
+      startAt: toServerDateTime(form.startAt),
+      endAt: toServerDateTime(form.endAt),
+      status: form.status,
+      isActive: form.status === 'RECRUITING',
+      // 비우면 null 을 보내 기수를 지운다
+      generation: g ? Number(g) : null,
     }
+    const r = item
+      ? await adminFetch<Recruitment>(`/v1/admin/recruitment/${item.id}`, { method: 'PATCH', json })
+      : await adminFetch<Recruitment>('/v1/admin/recruitment', { method: 'POST', json })
+    setSaving(false)
+    if (!r.ok) { setNotice({ tone: 'danger', text: `${item ? '저장' : '등록'}하지 못했어요: ${r.error}` }); return }
+    onSaved(r.data, !item)
+    if (item) setNotice({ tone: 'live', text: '저장했어요.' })
   }
 
-  async function handleEdit() {
-    if (!editItem) return
-    setActionLoading(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/recruitment/${editItem.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: buildBody(),
-      })
-      if (res.ok) {
-        setEditItem(null)
-        showToast('모집이 수정되었습니다.')
-        await load()
-      } else {
-        showToast(await failureReason(res, '수정에 실패했습니다.'))
-      }
-    } finally {
-      setActionLoading(false)
-    }
+  async function remove() {
+    if (!item) return
+    setDeleting(true)
+    setDeleteError('')
+    const r = await adminFetch(`/v1/admin/recruitment/${item.id}`, { method: 'DELETE' })
+    setDeleting(false)
+    if (!r.ok) { setDeleteError(r.error); return }
+    setConfirmOpen(false)
+    onDeleted(item)
   }
 
-  async function handleDelete(id: number) {
-    setActionLoading(true)
-    try {
-      const res = await fetchWithAuth(`${API_URL}/v1/admin/recruitment/${id}`, { method: 'DELETE' })
-      if (res.ok) {
-        setDeleteId(null)
-        showToast('모집이 삭제되었습니다.')
-        await load()
-      } else {
-        showToast(await failureReason(res, '삭제에 실패했습니다.'))
-      }
-    } finally {
-      setActionLoading(false)
-    }
-  }
+  const st = item ? STATUS[statusOf(item)] : null
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>지원하기 관리</h1>
-          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>신규 부원 모집 기간과 지원서 링크를 관리합니다.</p>
-        </div>
-        <button
-          onClick={() => { setForm(EMPTY_FORM); setCreateOpen(true) }}
-          style={{
-            padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-            background: 'rgba(28,90,255,0.85)', border: 'none', color: '#fff', cursor: 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >+ 모집 등록</button>
-      </div>
-
-      {toast && (
-        <div style={{
-          position: 'fixed', top: '24px', left: '50%', transform: 'translateX(-50%)', zIndex: 200,
-          padding: '11px 24px', borderRadius: '8px',
-          background: 'rgba(0, 65, 239, 0.95)', border: '1px solid rgba(28,90,255,0.6)',
-          color: '#fff', fontSize: '14px', fontWeight: 500,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-        }}>{toast}</div>
-      )}
-
-      <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>불러오는 중...</div>
-        ) : items.length === 0 ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>등록된 모집이 없습니다.</div>
+    <>
+      <DetailPanel
+        open
+        onClose={onClose}
+        path={item ? `recruitment/${item.id}` : 'recruitment/new'}
+        label={item ? `${item.title} 모집 공고 상세` : '새 모집 공고'}
+        busy={saving || deleting}
+        notice={notice}
+        footer={
+          <>
+            {item ? (
+              <Button variant="dangerText" disabled={saving} onClick={() => { setDeleteError(''); setConfirmOpen(true) }}>공고 삭제…</Button>
+            ) : (
+              <span className="min-w-0 truncate text-xs text-fg-faint">{problem ?? ''}</span>
+            )}
+            <div className="flex gap-2">
+              {item ? (
+                <Button variant="ghost" disabled={!dirty || saving} onClick={() => { setForm(initial); setNotice(null) }}>되돌리기</Button>
+              ) : (
+                <Button variant="ghost" disabled={saving} onClick={onClose}>취소</Button>
+              )}
+              <Button disabled={(item ? !dirty : false) || !!problem} loading={saving} onClick={save}>{item ? '저장' : '등록'}</Button>
+            </div>
+          </>
+        }
+      >
+        {item && st ? (
+          <>
+            <h2 className="break-all text-2xl font-bold text-white">{item.title}</h2>
+            <p className="mb-5 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-fg-faint">
+              <StatusLabel tone={st.tone}>{st.label}</StatusLabel>
+              {item.generation != null && <span>{item.generation}기</span>}
+              <span>{formatDateTime(item.createdAt)} 등록</span>
+            </p>
+            <InfoGrid rows={[
+              ['period', `${formatDateTime(item.startAt)} ~ ${formatDateTime(item.endAt)}`],
+              ['url', <a key="url" href={item.applyUrl} target="_blank" rel="noopener noreferrer" className="text-brand-soft underline-offset-2 hover:underline">{item.applyUrl}</a>],
+              ['id', String(item.id)],
+            ]} />
+          </>
         ) : (
+          <h2 className="mb-5 text-2xl font-bold text-white">새 모집 공고</h2>
+        )}
+
+        <div className="flex flex-col gap-4">
+          <Field label="제목">
+            {(a) => (
+              <TextInput {...a} value={form.title} disabled={saving} placeholder="예) 2026년 2학기 신입 부원 모집" onChange={(e) => setForm({ ...form, title: e.target.value })} />
+            )}
+          </Field>
+
+          <Field
+            label="기수"
+            optional
+            hint="비워 두면 기수 표시 없이 저장돼요."
+            error={form.generation.trim() && problem?.startsWith('기수') ? problem : undefined}
+          >
+            {(a) => (
+              <TextInput {...a} type="number" inputMode="numeric" min={1} max={100} value={form.generation} disabled={saving} placeholder="예) 12" onChange={(e) => setForm({ ...form, generation: e.target.value })} className="font-mono" />
+            )}
+          </Field>
+
+          <Field
+            label="지원서 링크"
+            hint={<>https 만, 허용 도메인: <span className="font-mono">{ALLOWED_HOSTS.join(' · ')}</span> (하위 도메인 포함)</>}
+            error={url && problem?.startsWith('지원서 링크') ? problem : undefined}
+          >
+            {(a) => (
+              <TextInput {...a} type="url" value={form.applyUrl} disabled={saving} placeholder="https://forms.gle/..." onChange={(e) => setForm({ ...form, applyUrl: e.target.value })} className="font-mono text-[13px]" />
+            )}
+          </Field>
+          {hostWarn && (
+            <p className="-mt-2 text-xs text-status-soon-text">
+              <span className="font-mono">{host}</span> 은(는) 허용 도메인이 아니라 서버에서 거절될 수 있어요.
+            </p>
+          )}
+
+          <div className="grid gap-3">
+            <Field label="모집 시작">
+              {(a) => (
+                <TextInput {...a} type="datetime-local" value={form.startAt} disabled={saving} onChange={(e) => setDates({ startAt: e.target.value })} className="font-mono text-[13px]" />
+              )}
+            </Field>
+            <Field label="모집 마감" error={datesBad ? '시작 시각 이후여야 해요.' : undefined}>
+              {(a) => (
+                <TextInput {...a} type="datetime-local" value={form.endAt} min={form.startAt || undefined} disabled={saving} onChange={(e) => setDates({ endAt: e.target.value })} className="font-mono text-[13px]" />
+              )}
+            </Field>
+          </div>
+
           <div>
-            {items.map(r => {
-              const isOpen = r.status === 'RECRUITING' || (!r.status && r.isActive)
-              const isUpcoming = r.status === 'UPCOMING'
-              const statusLabel = isOpen ? '모집중' : isUpcoming ? '모집예정' : '모집마감'
-              const statusStyle: React.CSSProperties = isOpen
-                ? { color: '#4ade80', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)' }
-                : isUpcoming
-                  ? { color: '#facc15', background: 'rgba(250,204,21,0.1)', border: '1px solid rgba(250,204,21,0.3)' }
-                  : { color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }
-              return (
-                <div key={r.id} style={{ padding: '16px 20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <p style={{ color: '#fff', fontSize: '14px', fontWeight: 600 }}>{r.title}</p>
-                        <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, ...statusStyle }}>
-                          {statusLabel}
-                        </span>
-                        {r.generation != null && (
-                          <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.55)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                            {r.generation}기
-                          </span>
-                        )}
-                      </div>
-                      <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', marginTop: '4px' }}>
-                        {fmtDateTime(r.startAt)} ~ {fmtDateTime(r.endAt)}
-                      </p>
-                      <a
-                        href={r.applyUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: '#7aa3ff', fontSize: '12px', marginTop: '4px', display: 'inline-block', textDecoration: 'none', wordBreak: 'break-all' }}
-                      >{r.applyUrl}</a>
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                      <button
-                        onClick={() => {
-                          setEditItem(r)
-                          setForm({
-                            title: r.title,
-                            applyUrl: r.applyUrl,
-                            startAt: toDateInput(r.startAt),
-                            endAt: toDateInput(r.endAt),
-                            status: r.status ?? (r.isActive ? 'RECRUITING' : 'CLOSED'),
-                            generation: r.generation?.toString() ?? '',
-                          })
-                        }}
-                        style={{ padding: '5px 12px', borderRadius: '6px', fontSize: '12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}
-                      >수정</button>
-                      <button
-                        onClick={() => setDeleteId(r.id)}
-                        style={{ padding: '5px 12px', borderRadius: '6px', fontSize: '12px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', color: '#f87171', cursor: 'pointer' }}
-                      >삭제</button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+            <p className="mb-2 text-xs text-fg-subtle">모집 상태</p>
+            <Choice
+              label="모집 상태"
+              value={form.status}
+              onChange={(k) => setForm({ ...form, status: k })}
+              disabled={saving}
+              options={STATUS_KEYS.map((k) => ({ key: k, label: STATUS[k].label, tone: STATUS[k].tone }))}
+            />
+            {mismatch && derived && (
+              <p className="mt-2 text-xs text-status-soon-text">
+                입력한 기간으로는 &lsquo;{STATUS[derived].label}&rsquo;이에요. 다른 상태로 두면 홈·어바웃의 지원 버튼 노출과 어긋날 수 있어요.
+              </p>
+            )}
+            <p className="mt-2 text-xs text-fg-faint">
+              날짜를 바꾸면 상태가 기간에 맞춰 바뀌어요. 홈·어바웃의 지원 버튼은 &lsquo;모집 중&rsquo;이면서 지금이 모집 기간 안일 때만 보여요.
+            </p>
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* 모집 등록 */}
-      {createOpen && (
-        <Modal title="모집 등록" onClose={() => setCreateOpen(false)}>
-          <RecruitFormFields form={form} onChange={setForm} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '16px' }}>
-            <button onClick={() => setCreateOpen(false)} style={cancelBtnStyle}>취소</button>
-            <button
-              onClick={handleCreate}
-              disabled={actionLoading || !form.title.trim() || !form.applyUrl.trim()}
-              style={{ ...primaryBtnStyle, opacity: actionLoading ? 0.6 : 1 }}
-            >
-              {actionLoading ? '저장 중...' : '등록 완료'}
-            </button>
-          </div>
-        </Modal>
+        {item && dirty && problem && <p className="mt-4 text-xs text-status-soon-text">{problem}</p>}
+      </DetailPanel>
+
+      {item && (
+        <ConfirmDialog
+          open={confirmOpen}
+          title="모집 공고 삭제"
+          confirmLabel="삭제"
+          busy={deleting}
+          error={deleteError}
+          onConfirm={remove}
+          onClose={() => setConfirmOpen(false)}
+        >
+          <b className="text-white">{item.title}</b> 공고가 삭제됩니다. 홈·어바웃의 지원 버튼에서도 사라지고, 되돌릴 수 없어요.
+        </ConfirmDialog>
       )}
-
-      {/* 모집 수정 */}
-      {editItem && (
-        <Modal title="모집 수정" onClose={() => setEditItem(null)}>
-          <RecruitFormFields form={form} onChange={setForm} />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '16px' }}>
-            <button onClick={() => setEditItem(null)} style={cancelBtnStyle}>취소</button>
-            <button
-              onClick={handleEdit}
-              disabled={actionLoading || !form.title.trim() || !form.applyUrl.trim()}
-              style={{ ...primaryBtnStyle, opacity: actionLoading ? 0.6 : 1 }}
-            >
-              {actionLoading ? '저장 중...' : '수정 완료'}
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {/* 삭제 확인 */}
-      {deleteId !== null && (
-        <Modal title="모집 삭제" onClose={() => setDeleteId(null)}>
-          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px', marginBottom: '24px' }}>
-            이 모집을 삭제하시겠습니까? 되돌릴 수 없습니다.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-            <button onClick={() => setDeleteId(null)} style={cancelBtnStyle}>취소</button>
-            <button
-              onClick={() => handleDelete(deleteId)}
-              disabled={actionLoading}
-              style={{ ...dangerBtnStyle, opacity: actionLoading ? 0.6 : 1 }}
-            >
-              {actionLoading ? '삭제 중...' : '삭제'}
-            </button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  )
-}
-
-// ─── helpers ──────────────────────────────────────────
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-      <div style={{ background: '#0b1630', borderRadius: '16px', padding: '24px', border: '1px solid rgba(255,255,255,0.1)', maxWidth: '480px', width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
-          <h3 style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>{title}</h3>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '22px', cursor: 'pointer', lineHeight: 1 }}>&times;</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-const fieldLabelStyle: React.CSSProperties = {
-  display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 600, marginBottom: '6px',
-}
-const inputStyleObj: React.CSSProperties = {
-  width: '100%', padding: '8px 12px', borderRadius: '8px',
-  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-  color: '#fff', fontSize: '13px', outline: 'none',
-}
-const cancelBtnStyle: React.CSSProperties = {
-  padding: '8px 16px', borderRadius: '8px', fontSize: '13px',
-  background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-  color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
-}
-const primaryBtnStyle: React.CSSProperties = {
-  padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-  background: 'rgba(28,90,255,0.85)', border: 'none', color: '#fff', cursor: 'pointer',
-}
-const dangerBtnStyle: React.CSSProperties = {
-  padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-  background: 'rgba(239,68,68,0.85)', border: 'none', color: '#fff', cursor: 'pointer',
-}
-
-function RecruitFormFields({ form, onChange }: { form: RecruitForm; onChange: (f: RecruitForm) => void }) {
-  const statusOptions: { value: RecruitStatus; label: string; color: string }[] = [
-    { value: 'RECRUITING', label: '모집중', color: '#16a34a' },
-    { value: 'UPCOMING', label: '모집예정', color: '#ca8a04' },
-    { value: 'CLOSED', label: '모집마감', color: 'rgba(255,255,255,0.15)' },
-  ]
-
-  // 날짜를 바꾸면 상태도 같이 맞춘다. 직접 고른 값은 덮어쓰지 않는다(조기 마감 같은 경우가 있으므로).
-  const setDates = (next: { startAt?: string; endAt?: string }) => {
-    const merged = { ...form, ...next }
-    const derived = deriveStatus(merged.startAt, merged.endAt)
-    onChange(derived ? { ...merged, status: derived } : merged)
-  }
-
-  const derived = deriveStatus(form.startAt, form.endAt)
-  const overridden = derived !== null && derived !== form.status
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      <div>
-        <label style={fieldLabelStyle}>모집 제목</label>
-        <input
-          type="text"
-          value={form.title}
-          onChange={e => onChange({ ...form, title: e.target.value })}
-          placeholder="예) 2026년 1학기 신입 부원 모집"
-          style={inputStyleObj}
-        />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <div>
-          <label style={fieldLabelStyle}>기수</label>
-          <input
-            type="number"
-            min="1"
-            value={form.generation}
-            onChange={e => onChange({ ...form, generation: e.target.value })}
-            placeholder="예) 12"
-            style={inputStyleObj}
-          />
-        </div>
-        <div>
-          <label style={fieldLabelStyle}>지원서 URL</label>
-          <input
-            type="url"
-            value={form.applyUrl}
-            onChange={e => onChange({ ...form, applyUrl: e.target.value })}
-            placeholder="https://forms.gle/..."
-            style={inputStyleObj}
-          />
-        </div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <div>
-          <label style={fieldLabelStyle}>모집 시작일</label>
-          <input
-            type="date"
-            value={form.startAt}
-            onChange={e => setDates({ startAt: e.target.value })}
-            style={inputStyleObj}
-          />
-        </div>
-        <div>
-          <label style={fieldLabelStyle}>모집 종료일</label>
-          <input
-            type="date"
-            value={form.endAt}
-            onChange={e => setDates({ endAt: e.target.value })}
-            style={inputStyleObj}
-          />
-        </div>
-      </div>
-      <div>
-        <label style={fieldLabelStyle}>
-          모집 상태
-          <span style={{ marginLeft: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.35)', fontWeight: 400 }}>
-            날짜를 넣으면 자동으로 정해집니다
-          </span>
-        </label>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {statusOptions.map(({ value, label, color }) => {
-            const active = form.status === value
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => onChange({ ...form, status: value })}
-                style={{
-                  flex: 1, padding: '8px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                  background: active ? color : 'rgba(255,255,255,0.04)',
-                  color: active ? '#fff' : 'rgba(255,255,255,0.55)',
-                  border: active ? `1px solid ${color}` : '1px solid rgba(255,255,255,0.1)',
-                  cursor: 'pointer',
-                }}
-              >{label}</button>
-            )
-          })}
-        </div>
-        {overridden && (
-          <p style={{ marginTop: '6px', fontSize: '11px', color: '#fbbf24', lineHeight: 1.5 }}>
-            입력한 기간으로는 &lsquo;{statusOptions.find(o => o.value === derived)?.label}&rsquo;입니다.
-            직접 고른 상태를 유지하면 홈·어바웃의 지원 버튼 노출과 어긋날 수 있습니다.
-          </p>
-        )}
-        <p style={{ marginTop: '6px', fontSize: '11px', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>
-          홈과 어바웃의 지원 버튼은 <strong>모집중</strong>이면서 오늘이 모집 기간 안일 때만 나타납니다.
-        </p>
-      </div>
-    </div>
+    </>
   )
 }

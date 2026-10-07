@@ -343,7 +343,7 @@ export default function BlogPage() {
           {posts.length === 0 ? (
             <p className="text-white/40 text-center py-20">게시글이 없습니다.</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
               {posts.map((post) => (
                 <PostCard
                   key={post.id}
@@ -440,14 +440,15 @@ function PostCard({
 
   return (
     // 카드 면·선은 홈 카드와 같은 토큰. 마우스를 올리면 한 단계 밝아지고 살짝 떠오른다
+    // 모바일: 왼쪽 작은 썸네일 + 오른쪽 제목·날짜·분류의 가로 한 줄 / sm 이상: 위 썸네일 + 아래 본문 카드
     <Link
       href={`/blog/${post.id}`}
-      className="block overflow-hidden rounded-2xl border border-line bg-surface transition-[translate,background-color,border-color] duration-200 hover:-translate-y-1 hover:border-line-strong hover:bg-surface-raised"
+      className="flex items-stretch sm:block overflow-hidden rounded-2xl border border-line bg-surface transition-[translate,background-color,border-color] duration-200 hover:-translate-y-1 hover:border-line-strong hover:bg-surface-raised"
     >
       {/* Thumbnail — 썸네일이 없으면 분류 색이 번진 "제목 표지"를 대신 그린다 */}
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '16/10', overflow: 'hidden' }}>
+      <div className="relative shrink-0 overflow-hidden w-[112px] aspect-[4/3] self-center m-3 mr-0 rounded-lg sm:w-full sm:aspect-[16/10] sm:m-0 sm:rounded-none">
         {thumb === FALLBACK_IMAGE ? (
-          <PostTitleCover title={post.title} category={post.category} />
+          <PostTitleCover title={post.title} category={post.category} compactOnMobile />
         ) : (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -456,17 +457,18 @@ function PostCard({
           </>
         )}
         {post.isFeatured && (
-          <div style={{ position: 'absolute', top: '12px', right: '12px', width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Image src="/pin.svg" alt="pinned" width={16} height={16} />
+          <div className="absolute top-1.5 right-1.5 sm:top-3 sm:right-3 w-6 h-6 sm:w-7 sm:h-7 rounded-md bg-black/45 backdrop-blur-[4px] flex items-center justify-center">
+            <Image src="/pin.svg" alt="pinned" width={16} height={16} className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
         )}
       </div>
 
       {/* Body */}
-      <div style={{ padding: '16px 18px 14px' }}>
+      <div className="flex-1 min-w-0 flex flex-col justify-center px-3.5 py-3 sm:block sm:px-[18px] sm:pt-4 sm:pb-3.5">
         {/* Title row */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
-          <h3 style={{ color: '#fff', fontSize: '16px', fontWeight: 600, lineHeight: 1.35, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {/* 모바일은 폭이 좁아 두 줄까지, 카드에선 한 줄 말줄임 */}
+          <h3 className="flex-1 min-w-0 text-white text-[15px] sm:text-base font-semibold leading-[1.35] line-clamp-2 break-keep sm:line-clamp-none sm:truncate">
             {post.title}
           </h3>
           {menuItems && (
@@ -478,12 +480,10 @@ function PostCard({
                 </svg>
               </button>
               {menuOpen && typeof window !== 'undefined' && createPortal(
-                <div ref={menuRef} style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999, minWidth: '110px', display: 'flex', flexDirection: 'column', gap: '4px', padding: '6px', borderRadius: '8px', background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}>
+                <div ref={menuRef} className="popup-menu" style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999, minWidth: '110px' }}>
                   {menuItems.map(item => (
                     <button key={item}
-                      style={{ background: 'rgba(36,36,36,0.8)', border: 'none', color: item === '삭제하기' ? '#f87171' : 'rgba(255,255,255,0.85)', fontSize: '12px', fontWeight: 500, padding: '7px 12px', textAlign: 'left', cursor: 'pointer', borderRadius: '6px', width: '100%' }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,1)' }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(36,36,36,0.8)' }}
+                      className={`popup-menu-item ${item === '삭제하기' ? 'is-danger' : item === '보관하기' ? 'is-accent' : ''}`}
                       onClick={async e => {
                         e.preventDefault()
                         setMenuOpen(false)
@@ -536,7 +536,7 @@ function PostCard({
         </div>
 
         {/* Date */}
-        <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', marginBottom: '14px' }}>
+        <p className="text-fg-subtle text-xs mb-2 sm:mb-3.5 tabular-nums">
           {formatDate(post.publishedAt ?? post.createdAt)}
         </p>
 

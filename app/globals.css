@@ -28,6 +28,9 @@
   /* 브랜드 파랑은 이 하나만 쓴다: 버튼 바탕·점·진행 막대·포커스 테두리처럼 면과 선에.
      네이비 위 작은 글씨로 쓰면 대비가 모자라므로 글자는 흰색으로 두고 파랑은 바탕에 깐다 */
   --color-brand: #1C5AFF;
+  /* 브랜드 파랑의 글자용 짝: 네이비 위에서도 읽히는 밝은 파랑(대비 6:1).
+     참여인원 숫자·초대 링크·보조 버튼처럼 "파란 글자"가 꼭 필요할 때만 쓴다. 면(카드 배경)은 brand */
+  --color-brand-soft: #6E95FF;
 
   /* 상태 색: 홈 히어로의 ● ACTIVE / ● RECRUITING 과 같은 값. 점(live)은 진하게, 글자(text)는 한 단계 밝게 */
   --color-status-live: #4ADE80;
@@ -38,11 +41,19 @@
 
   /* 모달처럼 아래 내용을 가려야 하는 불투명 면. 네이비 위에 surface-raised 를 얹은 톤 */
   --color-panel: #0F1628;
+  /* 떠 있는 면(알림 팝업·메뉴·toast)의 그림자. panel 과 짝으로 쓴다 → shadow-pop */
+  --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.45);
 
   /* 블로그 분류 색:글자·테두리 대신 작은 점으로만 쓴다. 예전 형광색(#FF9193/#74FF89/#91CDFF)에서 채도와 밝기를 낮췄다 */
   --color-cat-activities: #E29A9C;
   --color-cat-knowledge: #86CF92;
   --color-cat-qna: #8DBCE4;
+
+  /* 블로그 분류 점과 같은 톤의 빨강·초록·노랑: 과제 평가·연결 상태·팀장 표시처럼 "점 + 글자" 라벨에 쓴다.
+     빨강·초록은 분류 색과 같은 값이고, 노랑만 같은 채도·밝기로 새로 맞췄다 */
+  --color-tone-red: #E29A9C;
+  --color-tone-green: #86CF92;
+  --color-tone-yellow: #E2C47A;
 }
 
 html {
@@ -252,33 +263,43 @@ body {
   animation: history-star-in 500ms ease-out;
 }
 
-/* ── About 연혁 카드 안 스크롤 (HistorySection) ──
-   카드의 네이비 그라데이션 위에 얹히도록 트랙은 비우고, 손잡이만 브랜드 블루를 옅게 */
-.history-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(110, 149, 255, 0.45) transparent;
+/* ── 카드·팝업 안 스크롤: About 연혁 카드(HistorySection), 알림 팝업(NotificationBell) ──
+   네이비 면 위에 얹히도록 트랙은 비우고, 손잡이만 브랜드 블루를 옅게. 알림 배지·점과 같은 파랑 계열 */
+/* 표준 속성(scrollbar-width/color)은 Firefox 용으로만 둔다. Chrome 은 표준 속성이 있으면 아래
+   ::-webkit-scrollbar 꾸밈을 무시하고 위아래 화살표 달린 기본 막대를 그리기 때문 */
+@supports not selector(::-webkit-scrollbar) {
+  .history-scroll,
+  .panel-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(110, 149, 255, 0.45) transparent;
+  }
 }
 
-.history-scroll::-webkit-scrollbar {
+.history-scroll::-webkit-scrollbar,
+.panel-scroll::-webkit-scrollbar {
   width: 4px;
 }
 
-.history-scroll::-webkit-scrollbar-track {
+.history-scroll::-webkit-scrollbar-track,
+.panel-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.history-scroll::-webkit-scrollbar-thumb {
+.history-scroll::-webkit-scrollbar-thumb,
+.panel-scroll::-webkit-scrollbar-thumb {
   background: rgba(110, 149, 255, 0.45);
   border-radius: 9999px;
 }
 
-.history-scroll::-webkit-scrollbar-thumb:hover {
+.history-scroll::-webkit-scrollbar-thumb:hover,
+.panel-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(110, 149, 255, 0.75);
 }
 
 /* 목록 아래 끝을 흐리게 해 스크롤할 내용이 더 있음을 알린다.
    흐려지는 24px 만큼 아래 여백을 줘서, 끝까지 내리면 마지막 항목은 선명하게 보인다 */
-.history-fade {
+.history-fade,
+.panel-fade {
   padding-bottom: 24px;
   -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent);
   mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent);
@@ -301,6 +322,56 @@ body {
   .goal-draw svg .fill-in { opacity: 1; transition: none; }
   .history-star-in { animation: none; }
   .heading-wipe-bar { display: none; }
+}
+
+/* ── ⋮ 팝업 메뉴 (Content 카드·게시글) ──
+   불투명 패널 위에 항목마다 칸을 나눈다. 칸은 회색 대신 흰색 6% 유리 면, 삭제 칸만 옅은 빨강.
+   보관처럼 강조할 항목은 is-accent(글자용 파랑). hover·키보드 포커스 모두 밝아진다 */
+.popup-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.popup-menu-item {
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-surface-raised);
+  color: var(--color-fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+.popup-menu-item:hover,
+.popup-menu-item:focus-visible {
+  outline: none;
+  background: rgb(255 255 255 / 0.1);
+  color: #fff;
+}
+
+.popup-menu-item.is-accent { color: var(--color-brand-soft); }
+.popup-menu-item.is-accent:hover,
+.popup-menu-item.is-accent:focus-visible { color: var(--color-brand-soft); }
+
+.popup-menu-item.is-danger {
+  background: rgb(248 113 113 / 0.08);
+  color: var(--color-danger);
+}
+
+.popup-menu-item.is-danger:hover,
+.popup-menu-item.is-danger:focus-visible {
+  background: rgb(248 113 113 / 0.16);
+  color: var(--color-danger);
 }
 
 /* ── 페이지 하단 알림 (CTF 등) : 아래에서 살짝 떠오른다 ── */
@@ -441,4 +512,39 @@ body {
   top: -1.4em;
   user-select: none;
   white-space: nowrap;
+}
+
+/* ── 가입 상태 화면의 터미널 표현 (승인 대기 · 초대 코드 배너) ── */
+/* 점자 스피너: 기다리는 중인 줄 끝에 붙는 로딩 도형 */
+@keyframes term-spin {
+  0% { content: '⠋'; } 10% { content: '⠙'; } 20% { content: '⠹'; } 30% { content: '⠸'; } 40% { content: '⠼'; }
+  50% { content: '⠴'; } 60% { content: '⠦'; } 70% { content: '⠧'; } 80% { content: '⠇'; } 90% { content: '⠏'; }
+}
+.term-spin::after {
+  content: '⠋';
+  animation: term-spin 1s steps(1) infinite;
+}
+@keyframes term-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.term-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 15px;
+  vertical-align: -2px;
+  animation: term-blink 1s steps(1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .term-spin::after, .term-cursor { animation: none; }
+}
+
+/* 네이티브 드롭다운: 펼친 목록을 어두운 배경으로 그리게 한다.
+   지정이 없으면 Windows 크롬이 흰 목록에 흰 글자(상속)를 그려, 마우스를 올리기 전엔 안 보인다 */
+select {
+  color-scheme: dark;
+}
+select option {
+  background-color: #0F1628;
+  color: #fff;
 }

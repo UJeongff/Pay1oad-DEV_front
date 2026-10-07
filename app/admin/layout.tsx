@@ -5,212 +5,119 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { usePendingApprovals } from '@/app/lib/usePendingApprovals'
+import { API_URL, Dot, TermSpin } from './_components/AdminUI'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
-const NAVBAR_HEIGHT = 68 // Navbar.tsx의 py-3 + 로고 44px 기준
-
+// 터미널 콘솔: 사이드바는 ~/admin/ 아래 폴더 목록, 맨 아래는 편집기 상태 줄처럼 "누구로 · 사이트로 · 로그아웃".
+// 좁은 화면에선 사이드바 대신 가로로 넘기는 탭.
 const NAV = [
-  {
-    href: '/admin/users',
-    label: '회원 관리',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-        <circle cx="12" cy="7" r="4" />
-        <path d="M2 21c0-5 4-8 10-8s10 3 10 8" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/approvals',
-    label: '가입 승인',
-    badgeKey: 'pending' as const,
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 6 9 17l-5-5" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/invites',
-    label: '초대 코드',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/notices',
-    label: '공지 관리',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 11l18-5v12L3 14v-3z" />
-        <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/recruitment',
-    label: '지원하기 관리',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="9" y1="13" x2="15" y2="13" />
-        <line x1="9" y1="17" x2="15" y2="17" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/history',
-    label: 'History 관리',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <polyline points="12 6 12 12 16 14" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/ctf',
-    label: 'CTF 관리',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/archive',
-    label: 'Archive 관리',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-        <rect x="2" y="3" width="20" height="4" rx="1" />
-        <path d="M4 7v13a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7" />
-        <line x1="10" y1="12" x2="14" y2="12" />
-      </svg>
-    ),
-  },
-]
+  { slug: 'users', label: '회원 관리' },
+  { slug: 'approvals', label: '가입 승인', badge: true },
+  { slug: 'invites', label: '초대 코드' },
+  { slug: 'notices', label: '공지 관리' },
+  { slug: 'recruitment', label: '모집 공고' },
+  { slug: 'history', label: '연혁' },
+  { slug: 'ctf', label: 'CTF' },
+  { slug: 'archive', label: '아카이브' },
+] as const
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuthContext()
+  const { user, loading, clearUser } = useAuthContext()
   const router = useRouter()
   const pathname = usePathname()
-  const [pendingCount, setPendingCount] = useState<number>(0)
+  const isAdmin = !loading && user?.role === 'ADMIN'
+  // 승인 화면에서 처리하면 notifyPendingApprovalsChanged() 로 바로 다시 읽는다
+  const pending = usePendingApprovals(isAdmin)
+  const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
-    if (!loading && (!user || user.role !== 'ADMIN')) {
-      router.replace('/')
-    }
+    if (!loading && (!user || user.role !== 'ADMIN')) router.replace('/')
   }, [loading, user, router])
 
-  useEffect(() => {
-    if (loading || !user || user.role !== 'ADMIN') return
-    let cancelled = false
-    const fetchCount = async () => {
-      try {
-        const res = await fetchWithAuth(`${API_URL}/v1/admin/approvals/pending/count`, { cache: 'no-store' })
-        if (!res.ok) return
-        const json = await res.json()
-        if (!cancelled) setPendingCount(json?.data?.count ?? 0)
-      } catch {}
+  async function logout() {
+    setLoggingOut(true)
+    try {
+      await fetchWithAuth(`${API_URL}/v1/auth/logout`, { method: 'POST' }).catch(() => {})
+    } finally {
+      clearUser()
+      router.push('/')
     }
-    fetchCount()
-    const interval = setInterval(fetchCount, 30_000) // 30초마다 갱신
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [loading, user, pathname])
+  }
 
-  if (loading || !user || user.role !== 'ADMIN') {
+  if (!isAdmin || !user) {
     return (
-      <div style={{ minHeight: '100vh', background: '#040d1f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>불러오는 중...</span>
+      <div role="status" className="flex min-h-screen items-center justify-center bg-[#040d1f] font-mono text-[13px] text-fg-subtle">
+        <span><span className="text-brand-soft">$</span> auth check <TermSpin className="text-status-soon-text" /></span>
       </div>
     )
   }
 
+  const isActive = (slug: string) => pathname === `/admin/${slug}` || pathname.startsWith(`/admin/${slug}/`)
+
   return (
-    <div style={{ minHeight: '100vh', background: '#040d1f', display: 'flex', paddingTop: NAVBAR_HEIGHT }}>
-      {/* Sidebar */}
-      <aside style={{
-        width: '220px',
-        flexShrink: 0,
-        borderRight: '1px solid rgba(255,255,255,0.07)',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '28px 16px',
-        position: 'sticky',
-        top: NAVBAR_HEIGHT,
-        height: `calc(100vh - ${NAVBAR_HEIGHT}px)`,
-      }}>
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '32px', textDecoration: 'none' }}>
-          <span style={{
-            fontSize: '11px', fontWeight: 700, letterSpacing: '0.18em',
-            color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase',
-          }}>
-            Pay1oad
-          </span>
-          <span style={{
-            fontSize: '10px', padding: '1px 7px', borderRadius: '4px',
-            background: 'rgba(28,90,255,0.25)', color: '#7aa3ff',
-            border: '1px solid rgba(28,90,255,0.4)', fontWeight: 700, letterSpacing: '0.1em',
-          }}>
-            ADMIN
-          </span>
-        </Link>
+    <div className="min-h-screen bg-[#040d1f] pt-[90px] pb-[30px]">
+      {/* 모바일: 가로 탭 */}
+      <nav aria-label="관리 메뉴" className="sticky top-[90px] z-20 flex gap-1.5 overflow-x-auto border-b border-line bg-[#030a19] px-3.5 py-3 font-mono text-xs [scrollbar-width:none] md:hidden">
+        {NAV.map((n) => {
+          const on = isActive(n.slug)
+          return (
+            <Link
+              key={n.slug}
+              href={`/admin/${n.slug}`}
+              aria-current={on ? 'page' : undefined}
+              aria-label={n.label}
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 ${on ? 'bg-brand/14 text-white' : 'text-fg-subtle'}`}
+            >
+              {n.slug}/
+              {'badge' in n && pending > 0 && <span className="flex items-center gap-1 text-status-soon-text"><Dot tone="soon" />{pending > 99 ? '99+' : pending}</span>}
+            </Link>
+          )
+        })}
+      </nav>
 
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
-          {NAV.map((item) => {
-            const { href, label, icon } = item
-            const badgeKey = 'badgeKey' in item ? item.badgeKey : undefined
-            const active = pathname.startsWith(href)
-            const badgeValue = badgeKey === 'pending' && pendingCount > 0 ? pendingCount : 0
-            return (
-              <Link
-                key={href}
-                href={href}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '9px 12px', borderRadius: '8px',
-                  textDecoration: 'none', fontSize: '13px', fontWeight: 500,
-                  color: active ? '#fff' : 'rgba(255,255,255,0.45)',
-                  background: active ? 'rgba(28,90,255,0.2)' : 'transparent',
-                  border: active ? '1px solid rgba(28,90,255,0.35)' : '1px solid transparent',
-                  transition: 'all 0.15s',
-                }}
-              >
-                <span style={{ color: active ? '#7aa3ff' : 'rgba(255,255,255,0.3)' }}>{icon}</span>
-                <span style={{ flex: 1 }}>{label}</span>
-                {badgeValue > 0 && (
-                  <span style={{
-                    minWidth: '20px', height: '18px', padding: '0 6px',
-                    borderRadius: '9px', fontSize: '11px', fontWeight: 700,
-                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 0 0 1px rgba(239,68,68,0.25)',
-                  }}>
-                    {badgeValue > 99 ? '99+' : badgeValue}
-                  </span>
-                )}
-              </Link>
-            )
-          })}
-        </nav>
+      <div className="flex">
+        {/* 데스크톱: 폴더식 사이드바 */}
+        <aside className="sticky top-[90px] hidden h-[calc(100vh-120px)] w-[200px] shrink-0 border-r border-line bg-[#030a19] px-3 py-5 font-mono text-[13px] md:block">
+          <p className="mb-3 ml-2 text-[11px] tracking-[0.14em] text-fg-faint">~/admin/</p>
+          <nav aria-label="관리 메뉴" className="flex flex-col gap-0.5">
+            {NAV.map((n) => {
+              const on = isActive(n.slug)
+              return (
+                <Link
+                  key={n.slug}
+                  href={`/admin/${n.slug}`}
+                  aria-current={on ? 'page' : undefined}
+                  aria-label={n.label}
+                  title={n.label}
+                  className={`flex items-center justify-between rounded-lg px-2.5 py-2 transition-colors focus-visible:outline-2 focus-visible:outline-brand ${on ? 'bg-brand/14 text-white' : 'text-fg-subtle hover:bg-surface hover:text-white'}`}
+                >
+                  <span><span aria-hidden="true" className={on ? 'text-brand-soft' : 'invisible'}>› </span>{n.slug}/</span>
+                  {'badge' in n && pending > 0 && (
+                    <span className="flex items-center gap-1.5 text-status-soon-text"><Dot tone="soon" />{pending > 99 ? '99+' : pending}</span>
+                  )}
+                </Link>
+              )
+            })}
+          </nav>
+        </aside>
 
-        <div style={{
-          marginTop: 'auto', padding: '12px', borderRadius: '8px',
-          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
-        }}>
-          <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginBottom: '2px' }}>관리자</p>
-          <p style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>{user.nickname}</p>
-        </div>
-      </aside>
+        <main className="min-w-0 flex-1 px-4 py-6 md:px-7 md:py-[26px]">{children}</main>
+      </div>
 
-      {/* Main content */}
-      <main style={{ flex: 1, overflow: 'auto', padding: '36px 40px' }}>
-        {children}
-      </main>
+      {/* 하단 상태 줄 */}
+      <div className="fixed inset-x-0 bottom-0 z-30 flex h-[30px] items-center justify-between gap-3 border-t border-line bg-[#030a19] px-4 font-mono text-[11px] text-fg-subtle">
+        <span className="flex min-w-0 items-center gap-2 truncate">
+          <Dot tone="live" />
+          <span className="truncate">{user.nickname}@pay1oad · ADMIN</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-3">
+          <Link href="/" className="transition-colors hover:text-white">사이트로 ↗</Link>
+          <span aria-hidden="true" className="text-fg-faint">·</span>
+          <button type="button" onClick={logout} disabled={loggingOut} className="cursor-pointer transition-colors hover:text-white disabled:opacity-50">
+            {loggingOut ? '로그아웃 중…' : '로그아웃'}
+          </button>
+        </span>
+      </div>
     </div>
   )
 }

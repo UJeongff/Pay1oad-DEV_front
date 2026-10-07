@@ -15,7 +15,7 @@ export default function ToastMessage({ toast, onDone }: { toast: Toast; onDone: 
     <div
       role="status"
       aria-live="polite"
-      className="toast-in fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 rounded-full px-5 py-3 text-sm text-white bg-panel border border-line shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
+      className="toast-in fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 rounded-full px-5 py-3 text-sm text-white bg-panel border border-line shadow-pop"
     >
       <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-danger" />
       {toast.message}

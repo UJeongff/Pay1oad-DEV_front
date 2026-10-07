@@ -14,8 +14,8 @@ export default function DocEditRedirectPage() {
   }, [contentId, docId, router])
 
   return (
-    <main style={{ minHeight: '100vh', background: '#040d1f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px' }}>편집 페이지로 이동 중...</span>
+    <main className="min-h-screen flex items-center justify-center bg-background">
+      <span className="text-fg-subtle text-sm">편집 페이지로 이동 중...</span>
     </main>
   )
 }
