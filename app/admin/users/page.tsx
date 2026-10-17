@@ -72,8 +72,13 @@ export default function AdminUsersPage() {
   function onDeleted(u: AdminUser) {
     setSelectedId(null)
     show(`${u.name} 님을 삭제했어요.`)
-    load()
+    // 마지막 페이지의 마지막 한 명이었으면 앞 페이지로 (빈 페이지에 갇히지 않게)
+    const emptied = users.length === 1 && users[0].id === u.id
+    if (emptied && page > 0) setPage((p) => Math.max(0, p - 1))
+    else load()
   }
+
+  const totalPages = data?.totalPages ?? 0
 
   const total = data?.totalElements ?? 0
   const filtered = filter !== 'ALL' || !!search
@@ -152,16 +157,17 @@ export default function AdminUsersPage() {
               </tbody>
             </Table>
           </div>
-
-          {(data?.totalPages ?? 0) > 1 && (
-            <nav aria-label="페이지" className="mt-4 flex items-center gap-3 font-mono text-xs">
-              <button type="button" disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="cursor-pointer text-fg-subtle hover:text-white disabled:cursor-not-allowed disabled:text-fg-faint/50">‹ prev</button>
-              <span><span className="text-white">{page + 1}</span> <span className="text-fg-faint">/ {data?.totalPages}</span></span>
-              <button type="button" disabled={page + 1 >= (data?.totalPages ?? 1)} onClick={() => setPage((p) => p + 1)} className="cursor-pointer text-fg-subtle hover:text-white disabled:cursor-not-allowed disabled:text-fg-faint/50">next ›</button>
-            </nav>
-          )}
           <p className="mt-4 hidden font-mono text-[11px] text-fg-faint md:block">↑↓ 이동 · enter 열기 · esc 닫기</p>
         </>
+      )}
+
+      {/* 빈 페이지에서도 앞으로 돌아갈 수 있게 목록 상태와 상관없이 둔다 */}
+      {data && (totalPages > 1 || page > 0) && (
+        <nav aria-label="페이지" className="mt-4 flex items-center gap-3 font-mono text-xs">
+          <button type="button" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} className="cursor-pointer text-fg-subtle hover:text-white disabled:cursor-not-allowed disabled:text-fg-faint/50">‹ prev</button>
+          <span><span className="text-white">{page + 1}</span> <span className="text-fg-faint">/ {Math.max(totalPages, page + 1)}</span></span>
+          <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)} className="cursor-pointer text-fg-subtle hover:text-white disabled:cursor-not-allowed disabled:text-fg-faint/50">next ›</button>
+        </nav>
       )}
 
       {selected && (

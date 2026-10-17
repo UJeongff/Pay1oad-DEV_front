@@ -88,6 +88,10 @@ export default function BlogWritePage() {
   const visibilityRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
+  // 글은 만들어졌는데 파일 업로드가 실패한 경우, 다시 등록할 때 글이 두 번 생기지 않도록 기억해 둔다
+  const createdPostIdRef = useRef<number | null>(null)
+  // 이미 올린 파일 — 본문 이미지(data URL → URL), 첨부(File → 이미지면 URL, 아니면 '')
+  const uploadedRef = useRef({ inline: new Map<string, string>(), files: new Map<File, string>() })
   const today = formatDate(new Date())
 
   // 드롭다운 외부 클릭 닫기
@@ -102,23 +106,58 @@ export default function BlogWritePage() {
 
   // 대표 이미지 미리보기: 등록 때와 같은 규칙(본문 첫 이미지 → 없으면 첨부한 첫 이미지)
   const firstInlineImg = useMemo(() => content.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] ?? null, [content])
-  const firstAttachedImage = attachedFiles.find(f => f.type.startsWith('image/'))
-  const attachedPreview = useMemo(() => (firstAttachedImage ? URL.createObjectURL(firstAttachedImage) : null), [firstAttachedImage])
-  useEffect(() => () => { if (attachedPreview) URL.revokeObjectURL(attachedPreview) }, [attachedPreview])
+  // 첨부 이미지 미리보기 URL 은 첨부 목록을 바꾸는 곳에서 만들고 지운다.
+  // (useMemo 로 만들고 effect 에서 지우면 StrictMode 의 effect 재실행 때 지워진 URL 이 남는다)
+  const [attachedPreview, setAttachedPreview] = useState<string | null>(null)
+  const previewRef = useRef<{ file: File; url: string } | null>(null)
+  useEffect(() => {
+    const ref = previewRef
+    return () => {
+      if (ref.current) URL.revokeObjectURL(ref.current.url)
+      ref.current = null
+    }
+  }, [])
   const thumbPreview = firstInlineImg ?? attachedPreview
 
   const selectedLabel = CATEGORY_OPTIONS.find(o => o.value === category)?.label ?? category
 
-  // 파일 첨부
+  // 파일 첨부 — 목록이 바뀌는 곳은 모두 여기를 거친다
+  const updateAttachments = (next: File[]) => {
+    setAttachedFiles(next)
+    const img = next.find(f => f.type.startsWith('image/')) ?? null
+    if (img === (previewRef.current?.file ?? null)) return
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current.url)
+    previewRef.current = img ? { file: img, url: URL.createObjectURL(img) } : null
+    setAttachedPreview(previewRef.current?.url ?? null)
+  }
+
+  // 선택·끌어다 놓기·붙여넣기 모두 같은 경로로 추가한다
+  const addAttachments = (files: File[]) => {
+    if (files.length === 0) return
+    updateAttachments([...attachedFiles, ...files])
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return
-    setAttachedFiles(prev => [...prev, ...Array.from(e.target.files!)])
+    addAttachments(Array.from(e.target.files))
     e.target.value = ''
   }
 
   const removeFile = (idx: number) => {
-    setAttachedFiles(prev => prev.filter((_, i) => i !== idx))
+    updateAttachments(attachedFiles.filter((_, i) => i !== idx))
   }
+
+  // 첨부 칸·본문 밖에 파일을 떨어뜨리면 브라우저가 그 파일을 열면서 작성 중인 글이 날아간다
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+    const block = (e: DragEvent) => { if (hasFiles(e)) e.preventDefault() }
+    window.addEventListener('dragover', block)
+    window.addEventListener('drop', block)
+    return () => {
+      window.removeEventListener('dragover', block)
+      window.removeEventListener('drop', block)
+    }
+  }, [])
 
   // contentEditable 에디터 — 이미지/파일 드롭/붙여넣기 처리
   const insertImageAsBase64 = (file: File) => {
@@ -148,9 +187,7 @@ export default function BlogWritePage() {
       }
     })
 
-    if (otherFiles.length > 0) {
-      setAttachedFiles(prev => [...prev, ...otherFiles])
-    }
+    addAttachments(otherFiles)
   }
 
   const handleEditorDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -162,7 +199,7 @@ export default function BlogWritePage() {
     const otherFiles = files.filter(f => !f.type.startsWith('image/'))
 
     imageFiles.forEach(file => insertImageAsBase64(file))
-    if (otherFiles.length > 0) setAttachedFiles(prev => [...prev, ...otherFiles])
+    addAttachments(otherFiles)
   }
 
   const handleEditorInput = () => {
@@ -194,33 +231,47 @@ export default function BlogWritePage() {
       const doc = parser.parseFromString(rawContent, 'text/html')
       const base64Imgs = Array.from(doc.querySelectorAll('img[src^="data:"]'))
       const pendingFiles: File[] = []
+      const pendingSrcs: string[] = []
+      const uploaded = uploadedRef.current
 
-      base64Imgs.forEach((img, idx) => {
+      base64Imgs.forEach((img) => {
         const src = img.getAttribute('src')!
+        // 앞선 시도에서 이미 올린 이미지는 그 URL 을 그대로 쓴다
+        const done = uploaded.inline.get(src)
+        if (done) { img.setAttribute('src', done); return }
+        const idx = pendingFiles.length
         const blob = dataURLtoBlob(src)
         const ext = blob.type.split('/')[1] ?? 'png'
         pendingFiles.push(new File([blob], `image_${idx}.${ext}`, { type: blob.type }))
+        pendingSrcs.push(src)
         img.setAttribute('src', `__IMG_PLACEHOLDER_${idx}__`)
       })
 
       const placeholderContent = sanitizeHtml(doc.body.innerHTML)
 
-      // 2. 게시글 생성
-      const res = await fetchWithAuth(`${API_URL}/v1/posts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: title.trim(),
-          category,
-          content: placeholderContent,
-          visibility,
-          authorDisplay,
-          publish: true,
-        }),
-      })
-      if (!res.ok) throw new Error('게시글 등록에 실패했습니다.')
-      const json = await res.json()
-      const postId: number = json.data.id
+      // 2. 게시글 생성 — 앞선 시도에서 글은 만들어졌고 파일 업로드만 실패했다면 다시 만들지 않는다
+      const isRetry = createdPostIdRef.current !== null
+      let postId: number
+      if (createdPostIdRef.current !== null) {
+        postId = createdPostIdRef.current
+      } else {
+        const res = await fetchWithAuth(`${API_URL}/v1/posts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: title.trim(),
+            category,
+            content: placeholderContent,
+            visibility,
+            authorDisplay,
+            publish: true,
+          }),
+        })
+        if (!res.ok) throw new Error('게시글 등록에 실패했습니다.')
+        const json = await res.json()
+        postId = json.data.id
+        createdPostIdRef.current = postId
+      }
 
       // 3. 에디터 이미지 업로드 및 URL 교체
       let finalContent = placeholderContent
@@ -236,6 +287,7 @@ export default function BlogWritePage() {
             const fileJson = await fileRes.json()
             const fileUrl: string = fileJson.data.fileUrl
             const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${API_URL}${fileUrl}`
+            uploaded.inline.set(pendingSrcs[i], fullUrl)
             finalContent = finalContent.replace(`__IMG_PLACEHOLDER_${i}__`, fullUrl)
           }
         } catch {
@@ -244,10 +296,15 @@ export default function BlogWritePage() {
         }
       }
 
-      // 4. 첨부파일 업로드 (첫 번째 이미지 URL 수집)
+      // 4. 첨부파일 업로드 (첫 번째 이미지 URL 수집) — 이미 올라간 파일은 건너뛴다
       let firstAttachedImageUrl: string | null = null
       const failedFiles: string[] = []
       for (const file of attachedFiles) {
+        const doneUrl = uploaded.files.get(file)
+        if (doneUrl !== undefined) {
+          if (!firstAttachedImageUrl && doneUrl && file.type.startsWith('image/')) firstAttachedImageUrl = doneUrl
+          continue
+        }
         try {
           const fd = new FormData()
           fd.append('file', file)
@@ -258,10 +315,15 @@ export default function BlogWritePage() {
           if (!fileRes.ok) {
             const errJson = await fileRes.json().catch(() => ({}))
             failedFiles.push(`${file.name} (${errJson?.message ?? '업로드 실패'})`)
-          } else if (!firstAttachedImageUrl && file.type.startsWith('image/')) {
-            const fileJson = await fileRes.json()
-            const url: string = fileJson.data.fileUrl
-            firstAttachedImageUrl = url.startsWith('http') ? url : `${API_URL}${url}`
+          } else {
+            let fullUrl = ''
+            if (file.type.startsWith('image/')) {
+              const fileJson = await fileRes.json().catch(() => null)
+              const url: string = fileJson?.data?.fileUrl ?? ''
+              fullUrl = !url || url.startsWith('http') ? url : `${API_URL}${url}`
+              if (!firstAttachedImageUrl && fullUrl) firstAttachedImageUrl = fullUrl
+            }
+            uploaded.files.set(file, fullUrl)
           }
         } catch {
           failedFiles.push(`${file.name} (네트워크 오류)`)
@@ -277,7 +339,8 @@ export default function BlogWritePage() {
       const firstInlineImgMatch = finalContent.match(/<img[^>]+src=["']([^"']+)["']/i)
       const thumbnailUrl = firstInlineImgMatch ? firstInlineImgMatch[1] : firstAttachedImageUrl
 
-      if (pendingFiles.length > 0 || thumbnailUrl) {
+      // 다시 시도한 경우엔 그사이 고친 제목·본문도 반영되도록 항상 PATCH 한다
+      if (isRetry || pendingFiles.length > 0 || thumbnailUrl) {
         try {
           await fetchWithAuth(`${API_URL}/v1/posts/${postId}`, {
             method: 'PATCH',
@@ -462,8 +525,7 @@ export default function BlogWritePage() {
                 onDrop={e => {
                   e.preventDefault()
                   setFileDragOver(false)
-                  const dropped = Array.from(e.dataTransfer.files)
-                  if (dropped.length > 0) setAttachedFiles(prev => [...prev, ...dropped])
+                  addAttachments(Array.from(e.dataTransfer.files))
                 }}
                 className={`w-full flex items-center gap-2.5 rounded-lg border border-dashed px-4 py-3.5 text-left text-[13px] transition-colors ${
                   fileDragOver

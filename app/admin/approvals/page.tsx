@@ -27,24 +27,40 @@ interface PendingPage {
 
 type Outcome = 'approved' | 'rejected'
 
+/** 첫 페이지(base) 한 벌에 딸린 화면 상태 */
+interface Session {
+  base: PendingPage | null
+  /** "더 보기"로 이어 붙인 줄 */
+  extra: PendingUser[]
+  processed: Record<number, Outcome>
+  /** 가장 최근 응답의 전체 건수와, 그 응답을 받을 때까지 처리한 건수 */
+  latestTotal: { total: number; processedAt: number } | null
+}
+
+const blankSession = (base: PendingPage | null): Session => ({ base, extra: [], processed: {}, latestTotal: null })
+
 const PAGE_SIZE = 20
 const FIRST_PAGE = `/v1/admin/approvals/pending?page=0&size=${PAGE_SIZE}`
 
 const gen = (g: number | null | undefined) => (g ? `${g}기` : '—')
+
+const ALREADY_HANDLED = '이미 처리된 신청이에요. 목록을 새로 불러올게요.'
 
 export default function AdminApprovalsPage() {
   const { toast, show } = useToast()
 
   // 첫 페이지는 useAdminQuery 로, 그 뒤 페이지는 "더 보기"를 누를 때 직접 불러와 이어 붙인다
   const { data, error, loading, reload } = useAdminQuery<PendingPage>(FIRST_PAGE)
-  const [extra, setExtra] = useState<PendingUser[]>([])
+  const [stored, setStored] = useState<Session>(() => blankSession(null))
   const [loadingMore, setLoadingMore] = useState(false)
   const [moreError, setMoreError] = useState('')
-  /** 가장 최근 응답의 전체 건수와, 그 응답을 받을 때까지 처리한 건수 */
-  const [latestTotal, setLatestTotal] = useState<{ total: number; processedAt: number } | null>(null)
-
-  const [processed, setProcessed] = useState<Record<number, Outcome>>({})
   const [selectedId, setSelectedId] = useState<number | null>(null)
+
+  // 처리 표시 · 더 불러온 줄은 지금 첫 페이지에 묶인다. 새 첫 페이지가 도착해야 비워지므로
+  // 새로고침 중(이전 목록이 아직 보이는 동안)엔 처리한 줄이 미처리로 되살아나지 않는다.
+  const session = stored.base === data ? stored : blankSession(data)
+  const updateSession = (fn: (s: Session) => Session) => setStored((s) => fn(s.base === data ? s : blankSession(data)))
+  const { extra, processed, latestTotal } = session
 
   // 첫 페이지 + 더 불러온 것 (id 로 중복 제거)
   const seen = new Set<number>()
@@ -65,14 +81,15 @@ export default function AdminApprovalsPage() {
   const selected = applicants.find((u) => u.id === selectedId) ?? null
   const panelOpen = !!selected
 
-  /** 처음부터 다시: 처리한 줄은 서버 목록에서 빠지므로 표시도 함께 지운다 */
-  function refresh() {
-    setExtra([])
-    setProcessed({})
-    setLatestTotal(null)
+  /** 첫 페이지부터 다시 불러온다. 처리 표시는 새 목록이 도착할 때 비워진다 */
+  function reloadList() {
     setMoreError('')
-    setSelectedId(null)
     reload()
+  }
+
+  function refresh() {
+    setSelectedId(null)
+    reloadList()
   }
 
   async function loadMore() {
@@ -85,13 +102,26 @@ export default function AdminApprovalsPage() {
     const r = await adminFetch<PendingPage>(`/v1/admin/approvals/pending?page=${page}&size=${PAGE_SIZE}`)
     setLoadingMore(false)
     if (!r.ok) { setMoreError(r.error); return }
-    setExtra((prev) => [...prev, ...(r.data.content ?? [])])
-    setLatestTotal({ total: r.data.totalElements, processedAt: processedCount })
+    const fresh = (r.data.content ?? []).filter((u) => !seen.has(u.id))
+    // 새 줄이 없거나 서버 건수가 예상과 다르면 (다른 관리자가 동시에 처리 등) 위치가 어긋난 것이다.
+    // 건너뛴 사람이 생기지 않게 첫 페이지부터 다시 불러온다.
+    if (fresh.length === 0 || r.data.totalElements !== remaining) { reloadList(); return }
+    updateSession((s) => ({
+      ...s,
+      extra: [...s.extra, ...fresh],
+      latestTotal: { total: r.data.totalElements, processedAt: processedCount },
+    }))
+  }
+
+  /** 승인/거부 실패: 이미 처리된 신청(409)일 수 있으니 목록을 다시 불러와 지난 줄을 걷어낸다 */
+  function onFailed(text: string) {
+    show(text, 'danger')
+    reloadList()
   }
 
   function onDone(u: PendingUser, outcome: Outcome) {
     const nextProcessed = { ...processed, [u.id]: outcome }
-    setProcessed(nextProcessed)
+    updateSession((s) => ({ ...s, processed: { ...s.processed, [u.id]: outcome } }))
     notifyPendingApprovalsChanged()
     show(outcome === 'approved' ? `${u.name} 님을 승인했어요.` : `${u.name} 님의 신청을 거부했어요.`, outcome === 'approved' ? 'live' : 'off')
     // 다음 미처리 신청자를 바로 연다: 아래쪽 먼저, 없으면 위쪽
@@ -177,8 +207,10 @@ export default function AdminApprovalsPage() {
           key={selected.id}
           user={selected}
           outcome={processed[selected.id] ?? null}
+          locked={loading}
           onClose={() => setSelectedId(null)}
           onDone={onDone}
+          onFailed={onFailed}
         />
       )}
 
@@ -188,12 +220,15 @@ export default function AdminApprovalsPage() {
 }
 
 function ApplicantPanel({
-  user, outcome, onClose, onDone,
+  user, outcome, locked, onClose, onDone, onFailed,
 }: {
   user: PendingUser
   outcome: Outcome | null
+  /** 목록을 새로 불러오는 중: 방금 처리된 줄이 아직 남아 보일 수 있어 처리를 막는다 */
+  locked: boolean
   onClose: () => void
   onDone: (u: PendingUser, outcome: Outcome) => void
+  onFailed: (text: string) => void
 }) {
   const [approving, setApproving] = useState(false)
   const [notice, setNotice] = useState<{ tone: Tone; text: string } | null>(null)
@@ -205,20 +240,38 @@ function ApplicantPanel({
   const waited = since(user.createdAt)
 
   async function approve() {
+    if (locked) return
     setApproving(true)
     setNotice(null)
     const r = await adminFetch(`/v1/admin/approvals/${user.id}/approve`, { method: 'POST' })
     setApproving(false)
-    if (!r.ok) { setNotice({ tone: 'danger', text: `승인하지 못했어요: ${r.error}` }); return }
+    if (!r.ok) {
+      const text = r.status === 409 ? ALREADY_HANDLED : `승인하지 못했어요: ${r.error}`
+      setNotice({ tone: 'danger', text })
+      onFailed(text)
+      return
+    }
     onDone(user, 'approved')
   }
 
   async function reject() {
+    if (locked) return
     setRejecting(true)
     setRejectError('')
     const r = await adminFetch(`/v1/admin/approvals/${user.id}/reject`, { method: 'POST' })
     setRejecting(false)
-    if (!r.ok) { setRejectError(r.error); return }
+    if (!r.ok) {
+      if (r.status === 409) {
+        // 다시 시도해도 소용없으니 창을 닫고 패널에 알린다
+        setConfirmOpen(false)
+        setNotice({ tone: 'danger', text: ALREADY_HANDLED })
+        onFailed(ALREADY_HANDLED)
+      } else {
+        setRejectError(r.error)
+        onFailed(`거부하지 못했어요: ${r.error}`)
+      }
+      return
+    }
     setConfirmOpen(false)
     onDone(user, 'rejected')
   }
@@ -242,12 +295,12 @@ function ApplicantPanel({
           <>
             <Button
               variant="dangerGhost"
-              disabled={approving}
+              disabled={approving || locked}
               onClick={() => { setRejectError(''); setConfirmOpen(true) }}
             >
               거부…
             </Button>
-            <Button variant="success" loading={approving} disabled={rejecting} onClick={approve}>승인하고 다음 →</Button>
+            <Button variant="success" loading={approving} disabled={rejecting || locked} onClick={approve}>승인하고 다음 →</Button>
           </>
         )}
       >

@@ -14,6 +14,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
 const STEPS = ['정보 입력', '이메일 인증', '가입 완료']
 
+// 입력 중인 값(비밀번호 제외) / 인증 코드를 보낸 이메일 — 새로고침해도 이어서 하도록 sessionStorage 에 둔다
+const DRAFT_KEY = 'register_draft'
+const SIGNUP_PENDING_KEY = 'register_signup_pending'
+
 // 서버가 쓰는 필드명 → 이 폼의 필드명 (generation 만 이름이 다르다)
 const SERVER_FIELD_MAP = {
   name: 'name', email: 'email', password: 'password', nickname: 'nickname',
@@ -134,14 +138,27 @@ export default function RegisterPage() {
   }
 
   // ── sessionStorage 복원 (마운트 시 1회) ─────────────────────────
+  // 비밀번호는 저장하지 않는다. 복원된 뒤에는 다시 입력받는다.
+  // 복원 전에 저장 effect 가 빈 값으로 덮어쓰지 않도록 복원이 끝났는지 표시한다.
+  const [draftLoaded, setDraftLoaded] = useState(false)
   useEffect(() => {
     try {
-      const saved = sessionStorage.getItem('register_draft')
+      // 인증 코드를 보낸 뒤 새로고침했다면 인증 화면으로 돌아간다
+      const pending = sessionStorage.getItem(SIGNUP_PENDING_KEY)
+      if (pending) {
+        const p = JSON.parse(pending)
+        if (p?.email) {
+          setEmail(p.email)
+          setSignupDone(true)
+        }
+      }
+    } catch { /* 손상된 데이터 무시 */ }
+    try {
+      const saved = sessionStorage.getItem(DRAFT_KEY)
       if (!saved) return
       const d = JSON.parse(saved)
       if (d.name)       setName(d.name)
       if (d.email)      setEmail(d.email)
-      if (d.password)   setPassword(d.password)
       if (d.nickname)   setNickname(d.nickname)
       if (d.department) setDepartment(d.department)
       if (d.studentId)  setStudentId(d.studentId)
@@ -151,19 +168,29 @@ export default function RegisterPage() {
         setCheckedNickname(d.checkedNickname)
         setNicknameAvailable(d.nicknameAvailable ?? null)
       }
-    } catch { /* 손상된 데이터 무시 */ }
+    } catch { /* 손상된 데이터 무시 */ } finally {
+      setDraftLoaded(true)
+    }
   }, [])
 
   // ── sessionStorage 저장 (필드 변경 시마다) ──────────────────────
   useEffect(() => {
-    if (signupDone) return
+    if (!draftLoaded || signupDone) return
     try {
-      sessionStorage.setItem('register_draft', JSON.stringify({
-        name, email, password, nickname, department, studentId, joinYear, agreed,
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+        name, email, nickname, department, studentId, joinYear, agreed,
         checkedNickname, nicknameAvailable,
       }))
     } catch { /* 저장 실패 무시 */ }
-  }, [name, email, password, nickname, department, studentId, joinYear, agreed, checkedNickname, nicknameAvailable, signupDone])
+  }, [name, email, nickname, department, studentId, joinYear, agreed, checkedNickname, nicknameAvailable, signupDone, draftLoaded])
+
+  // 인증 화면 → 입력 화면. 서버의 가입 대기 정보는 남아 있으므로 다시 가입하면 새 코드가 발송된다.
+  const backToForm = useCallback(() => {
+    try { sessionStorage.removeItem(SIGNUP_PENDING_KEY) } catch { /* 무시 */ }
+    setSignupDone(false)
+    setEmailCode('')
+    setEmailMsg(null)
+  }, [])
 
   // ── 이메일 인증 전 이탈 방지 ────────────────────────────────────
   const handleBeforeUnload = useCallback((e: BeforeUnloadEvent) => {
@@ -181,15 +208,13 @@ export default function RegisterPage() {
     window.history.pushState(null, '', window.location.href)
     const handlePopState = () => {
       const confirmed = window.confirm(
-        '이메일 인증을 완료하지 않으면 회원가입이 취소됩니다.\n정말 나가시겠습니까?'
+        '입력 화면으로 돌아가면 지금 받은 인증 코드는 쓸 수 없습니다.\n다시 가입하기를 눌러 새 인증 코드를 받아야 합니다. 돌아가시겠습니까?'
       )
       if (confirmed) {
         window.removeEventListener('beforeunload', handleBeforeUnload)
         // 이미 /register 라서 router.push('/register') 로는 화면이 바뀌지 않는다.
-        // 상태를 되돌려 입력 화면으로 돌아간다 (입력했던 값은 그대로 남는다).
-        setSignupDone(false)
-        setEmailCode('')
-        setEmailMsg(null)
+        // 상태를 되돌려 입력 화면으로 돌아간다 (비밀번호 외 입력했던 값은 그대로 남는다).
+        backToForm()
       } else {
         window.history.pushState(null, '', window.location.href)
       }
@@ -200,7 +225,7 @@ export default function RegisterPage() {
       window.removeEventListener('beforeunload', handleBeforeUnload)
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [signupDone, emailVerified, handleBeforeUnload])
+  }, [signupDone, emailVerified, handleBeforeUnload, backToForm])
 
 
   // ── Email verification (after signup) ──────────────────────────
@@ -239,7 +264,8 @@ export default function RegisterPage() {
         setEmailMsg({ tone: 'error', text: data?.message ?? '인증 코드가 올바르지 않습니다.' })
         return
       }
-      sessionStorage.removeItem('register_draft')
+      sessionStorage.removeItem(DRAFT_KEY)
+      sessionStorage.removeItem(SIGNUP_PENDING_KEY)
 
       // 바로 로그인할지는 서버가 인증하는 순간 초대 코드를 다시 확인해 정한 승인 상태로 따른다.
       // 화면이 미리 확인한 초대 코드 상태는 그사이 만료됐거나 확인에 실패했을 수 있다.
@@ -252,6 +278,12 @@ export default function RegisterPage() {
         return
       }
 
+      // 새로고침으로 인증 화면만 복원된 경우엔 비밀번호가 없다 → 로그인 페이지로
+      if (!password) {
+        setNextStop('login')
+        setTimeout(() => router.push('/login'), 2000)
+        return
+      }
       setNextStop('home')
       try {
         const loginRes = await fetch(`${API_URL}/v1/auth/login`, {
@@ -284,7 +316,9 @@ export default function RegisterPage() {
     setNicknameChecking(true)
     setNicknameMsg('')
     try {
-      const res = await fetch(`${API_URL}/v1/auth/check-nickname?nickname=${encodeURIComponent(nickname)}`)
+      // 이메일을 함께 보내면 서버가 내 가입 대기 건은 중복으로 치지 않는다
+      const emailParam = email.trim() ? `&email=${encodeURIComponent(email.trim())}` : ''
+      const res = await fetch(`${API_URL}/v1/auth/check-nickname?nickname=${encodeURIComponent(nickname)}${emailParam}`)
       const data = await res.json().catch(() => null)
       if (!res.ok || data?.data?.available === false) {
         setNicknameAvailable(false)
@@ -357,7 +391,8 @@ export default function RegisterPage() {
       }
 
       // 인증 코드가 이메일로 발송됨 → 인증 화면으로 전환
-      sessionStorage.removeItem('register_draft')
+      // 입력값은 인증이 끝날 때까지 남겨두고, 새로고침해도 인증 화면이 이어지도록 표시해 둔다
+      try { sessionStorage.setItem(SIGNUP_PENDING_KEY, JSON.stringify({ email })) } catch { /* 무시 */ }
       setSignupDone(true)
     } catch {
       setApiError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.')

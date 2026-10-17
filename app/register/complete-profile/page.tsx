@@ -41,7 +41,7 @@ const DRAFT_KEY = 'complete_profile_draft'
 
 export default function CompleteProfilePage() {
   const router = useRouter()
-  const { refetch } = useAuthContext()
+  const { user, loading: authLoading, refetch } = useAuthContext()
 
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
@@ -64,12 +64,21 @@ export default function CompleteProfilePage() {
     setFieldErrors((p) => ({ ...p, [key]: '' }))
   }
 
-  // ── sessionStorage 복원 (마운트 시 1회) ─────────────────────────
+  // ── sessionStorage 복원 (로그인 정보 확인 후 1회) ───────────────
+  // 같은 탭에서 다른 Google 계정으로 들어오면 앞 사람의 입력이 보이지 않도록,
+  // 임시 저장에 계정(사용자 id, 없으면 이메일)을 함께 적고 일치할 때만 복원한다.
+  const owner = user ? String(user.id ?? user.email ?? '') || null : null
+  const [draftLoaded, setDraftLoaded] = useState(false)
   useEffect(() => {
+    if (authLoading || draftLoaded) return
     try {
       const saved = sessionStorage.getItem(DRAFT_KEY)
       if (!saved) return
       const d = JSON.parse(saved)
+      if (!owner || d.owner !== owner) {
+        sessionStorage.removeItem(DRAFT_KEY)
+        return
+      }
       if (d.name)       setName(d.name)
       if (d.nickname)   setNickname(d.nickname)
       if (d.department) setDepartment(d.department)
@@ -80,18 +89,22 @@ export default function CompleteProfilePage() {
         setCheckedNickname(d.checkedNickname)
         setNicknameAvailable(d.nicknameAvailable ?? null)
       }
-    } catch { /* 손상된 데이터 무시 */ }
-  }, [])
+    } catch { /* 손상된 데이터 무시 */ } finally {
+      setDraftLoaded(true)
+    }
+  }, [authLoading, owner, draftLoaded])
 
   // ── sessionStorage 저장 (필드 변경 시마다) ──────────────────────
   useEffect(() => {
+    if (!draftLoaded || !owner) return
     try {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+        owner,
         name, nickname, department, studentId, joinYear, agreed,
         checkedNickname, nicknameAvailable,
       }))
     } catch { /* 저장 실패 무시 */ }
-  }, [name, nickname, department, studentId, joinYear, agreed, checkedNickname, nicknameAvailable])
+  }, [draftLoaded, owner, name, nickname, department, studentId, joinYear, agreed, checkedNickname, nicknameAvailable])
 
   async function checkNickname() {
     if (!nickname.trim()) {

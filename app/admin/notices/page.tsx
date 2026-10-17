@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   adminFetch, asList, Button, Choice, ConfirmDialog, DetailPanel, EmptyState, ErrorState, Field, FilterTabs,
   formatDate, formatDateTime, InfoGrid, LoadingState, PageHeader, panelPad, SelectableRow, SelectInput, StatusLabel,
@@ -319,6 +319,8 @@ function CreatePanel({
   const [targetId, setTargetId] = useState<number | null>(defaultContentId)
   const [form, setForm] = useState<NoticeForm>({ title: '', content: '', startAt: today(), endAt: '' })
   const [saving, setSaving] = useState(false)
+  // 다시 그려지기 전에 두 번 눌러도 한 번만 보내도록 막는다.
+  const sendingRef = useRef(false)
   const [notice, setNotice] = useState<{ tone: Tone; text: string } | null>(null)
 
   const problem = target === 'ALL'
@@ -330,7 +332,16 @@ function CreatePanel({
     : !targetId ? '공지를 올릴 스터디·프로젝트를 골라주세요.' : contentNoticeProblem(form)
 
   async function submit() {
-    if (problem) return
+    if (problem || sendingRef.current) return
+    sendingRef.current = true
+    try {
+      await send()
+    } finally {
+      sendingRef.current = false
+    }
+  }
+
+  async function send() {
     setSaving(true)
     setNotice(null)
     if (target === 'ALL') {

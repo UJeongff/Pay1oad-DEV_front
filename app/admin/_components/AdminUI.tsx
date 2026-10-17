@@ -400,13 +400,26 @@ export function Td({ children, className = '' }: { children?: ReactNode; classNa
 }
 
 /**
+ * 패널을 연 줄. 패널은 닫힐 때 여기로 포커스를 돌려준다.
+ * 열린 채로 다른 줄을 누르면 패널이 새로 마운트되며 이전 패널이 포커스를 옛 줄로 돌려놓기 때문에,
+ * 그 순간의 activeElement 대신 누른 줄을 직접 기억해 둔다.
+ */
+let panelReturnTarget: HTMLElement | null = null
+
+/**
  * 누르면 상세 패널이 열리는 줄. Enter/Space 로 열고 ↑↓ 로 옆 줄로 이동한다.
  */
 export function SelectableRow({
   selected, onSelect, children, dim = false, label,
 }: { selected: boolean; onSelect: () => void; children: ReactNode; dim?: boolean; label: string }) {
+  function select(row: HTMLElement) {
+    panelReturnTarget = row
+    onSelect()
+  }
   function onKeyDown(e: KeyboardEvent<HTMLTableRowElement>) {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() }
+    // 줄 안의 스위치 · 버튼에서 올라온 키는 그 컨트롤 몫이다
+    if (e.target !== e.currentTarget) return
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(e.currentTarget) }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       const next = (e.key === 'ArrowDown' ? e.currentTarget.nextElementSibling : e.currentTarget.previousElementSibling) as HTMLElement | null
@@ -418,7 +431,7 @@ export function SelectableRow({
       tabIndex={0}
       aria-selected={selected}
       aria-label={label}
-      onClick={onSelect}
+      onClick={(e) => select(e.currentTarget)}
       onKeyDown={onKeyDown}
       className={`cursor-pointer border-t border-white/[0.06] outline-none transition-colors focus-visible:bg-surface-raised ${dim ? 'opacity-45' : ''} ${selected ? 'bg-brand/12 shadow-[inset_2px_0_0_var(--color-brand)]' : 'hover:bg-surface'}`}
     >
@@ -476,9 +489,12 @@ export function EmptyState({ command, text, action }: { command: string; text: s
 // 상세 패널 — 데스크톱은 오른쪽, 모바일은 아래에서 올라오는 시트
 // ─────────────────────────────────────────────────────────────
 
-/** 패널이 열렸을 때 본문이 패널 밑으로 들어가지 않게 오른쪽 여백을 준다 */
+/**
+ * 패널이 열렸을 때 본문이 패널 밑으로 들어가지 않게 오른쪽 여백을 준다.
+ * lg 미만에선 여백을 주면 본문이 너무 좁아져서, 패널이 배경을 덮고 위에 뜬다.
+ */
 export function panelPad(open: boolean) {
-  return open ? 'md:pr-[440px]' : ''
+  return open ? 'lg:pr-[440px]' : ''
 }
 
 /** 바깥(배경)에서 누르고 바깥에서 뗐을 때만 닫는다 — 입력칸에서 드래그하다 바깥에서 떼도 닫히지 않게 */
@@ -515,7 +531,9 @@ export function DetailPanel({
 
   useEffect(() => {
     if (!open) return
-    const prev = document.activeElement as HTMLElement | null
+    // 줄을 눌러 열었으면 그 줄로, 아니면 (새로 만들기 버튼 등) 지금 포커스로 돌아간다
+    const prev = panelReturnTarget ?? (document.activeElement as HTMLElement | null)
+    panelReturnTarget = null
     ref.current?.focus()
     function onKey(e: globalThis.KeyboardEvent) {
       if (e.key !== 'Escape' || latest.current.busy) return
@@ -536,14 +554,14 @@ export function DetailPanel({
 
   return (
     <>
-      {/* 모바일에서만 뒤를 어둡게 */}
-      <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/60 md:hidden" {...backdrop} />
+      {/* lg 미만에선 패널이 본문을 덮으므로 뒤를 어둡게 */}
+      <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/60 lg:hidden" {...backdrop} />
       <aside
         ref={ref}
         role="dialog"
         aria-label={label}
         tabIndex={-1}
-        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[88dvh] flex-col rounded-t-[20px] border-t border-line bg-panel shadow-[0_-20px_40px_rgb(0_0_0/0.5)] outline-none md:inset-x-auto md:right-0 md:top-[90px] md:bottom-[30px] md:z-30 md:max-h-none md:w-[440px] md:rounded-none md:border-t-0 md:border-l md:shadow-[-24px_0_48px_rgb(0_0_0/0.35)]"
+        className="fixed inset-x-0 bottom-0 z-50 flex max-h-[88dvh] flex-col rounded-t-[20px] border-t border-line bg-panel shadow-[0_-20px_40px_rgb(0_0_0/0.5)] outline-none md:inset-x-auto md:right-0 md:top-[90px] md:bottom-[30px] lg:z-30 md:max-h-none md:w-[440px] md:rounded-none md:border-t-0 md:border-l md:shadow-[-24px_0_48px_rgb(0_0_0/0.35)]"
       >
         <div aria-hidden="true" className="mx-auto mt-2.5 h-1 w-10 shrink-0 rounded-full bg-white/25 md:hidden" />
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-3.5 md:px-[22px]">
@@ -605,6 +623,7 @@ export function ConfirmDialog({
   onClose: () => void
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const latest = useRef({ onClose, busy })
   useEffect(() => { latest.current = { onClose, busy } })
   const titleId = useId()
@@ -615,6 +634,20 @@ export function ConfirmDialog({
     cancelRef.current?.focus()
     function onKey(e: globalThis.KeyboardEvent) {
       if (e.key === 'Escape' && !latest.current.busy) { e.stopPropagation(); latest.current.onClose() }
+      if (e.key === 'Tab') trapTab(e)
+    }
+    // Tab 이 창 밖(뒤의 패널 · 표)으로 나가지 않게 창 안에서 돈다
+    function trapTab(e: globalThis.KeyboardEvent) {
+      const box = dialogRef.current
+      if (!box) return
+      const items = Array.from(box.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )).filter((el) => !el.hasAttribute('disabled') && el.getClientRects().length > 0)
+      e.preventDefault()
+      if (items.length === 0) return
+      const i = items.indexOf(document.activeElement as HTMLElement)
+      const next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i === -1 || i === items.length - 1 ? 0 : i + 1)
+      items[next].focus()
     }
     window.addEventListener('keydown', onKey, true)
     return () => {
@@ -628,7 +661,7 @@ export function ConfirmDialog({
 
   return (
     <div data-admin-dialog className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-[rgb(2_7_19/0.8)] p-4" {...backdrop}>
-      <div role="alertdialog" aria-modal="true" aria-labelledby={titleId} className="my-auto w-full max-w-[440px] rounded-[14px] border border-line bg-panel px-[22px] py-5">
+      <div ref={dialogRef} role="alertdialog" aria-modal="true" aria-labelledby={titleId} className="my-auto w-full max-w-[440px] rounded-[14px] border border-line bg-panel px-[22px] py-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 id={titleId} className="text-base font-bold text-white">{title}</h2>
           <span className="font-mono text-xs text-fg-faint">esc</span>
