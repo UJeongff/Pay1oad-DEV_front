@@ -61,8 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const json = await res.json()
       const raw = json?.data ?? json
-      const rawRole: string = (Array.isArray(raw.roles) ? raw.roles[0] : raw.role) ?? ''
-      const normalizedRole: 'ADMIN' | 'MEMBER' = rawRole.toUpperCase().includes('ADMIN') ? 'ADMIN' : 'MEMBER'
+      // 권한 목록 전체를 본다. 콘솔에서 관리자를 받은 사람은 가입 때의 MEMBER 가 먼저 와서
+      // ["MEMBER", "ADMIN"] 이 되는데, 첫 번째만 보면 관리자로 인식하지 못했다.
+      const rawRoles: string[] = Array.isArray(raw.roles) ? raw.roles : raw.role ? [raw.role] : []
+      const normalizedRole: 'ADMIN' | 'MEMBER' = rawRoles.some((r) => String(r).toUpperCase().includes('ADMIN')) ? 'ADMIN' : 'MEMBER'
       setUser({
         id: raw.userId ?? raw.id,
         name: raw.name ?? raw.nickname,
