@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { isHttpUrl } from '@/app/lib/isHttpUrl'
 import ScrollArrow from '@/app/components/ScrollArrow'
 import HomePosts from '@/app/components/HomePosts'
 import HomeFaq from '@/app/components/HomeFaq'
@@ -51,9 +52,10 @@ export default async function Home() {
   // - ACTIVE: systemctl 의 active 처럼 초록, 점은 고정
   // - RECRUITING: 파란 글로우의 보색인 앰버로 눈에 띄게, 점이 퍼지는 펄스(live-dot)로 "지금 열려 있음"을 강조
   // 지원 링크가 비어 있으면 보낼 곳이 없으므로(/recruitment 페이지는 없다) 평소 버튼을 보여준다
-  const cta = recruitment?.applyUrl
+  const applyUrl = recruitment?.applyUrl
+  const cta = recruitment && isHttpUrl(applyUrl)
     ? {
-        href: recruitment.applyUrl,
+        href: applyUrl,
         status: 'RECRUITING',
         label: recruitment.generation ? `${recruitment.generation}기 지원하기` : `${recruitment.title} 지원하기`,
         statusClass: 'text-[#FCD34D]',

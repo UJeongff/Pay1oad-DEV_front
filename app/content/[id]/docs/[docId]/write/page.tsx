@@ -31,6 +31,7 @@ export default function DocCollabWritePage() {
   const [contentTitle, setContentTitle] = useState('')
   const [docTitle, setDocTitle] = useState('')
   const [docType, setDocType] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState(false)
   const [initialHtml, setInitialHtml] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -46,6 +47,7 @@ export default function DocCollabWritePage() {
       if (doc) {
         setDocTitle(doc.title ?? '')
         setDocType(doc.docType ?? null)
+        setSubmitted(!!doc.submittedAt)
         setInitialHtml(decodeBodyToHtml(doc.bodyJson))
       }
     }).catch(() => {})
@@ -98,6 +100,8 @@ export default function DocCollabWritePage() {
           docId={docId}
           initialTitle={docTitle}
           initialHtml={initialHtml}
+          // 제출된 보고서는 실시간 세션에 들어갈 수 없다 (서버가 거절) → 단독 편집으로 연다
+          mode={submitted ? 'solo' : 'collaborative'}
           onBack={() => router.push(`/content/${contentId}`)}
         />
       </div>

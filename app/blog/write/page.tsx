@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import DOMPurify from 'dompurify'
+import { ensureStyleGuard, FORBID_FORM_TAGS } from '@/app/lib/purifyStyleGuard'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
@@ -12,10 +13,13 @@ import { BlogEditorToolbar } from '@/app/components/BlogEditorToolbar'
 const SANITIZE_CONFIG = {
   USE_PROFILES: { html: true },
   FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onanimationend', 'onanimationstart', 'onanimationiteration', 'formaction'],
-  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style'],
+  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style', ...FORBID_FORM_TAGS],
 }
 
-const sanitizeHtml = (html: string): string => DOMPurify.sanitize(html, SANITIZE_CONFIG) as unknown as string
+const sanitizeHtml = (html: string): string => {
+  ensureStyleGuard(DOMPurify)
+  return DOMPurify.sanitize(html, SANITIZE_CONFIG) as unknown as string
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 

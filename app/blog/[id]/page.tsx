@@ -5,11 +5,14 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import HomeFooter from '@/app/components/HomeFooter'
+import Avatar from '@/app/components/Avatar'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 
 import hljs from 'highlight.js'
 import DOMPurify from 'isomorphic-dompurify'
+import { ensureStyleGuard, FORBID_FORM_TAGS } from '@/app/lib/purifyStyleGuard'
+import { isNumericId } from '@/app/lib/isNumericId'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
@@ -39,7 +42,9 @@ interface PostDetail {
   content: string
   category: string
   authorName: string
-  authorId: number
+  authorProfileImageUrl?: string | null
+  authorId: number | null // 익명 글이면 null
+  isMine?: boolean
   likeCount: number
   liked: boolean
   commentCount: number
@@ -56,7 +61,10 @@ interface Comment {
   content: string | null
   isDeleted: boolean
   authorName: string | null
-  authorId: number | null
+  authorProfileImageUrl?: string | null
+  authorId: number | null // 익명 댓글이면 null
+  isMine?: boolean
+  isPostAuthor?: boolean
   parentId: number | null
   replies: Comment[]
   createdAt: string
@@ -116,6 +124,7 @@ function ensurePurifyHooks() {
 }
 
 function normalizePostContent(content: string) {
+  ensureStyleGuard(DOMPurify)
   ensurePurifyHooks()
   const withNormalizedSrcs = content.replace(/(<img[^>]+src=["'])([^"']+)(["'])/gi, (_match, prefix: string, src: string, suffix: string) => {
     return `${prefix}${normalizeUploadedFileUrl(src)}${suffix}`
@@ -124,7 +133,7 @@ function normalizePostContent(content: string) {
   return DOMPurify.sanitize(withNormalizedSrcs, {
     USE_PROFILES: { html: true },
     FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onanimationend', 'onanimationstart', 'onanimationiteration', 'formaction'],
-    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style', ...FORBID_FORM_TAGS],
   })
 }
 
@@ -167,11 +176,12 @@ export default function BlogDetailPage() {
   }, [comments, commentSort])
 
   const isAdmin = user?.role === 'ADMIN'
-  const isOwner = user != null && post != null && user.id === post.authorId
+  const isOwner = user != null && post != null && post.isMine === true
 
   // 게시글 불러오기
   useEffect(() => {
     async function fetchPost() {
+      if (!isNumericId(id)) { setNotFound(true); setLoading(false); return }
       try {
         const res = await fetchWithAuth(`${API_URL}/v1/posts/${id}`, { cache: 'no-store' })
         if (res.status === 404) { setNotFound(true); return }
@@ -201,6 +211,7 @@ export default function BlogDetailPage() {
   // 댓글 불러오기
   useEffect(() => {
     async function fetchComments() {
+      if (!isNumericId(id)) return
       try {
         const res = await fetchWithAuth(`${API_URL}/v1/posts/${id}/comments`, { cache: 'no-store' })
         if (!res.ok) return
@@ -428,6 +439,9 @@ export default function BlogDetailPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.45)', fontSize: '13px' }}>
               <span>작성자</span>
               <span style={{ width: '1px', height: '10px', background: 'rgba(255,255,255,0.2)' }} />
+              {post.authorProfileImageUrl && (
+                <Avatar src={post.authorProfileImageUrl} name={post.authorName} size={20} />
+              )}
               <span style={{ color: 'rgba(255,255,255,0.7)' }}>{post.authorName}</span>
             </div>
             <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '13px' }}>
@@ -702,7 +716,6 @@ export default function BlogDetailPage() {
                       comment={comment}
                       user={user}
                       isAdmin={isAdmin}
-                      postAuthorId={post.authorId}
                       onDelete={handleCommentDelete}
                       onReply={c => {
                         setReplyTo({ id: c.id, authorName: c.authorName ?? '익명', authorId: c.authorId })
@@ -977,18 +990,17 @@ export default function BlogDetailPage() {
 }
 
 function CommentItem({
-  comment, user, isAdmin, postAuthorId, onDelete, onReply, depth = 0,
+  comment, user, isAdmin, onDelete, onReply, depth = 0,
 }: {
   comment: Comment
   user: import('@/app/context/AuthContext').AuthUser | null
   isAdmin: boolean
-  postAuthorId: number
   onDelete: (commentId: number, parentId: number | null) => void
   onReply: (comment: Comment) => void
   depth?: number
 }) {
-  const isOwner = user != null && user.id === comment.authorId
-  const isPostAuthor = comment.authorId === postAuthorId
+  const isOwner = user != null && comment.isMine === true
+  const isPostAuthor = comment.isPostAuthor === true
   const cardBg = depth > 0 ? 'rgba(10,13,22,0.4)' : 'rgba(52,52,52,0.4)'
 
   return (
@@ -1007,9 +1019,13 @@ function CommentItem({
           ) : (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-                </svg>
+                {comment.authorProfileImageUrl ? (
+                  <Avatar src={comment.authorProfileImageUrl} name={comment.authorName} size={20} />
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                  </svg>
+                )}
                 <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '13px', fontWeight: 600 }}>
                   {comment.authorName ?? '익명'}
                 </span>
@@ -1062,7 +1078,6 @@ function CommentItem({
                 comment={{ ...reply, parentId: comment.id }}
                 user={user}
                 isAdmin={isAdmin}
-                postAuthorId={postAuthorId}
                 onDelete={onDelete}
                 onReply={onReply}
                 depth={1}

@@ -1,13 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { isNumericId } from '@/app/lib/isNumericId'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
-type JoinState = 'joining' | 'success' | 'error'
+type JoinState = 'ready' | 'joining' | 'success' | 'error'
 
 export default function ContentInviteJoinPage() {
   const params = useParams()
@@ -15,71 +16,58 @@ export default function ContentInviteJoinPage() {
   const searchParams = useSearchParams()
   const contentId = params.id as string
   const token = searchParams.get('token') ?? ''
+  const validId = isNumericId(contentId)
 
-  const [state, setState] = useState<JoinState>('joining')
-  const [message, setMessage] = useState('Joining content...')
+  // 링크만 열어도 가입되지 않도록 사용자가 버튼을 눌러야 참여한다
+  const initialError = !validId ? 'Invalid invite link.' : !token ? 'Invite token is missing.' : null
+  const [state, setState] = useState<JoinState>(initialError ? 'error' : 'ready')
+  const [message, setMessage] = useState(initialError ?? '초대받은 콘텐츠에 참여하려면 아래 버튼을 눌러주세요.')
 
-  useEffect(() => {
-    let cancelled = false
+  async function joinByInviteLink() {
+    if (!validId || !token) return
+    setState('joining')
+    setMessage('Joining content...')
 
-    async function joinByInviteLink() {
-      if (!token) {
-        if (cancelled) return
-        setState('error')
-        setMessage('Invite token is missing.')
+    try {
+      const res = await fetchWithAuth(
+        `${API_URL}/v1/contents/${contentId}/members/join?token=${encodeURIComponent(token)}`,
+        { method: 'POST' },
+      )
+
+      if (res.ok) {
+        setState('success')
+        setMessage('Joined successfully. Moving to the content page...')
+        window.setTimeout(() => {
+          router.replace(`/content/${contentId}`)
+        }, 900)
         return
       }
 
-      try {
-        const res = await fetchWithAuth(
-          `${API_URL}/v1/contents/${contentId}/members/join?token=${encodeURIComponent(token)}`,
-          { method: 'POST' },
-        )
+      const json = await res.json().catch(() => null)
+      const code = json?.code ?? json?.errorCode ?? ''
 
-        if (cancelled) return
-
-        if (res.ok) {
-          setState('success')
-          setMessage('Joined successfully. Moving to the content page...')
-          window.setTimeout(() => {
-            router.replace(`/content/${contentId}`)
-          }, 900)
-          return
-        }
-
-        const json = await res.json().catch(() => null)
-        const code = json?.code ?? json?.errorCode ?? ''
-
-        if (res.status === 401 || res.status === 403) {
-          setMessage('Login is required. Moving to login...')
-          router.replace(`/login?next=${encodeURIComponent(`/content/${contentId}/join?token=${token}`)}`)
-          return
-        }
-
-        if (code === 'ALREADY_MEMBER') {
-          setState('success')
-          setMessage('You are already a member. Moving to the content page...')
-          window.setTimeout(() => {
-            router.replace(`/content/${contentId}`)
-          }, 900)
-          return
-        }
-
-        setState('error')
-        setMessage(json?.message ?? 'Failed to join with this invite link.')
-      } catch {
-        if (cancelled) return
-        setState('error')
-        setMessage('Unable to reach the server right now.')
+      if (res.status === 401 || res.status === 403) {
+        setMessage('Login is required. Moving to login...')
+        router.replace(`/login?next=${encodeURIComponent(`/content/${contentId}/join?token=${token}`)}`)
+        return
       }
-    }
 
-    joinByInviteLink()
+      if (code === 'ALREADY_MEMBER') {
+        setState('success')
+        setMessage('You are already a member. Moving to the content page...')
+        window.setTimeout(() => {
+          router.replace(`/content/${contentId}`)
+        }, 900)
+        return
+      }
 
-    return () => {
-      cancelled = true
+      setState('error')
+      setMessage(json?.message ?? 'Failed to join with this invite link.')
+    } catch {
+      setState('error')
+      setMessage('Unable to reach the server right now.')
     }
-  }, [contentId, router, token])
+  }
 
   return (
     <main
@@ -123,7 +111,7 @@ export default function ContentInviteJoinPage() {
             lineHeight: 1.2,
           }}
         >
-          {state === 'success' ? 'Access ready' : state === 'error' ? 'Join failed' : 'Checking invite'}
+          {state === 'success' ? 'Access ready' : state === 'error' ? 'Join failed' : state === 'ready' ? 'Join content' : 'Checking invite'}
         </h1>
         <p
           style={{
@@ -150,11 +138,32 @@ export default function ContentInviteJoinPage() {
           />
         )}
 
+        {state === 'ready' && (
+          <div style={{ display: 'flex', gap: '12px', marginTop: '24px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={joinByInviteLink}
+              style={{
+                padding: '11px 18px',
+                borderRadius: '10px',
+                border: 'none',
+                background: '#1C5AFF',
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              참여하기
+            </button>
+          </div>
+        )}
+
         {state === 'error' && (
           <div style={{ display: 'flex', gap: '12px', marginTop: '24px', flexWrap: 'wrap' }}>
             <button
               type="button"
-              onClick={() => router.replace(`/content/${contentId}`)}
+              onClick={() => router.replace(validId ? `/content/${contentId}` : '/content')}
               style={{
                 padding: '11px 18px',
                 borderRadius: '10px',

@@ -3,6 +3,13 @@ import * as awarenessProtocol from 'y-protocols/awareness'
 
 export type ProviderStatus = 'connecting' | 'connected' | 'offline'
 
+/** 서버가 알려준 "이 Yjs clientID는 이 사용자" — 핸드셰이크에서 인증된 값이라 awareness 의 이름보다 믿을 수 있다 */
+export interface PeerIdentity {
+  userId: number
+  name: string
+  profileImageUrl: string | null
+}
+
 export interface SimpleYjsProviderOptions {
   /** 접속할 때마다 호출된다. ws 토큰이 30초짜리라 재연결 때마다 새로 받아야 한다. */
   urlFactory: () => Promise<string>
@@ -18,6 +25,8 @@ export interface SimpleYjsProviderOptions {
   onSynced?: (replayed: number) => void
   /** 서버가 이 문서의 실시간 편집을 끝냈을 때 (보고서 제출 등). 재연결하지 않는다. */
   onSessionEnded?: () => void
+  /** 다른 편집자의 신원이 도착했거나(identity) 그 편집자가 나갔을 때(null) */
+  onIdentity?: (clientId: number, identity: PeerIdentity | null) => void
 }
 
 /** 여러 업데이트를 한 프레임으로 합치는 창. 짧게 잡아 체감 지연을 유지하면서 로그 행 수를 줄인다. */
@@ -49,7 +58,7 @@ function fromBase64(text: string): Uint8Array {
  *
  * 프레임 규약 (서버 YjsWebSocketHandler와 짝)
  * - 바이너리        : Yjs 업데이트
- * - 텍스트 `{`시작  : 제어 메시지 JSON (init / compact / pong / ping / snapshot)
+ * - 텍스트 `{`시작  : 제어 메시지 JSON (init / seed / compact / identity / peerLeft / pong / ping / snapshot / hello)
  * - 텍스트 그 외    : Awareness base64
  */
 export class SimpleYjsProvider {
@@ -61,6 +70,13 @@ export class SimpleYjsProvider {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private pending: Uint8Array[] = []
+  /**
+   * 마지막으로 알려진 내 awareness 상태. 어떤 이유로든 로컬 상태가 null 이 되면
+   * setLocalStateField 가 영원히 무시되어 커서가 다시는 안 보이므로, 재접속 때 이걸로 되살린다.
+   */
+  private savedLocalState: Record<string, unknown> | null = null
+  /** clientID → 서버가 확인한 신원 */
+  public readonly identities = new Map<number, PeerIdentity>()
 
   private readonly updateHandler: (update: Uint8Array, origin: unknown) => void
   private readonly awarenessHandler: (
@@ -81,11 +97,14 @@ export class SimpleYjsProvider {
     }
     this.ydoc.on('update', this.updateHandler)
 
+    this.savedLocalState = this.awareness.getLocalState()
     this.awarenessHandler = ({ added, updated, removed }, origin) => {
       if (origin === 'remote') return // 남의 커서를 다시 중계하지 않음
-      const changedClients = [...added, ...updated, ...removed]
-      if (changedClients.length === 0) return
-      this.sendAwareness(changedClients)
+      const ownId = this.awareness.clientID
+      const local = this.awareness.getLocalState()
+      if (local) this.savedLocalState = local
+      // 내 상태만 보낸다 — 서버도 남의 clientID가 섞인 프레임은 버린다
+      if ([...added, ...updated, ...removed].includes(ownId)) this.sendAwareness([ownId])
     }
     this.awareness.on('update', this.awarenessHandler)
 
@@ -128,7 +147,10 @@ export class SimpleYjsProvider {
       if (this.ws === ws) this.ws = null
       this.stopHeartbeat()
       this.synced = false
-      awarenessProtocol.removeAwarenessStates(this.awareness, [this.ydoc.clientID], 'disconnect')
+      // 내 상태는 지우지 않는다 (지우면 재접속 후에도 커서가 안 보인다 — 퇴장은 서버가 peerLeft 로 알린다).
+      // 끊긴 동안 굳어 있을 남의 커서만 지운다. 재접속하면 서버가 현재 커서를 다시 보내준다.
+      const others = [...this.awareness.getStates().keys()].filter(id => id !== this.awareness.clientID)
+      if (others.length > 0) awarenessProtocol.removeAwarenessStates(this.awareness, others, 'remote')
 
       if (event.code === CLOSE_SESSION_ENDED) {
         // 재연결해봐야 서버가 거절한다
@@ -178,7 +200,10 @@ export class SimpleYjsProvider {
   }
 
   private handleControl(raw: string) {
-    let message: { type?: string; seed?: boolean; replayed?: number; seq?: number; clientId?: number }
+    let message: {
+      type?: string; seed?: boolean; replayed?: number; seq?: number; clientId?: number
+      userId?: number; name?: string; profileImageUrl?: string
+    }
     try {
       message = JSON.parse(raw)
     } catch {
@@ -189,13 +214,30 @@ export class SimpleYjsProvider {
       case 'init':
         this.onInit(message.seed === true, message.replayed ?? 0)
         break
+      case 'seed':
+        // 시딩을 맡았던 사람이 시딩 전에 나가서 서버가 나에게 넘겼다
+        this.options.onSeedRequest?.()
+        break
       case 'compact':
         this.sendSnapshot(message.seq ?? 0)
+        break
+      case 'identity':
+        if (typeof message.clientId === 'number' && typeof message.userId === 'number') {
+          const identity: PeerIdentity = {
+            userId: message.userId,
+            name: typeof message.name === 'string' ? message.name : '',
+            profileImageUrl: typeof message.profileImageUrl === 'string' ? message.profileImageUrl : null,
+          }
+          this.identities.set(message.clientId, identity)
+          this.options.onIdentity?.(message.clientId, identity)
+        }
         break
       case 'peerLeft':
         // 끊긴 편집자의 커서를 지운다 (본인은 알릴 기회가 없어서 서버가 대신 알려준다)
         if (message.clientId) {
           awarenessProtocol.removeAwarenessStates(this.awareness, [message.clientId], 'remote')
+          this.identities.delete(message.clientId)
+          this.options.onIdentity?.(message.clientId, null)
         }
         break
       default:
@@ -225,8 +267,13 @@ export class SimpleYjsProvider {
       this.sendBinary(localState)
     }
 
-    const clients = [...this.awareness.getStates().keys()]
-    if (clients.length > 0) this.sendAwareness(clients)
+    // 로컬 상태가 사라졌으면 마지막 값으로 되살린다 (setLocalState 가 update 를 내며 서버로 전송된다)
+    if (this.awareness.getLocalState() === null && this.savedLocalState) {
+      this.awareness.setLocalState(this.savedLocalState)
+    } else if (this.awareness.getLocalState() !== null) {
+      // 내 상태만 보낸다. 남의 상태까지 보내면 이미 나간 사람의 커서가 유령처럼 되살아난다.
+      this.sendAwareness([this.awareness.clientID])
+    }
 
     this.startHeartbeat()
     this.options.onSynced?.(replayed)
@@ -314,7 +361,8 @@ export class SimpleYjsProvider {
     }
     this.ydoc.off('update', this.updateHandler)
     this.awareness.off('update', this.awarenessHandler)
-    awarenessProtocol.removeAwarenessStates(this.awareness, [this.ydoc.clientID], 'destroy')
+    // 내 awareness 상태는 지우지 않는다. StrictMode 재마운트처럼 같은 awareness 로 새 프로바이더가
+    // 붙으면 로컬 상태가 null 이라 커서가 사라진다. 상대 화면의 커서는 서버의 peerLeft 가 지운다.
 
     const ws = this.ws
     this.ws = null

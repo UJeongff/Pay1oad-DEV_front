@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRevealOnce } from '@/app/components/Reveal'
+import { isHttpUrl } from '@/app/lib/isHttpUrl'
 
 const NAME = 'pay1oad'
 /** 디코드 중에 잠깐 보이는 글자. 폭이 너무 넓은 글자(m, w 등)는 옆 글자를 덮어서 뺐다 */
@@ -117,7 +118,7 @@ export default function AboutIntro({ applyUrl }: { applyUrl: string | null }) {
           </p>
 
           <div className="flex flex-wrap gap-3 mt-2">
-            {applyUrl ? (
+            {isHttpUrl(applyUrl) ? (
               <Link
                 href={applyUrl}
                 className="inline-flex items-center gap-2 border border-line-strong text-white text-sm rounded-full px-6 py-2.5 hover:border-blue-500 hover:bg-blue-600/20 transition-all duration-200"

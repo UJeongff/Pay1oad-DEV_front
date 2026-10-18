@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 import { mapServerErrors, summarize } from '@/app/lib/formErrors'
+import ProfilePhotoSection from '@/app/mypage/ProfilePhotoSection'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
@@ -113,7 +114,10 @@ export default function AccountPanel({ nickname, department, email, onUpdated, o
       {/* ── 프로필 ── */}
       <section className={CARD}>
         <h3 className={`${CARD_TITLE} text-white`}>프로필</h3>
-        <p className={CARD_DESC}>닉네임과 학과를 바꿀 수 있습니다.</p>
+        <p className={CARD_DESC}>프로필 사진과 닉네임, 학과를 바꿀 수 있습니다.</p>
+
+        {/* 사진은 바로 저장된다 (비밀번호 재인증 없이) */}
+        <ProfilePhotoSection />
 
         <div className="mb-4">
           <label className={LABEL}>이메일</label>

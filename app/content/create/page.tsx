@@ -48,7 +48,8 @@ export default function ContentCreatePage() {
   const handleSearchChange = (value: string) => {
     setSearchQuery(value)
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    if (!value.trim()) {
+    // 서버는 2자 이상만 검색한다
+    if (value.trim().length < 2) {
       setSearchResults([])
       setDropdownOpen(false)
       return
@@ -232,7 +233,7 @@ export default function ContentCreatePage() {
                 <input
                   value={searchQuery}
                   onChange={e => handleSearchChange(e.target.value)}
-                  placeholder="멤버 이름으로 검색"
+                  placeholder="멤버 이름으로 검색 (2자 이상)"
                   className="w-full bg-transparent border-none outline-none text-fg-muted text-[13px] caret-brand placeholder:text-fg-faint"
                 />
                 {searching && (

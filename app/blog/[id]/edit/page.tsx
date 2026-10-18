@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import DOMPurify from 'dompurify'
+import { ensureStyleGuard, FORBID_FORM_TAGS } from '@/app/lib/purifyStyleGuard'
+import { isNumericId } from '@/app/lib/isNumericId'
 import HomeFooter from '@/app/components/HomeFooter'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
@@ -12,10 +14,13 @@ import { BlogEditorToolbar } from '@/app/components/BlogEditorToolbar'
 const SANITIZE_CONFIG = {
   USE_PROFILES: { html: true },
   FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur', 'onanimationend', 'onanimationstart', 'onanimationiteration', 'formaction'],
-  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style'],
+  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'base', 'meta', 'link', 'style', ...FORBID_FORM_TAGS],
 }
 
-const sanitizeHtml = (html: string): string => DOMPurify.sanitize(html, SANITIZE_CONFIG) as unknown as string
+const sanitizeHtml = (html: string): string => {
+  ensureStyleGuard(DOMPurify)
+  return DOMPurify.sanitize(html, SANITIZE_CONFIG) as unknown as string
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 
@@ -42,7 +47,9 @@ interface PostDetail {
   visibility: string
   authorDisplay: string
   authorName: string
-  authorId: number
+  // 익명 글이면 null — 본인 여부는 isMine 으로 판단한다
+  authorId: number | null
+  isMine?: boolean
   publishedAt: string | null
   createdAt: string
   files: PostFile[]
@@ -113,7 +120,7 @@ export default function BlogEditPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [originalAuthorId, setOriginalAuthorId] = useState<number | null>(null)
+  const [isMine, setIsMine] = useState<boolean | null>(null)
 
   const categoryRef = useRef<HTMLDivElement>(null)
   const visibilityRef = useRef<HTMLDivElement>(null)
@@ -133,6 +140,7 @@ export default function BlogEditPage() {
 
   // 기존 게시글 데이터 로드
   const loadPost = useCallback(async () => {
+    if (!isNumericId(id)) { setNotFound(true); setLoading(false); return }
     setLoading(true)
     try {
       const res = await fetchWithAuth(`${API_URL}/v1/posts/${id}`)
@@ -141,14 +149,15 @@ export default function BlogEditPage() {
       const json = await res.json()
       const post: PostDetail = json.data
 
-      setOriginalAuthorId(post.authorId)
+      setIsMine(post.isMine === true)
       setTitle(post.title)
       setSavedTitle(post.title)
       setCategory((post.category as Category) ?? 'ACTIVITIES')
       setVisibility((post.visibility as 'PUBLIC' | 'MEMBER') ?? 'PUBLIC')
       setAuthorDisplay((post.authorDisplay as 'NICKNAME' | 'ANONYMOUS') ?? 'NICKNAME')
       setExistingFiles(post.files ?? [])
-      setInitialContent(normalizePostContent(post.content ?? ''))
+      // 서버 본문을 innerHTML 로 넣기 전에 정화한다 (저장형 XSS 방지)
+      setInitialContent(sanitizeHtml(normalizePostContent(post.content ?? '')))
     } catch {
       setNotFound(true)
     } finally {
@@ -162,12 +171,12 @@ export default function BlogEditPage() {
 
   // 권한 체크: 로드 후 본인 여부 확인
   useEffect(() => {
-    if (!loading && originalAuthorId !== null && user !== null) {
-      if (user.id !== originalAuthorId && user.role !== 'ADMIN') {
+    if (!loading && isMine !== null && user !== null) {
+      if (!isMine && user.role !== 'ADMIN') {
         setForbidden(true)
       }
     }
-  }, [loading, originalAuthorId, user])
+  }, [loading, isMine, user])
 
   // 로딩이 끝나 에디터 div가 DOM에 마운트된 뒤에 본문 주입
   useEffect(() => {

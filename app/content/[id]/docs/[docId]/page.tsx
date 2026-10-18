@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
@@ -112,6 +112,8 @@ export default function DocDetailPage() {
   const [soloEditing, setSoloEditing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  /** 에디터가 넣어주는 "지금 본문 바로 저장" 함수 */
+  const flushRef = useRef<(() => Promise<boolean>) | null>(null)
 
   const reload = useCallback(() => {
     fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}`)
@@ -125,6 +127,11 @@ export default function DocDetailPage() {
     setSubmitting(true)
     setActionError(null)
     try {
+      // 자동 저장은 30초 주기라 그 사이 편집이 본문에 없을 수 있다 → 제출 직전에 지금 화면을 저장한다
+      const flushed = await (flushRef.current?.() ?? Promise.resolve(true))
+      if (!flushed) {
+        throw new Error('최신 내용을 저장하지 못해 제출하지 않았습니다. 실시간 연결을 확인한 뒤 다시 시도해주세요.')
+      }
       const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}/submit`, { method: 'POST' })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -144,6 +151,11 @@ export default function DocDetailPage() {
     setSubmitting(true)
     setActionError(null)
     try {
+      // 단독 편집 중 저장하지 않은 내용이 있으면 먼저 저장한다 (다음 공동 편집이 이 본문에서 시작한다)
+      const flushed = await (flushRef.current?.() ?? Promise.resolve(true))
+      if (!flushed) {
+        throw new Error('편집 중인 내용을 저장하지 못해 제출을 취소하지 않았습니다.')
+      }
       const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}/submit`, { method: 'DELETE' })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -209,7 +221,8 @@ export default function DocDetailPage() {
               바로 편집되고, 같은 글을 열어둔 다른 사람에게 실시간으로 반영된다.
             */}
             <DocCollabEditor
-              key={`${submitted ? 'solo' : 'collab'}-${doc.updatedAt ?? ''}`}
+              // updatedAt 을 key 에 넣으면 저장·첨부 후 reload 할 때마다 에디터가 새로 마운트된다
+              key={submitted ? 'solo' : 'collab'}
               contentId={contentId}
               docId={docId}
               initialTitle={doc.title}
@@ -244,6 +257,7 @@ export default function DocDetailPage() {
                 />
               }
               onFileUploaded={reload}
+              flushRef={flushRef}
             />
 
             {actionError && (

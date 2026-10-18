@@ -32,7 +32,12 @@ function toIsoDate(d: Date) {
 function encodeBodyJson(html: string) {
   const jsonStr = JSON.stringify({ body: html })
   const bytes = new TextEncoder().encode(jsonStr)
-  const binary = String.fromCharCode(...Array.from(bytes))
+  // String.fromCharCode(...bytes)는 본문이 크면 스택이 터진다 — 청크로 나눠 처리
+  let binary = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
   return btoa(binary)
 }
 
@@ -290,14 +295,11 @@ export default function ContentWritePage() {
       // ── 수정 모드: 기존 doc PATCH ──────────────
       if (isEdit && docId) {
         const html = sanitizeHtml(editorRef.current?.innerHTML ?? bodyHtml)
-        const jsonStr = JSON.stringify({ body: html })
-        const bytes = new TextEncoder().encode(jsonStr)
-        const binary = String.fromCharCode(...Array.from(bytes))
-        const encodedBodyJson = btoa(binary)
+        // solo: 실시간 세션 밖의 수정 — 서버가 CRDT 로그를 비워 다음 공동 편집이 이 본문에서 시작한다
         const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), bodyJson: encodedBodyJson }),
+          body: JSON.stringify({ title: title.trim(), bodyJson: encodeBodyJson(html), mode: 'solo' }),
         })
         if (!res.ok) {
           const json = await res.json().catch(() => null) as ApiErrorResponse | null

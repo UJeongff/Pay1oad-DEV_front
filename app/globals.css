@@ -390,14 +390,58 @@ body {
 }
 
 /* ── Collaboration Cursor ── */
+/* 색은 사용자별로 인라인(border-left-color)으로 준다. 오른쪽 테두리를 두면 글자색으로 그려진다. */
 .collaboration-cursor__caret {
-  border-left: 2px solid;
-  border-right: 2px solid;
+  border-left: 2px solid transparent;
   margin-left: -1px;
   margin-right: -1px;
   pointer-events: none;
   position: relative;
   word-break: normal;
+}
+/* 이름표: 사진(없으면 첫 글자) + 이름. 코드 블록(overflow-x: auto) 첫 줄에서는 위쪽이 잘릴 수 있다. */
+.collaboration-cursor__label {
+  position: absolute;
+  bottom: 100%;
+  left: -1px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 160px;
+  padding: 1px 7px 1px 2px;
+  border-radius: 9px 9px 9px 2px;
+  color: #04122b;
+  font-family: inherit;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 16px;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+.collaboration-cursor__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(4, 18, 43, 0.18);
+  font-size: 9px;
+}
+.collaboration-cursor__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.collaboration-cursor__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── ProseMirror (Tiptap) 에디터 콘텐츠 스타일 ── */

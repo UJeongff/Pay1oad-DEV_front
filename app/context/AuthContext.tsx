@@ -10,6 +10,7 @@ export interface AuthUser {
   email: string
   role: 'MEMBER' | 'ADMIN'
   status: 'ACTIVE' | 'BREAK' | 'OB' | 'LEAVE'
+  profileImageUrl?: string | null
 }
 
 interface AuthContextValue {
@@ -72,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: raw.email,
         role: normalizedRole,
         status: raw.status,
+        profileImageUrl: raw.profileImageUrl ?? null,
       })
     } catch {
       setUser(null)

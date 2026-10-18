@@ -5,7 +5,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthContext } from '@/app/context/AuthContext'
 import AccountPanel from '@/app/mypage/AccountPanel'
+import Avatar from '@/app/components/Avatar'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
+import { isHttpUrl } from '@/app/lib/isHttpUrl'
 import { CATEGORY_LABEL, CATEGORY_STYLE, formatDate, type PostCategory } from '@/app/lib/postCategory'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
@@ -41,6 +43,7 @@ interface SiteUser {
   department?: string
   studentId?: string
   generation?: number
+  profileImageUrl?: string | null
 }
 
 // 지원하기/모집 (GET /v1/admin/recruitment)
@@ -538,7 +541,7 @@ export default function MypagePage() {
   }
 
   async function handleCreateRecruit() {
-    if (!recruitForm.title.trim() || !recruitForm.applyUrl.trim()) return
+    if (!recruitForm.title.trim() || !isHttpUrl(recruitForm.applyUrl)) return
     setRecruitActionLoading(true)
     try {
       const res = await fetchWithAuth(`${API_URL}/v1/admin/recruitment`, {
@@ -557,7 +560,7 @@ export default function MypagePage() {
   }
 
   async function handleEditRecruit() {
-    if (!editRecruitment) return
+    if (!editRecruitment || !isHttpUrl(recruitForm.applyUrl)) return
     setRecruitActionLoading(true)
     try {
       const res = await fetchWithAuth(`${API_URL}/v1/admin/recruitment/${editRecruitment.id}`, {
@@ -645,9 +648,12 @@ export default function MypagePage() {
         {/* Profile header */}
         <div className="flex items-start sm:items-center justify-between gap-4 mb-8 sm:mb-12">
           <div className="flex items-center gap-4 sm:gap-6 min-w-0">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white text-xl sm:text-2xl font-black flex-shrink-0 bg-brand shadow-[0_0_24px_rgba(28,90,255,0.35)]">
-              {user.nickname?.[0]?.toUpperCase()}
-            </div>
+            <Avatar
+              src={user.profileImageUrl}
+              name={user.nickname}
+              size={64}
+              className="shadow-[0_0_24px_rgba(28,90,255,0.35)]"
+            />
             <div className="min-w-0">
               <h1 className="text-white text-2xl sm:text-3xl font-black truncate">{user.nickname}</h1>
               <p className="text-fg-subtle text-[13px] sm:text-sm mt-1 truncate">{user.email}</p>
@@ -886,12 +892,7 @@ export default function MypagePage() {
                     <div key={m.id} className="py-4 px-4 -mx-4 hover:bg-surface-raised transition-colors rounded-lg">
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
-                            style={{ background: 'linear-gradient(135deg, #1C5AFF, #0066ff)' }}
-                          >
-                            {(m.nickname ?? m.name ?? '?')[0]?.toUpperCase()}
-                          </div>
+                          <Avatar src={m.profileImageUrl} name={m.nickname ?? m.name} size={36} />
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-white font-medium text-sm">{m.nickname ?? m.name}</p>
@@ -989,14 +990,18 @@ export default function MypagePage() {
                         <p className="text-fg-subtle text-xs mt-0.5">
                           {fmtDateTime(r.startAt)} ~ {fmtDateTime(r.endAt)}
                         </p>
-                        <a
-                          href={r.applyUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-fg-muted hover:text-white text-xs mt-1 block truncate"
-                        >
-                          {r.applyUrl}
-                        </a>
+                        {isHttpUrl(r.applyUrl) ? (
+                          <a
+                            href={r.applyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-fg-muted hover:text-white text-xs mt-1 block truncate"
+                          >
+                            {r.applyUrl}
+                          </a>
+                        ) : (
+                          <p className="text-fg-muted text-xs mt-1 block truncate">{r.applyUrl}</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button
@@ -1174,7 +1179,7 @@ export default function MypagePage() {
             <button onClick={() => setCreateRecruitOpen(false)} className="px-4 py-2 rounded-lg text-sm text-fg-subtle hover:text-white hover:bg-surface-raised transition-colors">취소</button>
             <button
               onClick={handleCreateRecruit}
-              disabled={recruitActionLoading || !recruitForm.title.trim() || !recruitForm.applyUrl.trim()}
+              disabled={recruitActionLoading || !recruitForm.title.trim() || !isHttpUrl(recruitForm.applyUrl)}
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
               style={{ background: '#1C5AFF' }}
             >
@@ -1192,7 +1197,7 @@ export default function MypagePage() {
             <button onClick={() => setEditRecruitment(null)} className="px-4 py-2 rounded-lg text-sm text-fg-subtle hover:text-white hover:bg-surface-raised transition-colors">취소</button>
             <button
               onClick={handleEditRecruit}
-              disabled={recruitActionLoading || !recruitForm.title.trim() || !recruitForm.applyUrl.trim()}
+              disabled={recruitActionLoading || !recruitForm.title.trim() || !isHttpUrl(recruitForm.applyUrl)}
               className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
               style={{ background: '#1C5AFF' }}
             >
@@ -1422,6 +1427,9 @@ function RecruitForm({
         <InputField label="지원서 URL">
           <input type="url" value={form.applyUrl} onChange={e => onChange({ ...form, applyUrl: e.target.value })}
             placeholder="https://forms.gle/..." className={inputCls} style={inputStyle} />
+          {form.applyUrl.trim() && !isHttpUrl(form.applyUrl) && (
+            <p className="text-red-400 text-xs mt-1">http:// 또는 https:// 로 시작해야 해요.</p>
+          )}
         </InputField>
       </div>
       <div className="grid grid-cols-2 gap-3">

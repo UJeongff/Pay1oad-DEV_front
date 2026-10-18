@@ -64,8 +64,27 @@ const securityHeaders = [
   },
 ];
 
+/** NEXT_PUBLIC_API_URL 이 다른 호스트(스테이징 등)를 가리키면 그 호스트의 업로드도 허용한다 */
+function apiImagePattern() {
+  try {
+    const u = new URL(API_ORIGIN);
+    if (u.hostname === "api.pay1oad.com" || u.hostname === "localhost") return [];
+    return [
+      {
+        protocol: u.protocol === "http:" ? ("http" as const) : ("https" as const),
+        hostname: u.hostname,
+        ...(u.port ? { port: u.port } : {}),
+        pathname: "/uploads/**",
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
+
 const nextConfig: NextConfig = {
   images: {
+    // 업로드 이미지는 우리 API 서버에서만 받는다 (아무 호스트나 최적화 프록시로 쓰이지 않게)
     remotePatterns: [
       {
         protocol: "http",
@@ -75,9 +94,10 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "**",
+        hostname: "api.pay1oad.com",
         pathname: "/uploads/**",
       },
+      ...apiImagePattern(),
     ],
   },
 

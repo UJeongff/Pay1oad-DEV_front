@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthContext } from '@/app/context/AuthContext'
+import { safeNext } from '@/app/lib/safeNext'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.pay1oad.com'
 /** 화면 전환으로 이미 처리한 오류 — 에러 메시지를 띄우지 않는다 */
@@ -44,7 +45,7 @@ declare global {
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const nextUrl = searchParams.get('next')
+  const nextUrl = safeNext(searchParams.get('next'))
   const { refetch } = useAuthContext()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

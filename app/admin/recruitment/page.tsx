@@ -6,6 +6,7 @@ import {
   formatDateTime, InfoGrid, LoadingState, PageHeader, panelPad, SelectableRow, StatusLabel, Table, Td, TextInput,
   Th, toDatetimeLocal, Toast, useAdminQuery, useToast, type Tone,
 } from '../_components/AdminUI'
+import { isHttpUrl } from '@/app/lib/isHttpUrl'
 
 type RecruitStatus = 'UPCOMING' | 'RECRUITING' | 'CLOSED'
 
@@ -309,7 +310,7 @@ function RecruitPanel({
             </p>
             <InfoGrid rows={[
               ['period', `${formatDateTime(item.startAt)} ~ ${formatDateTime(item.endAt)}`],
-              ['url', <a key="url" href={item.applyUrl} target="_blank" rel="noopener noreferrer" className="text-brand-soft underline-offset-2 hover:underline">{item.applyUrl}</a>],
+              ['url', isHttpUrl(item.applyUrl) ? <a key="url" href={item.applyUrl} target="_blank" rel="noopener noreferrer" className="text-brand-soft underline-offset-2 hover:underline">{item.applyUrl}</a> : item.applyUrl],
               ['id', String(item.id)],
             ]} />
           </>

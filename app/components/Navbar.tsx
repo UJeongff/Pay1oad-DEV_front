@@ -7,6 +7,7 @@ import { useAuth } from '@/app/hooks/useAuth'
 import { useEffect, useState } from 'react'
 import { usePendingApprovals } from '@/app/lib/usePendingApprovals'
 import NotificationBell from '@/app/components/NotificationBell'
+import Avatar from '@/app/components/Avatar'
 
 const navLinks = [
   { label: 'ABOUT US', href: '/about' },
@@ -126,23 +127,27 @@ export default function Navbar() {
                       >
                         {pendingApprovals > 99 ? '99+' : pendingApprovals}
                       </span>
-                    )}
+                  )}
                   </Link>
                 )}
                 <Link
                   href="/mypage"
                   className="flex items-center gap-3 px-4 py-2 rounded-full border border-line-strong hover:border-fg-faint hover:bg-surface-raised transition-all"
                 >
-                  <span
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={user.role === 'ADMIN' ? {
-                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                      boxShadow: '0 0 6px rgba(245,158,11,0.8)',
-                    } : {
-                      background: 'linear-gradient(135deg, #4ade80, #16a34a)',
-                      boxShadow: '0 0 6px rgba(74,222,128,0.8)',
-                    }}
-                  />
+                  {user.profileImageUrl ? (
+                    <Avatar src={user.profileImageUrl} name={user.nickname} size={24} />
+                  ) : (
+                    <span
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={user.role === 'ADMIN' ? {
+                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                        boxShadow: '0 0 6px rgba(245,158,11,0.8)',
+                      } : {
+                        background: 'linear-gradient(135deg, #4ade80, #16a34a)',
+                        boxShadow: '0 0 6px rgba(74,222,128,0.8)',
+                      }}
+                    />
+                  )}
                   <span className="text-sm font-semibold tracking-widest text-white">
                     {user.nickname} {user.role === 'ADMIN' ? 'ADMIN' : 'MEMBER'}
                   </span>
@@ -231,16 +236,20 @@ export default function Navbar() {
                   href="/mypage"
                   className="flex items-center gap-3 py-2"
                 >
-                  <span
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={user.role === 'ADMIN' ? {
-                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                      boxShadow: '0 0 6px rgba(245,158,11,0.8)',
-                    } : {
-                      background: 'linear-gradient(135deg, #4ade80, #16a34a)',
-                      boxShadow: '0 0 6px rgba(74,222,128,0.8)',
-                    }}
-                  />
+                  {user.profileImageUrl ? (
+                    <Avatar src={user.profileImageUrl} name={user.nickname} size={24} />
+                  ) : (
+                    <span
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={user.role === 'ADMIN' ? {
+                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                        boxShadow: '0 0 6px rgba(245,158,11,0.8)',
+                      } : {
+                        background: 'linear-gradient(135deg, #4ade80, #16a34a)',
+                        boxShadow: '0 0 6px rgba(74,222,128,0.8)',
+                      }}
+                    />
+                  )}
                   <span className="text-sm font-semibold tracking-widest text-white">
                     {user.nickname} {user.role === 'ADMIN' ? 'ADMIN' : 'MEMBER'}
                   </span>

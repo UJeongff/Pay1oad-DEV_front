@@ -10,7 +10,7 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import ResizableImage from '@/app/components/ResizableImage'
 import * as Y from 'yjs'
 import * as awarenessProtocol from 'y-protocols/awareness'
-import { SimpleYjsProvider, type ProviderStatus } from '@/app/lib/SimpleYjsProvider'
+import { SimpleYjsProvider, type ProviderStatus, type PeerIdentity } from '@/app/lib/SimpleYjsProvider'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 import { FG, LINE, LINE_STRONG, SURFACE_RAISED, BRAND, BRAND_SOFT, DANGER, TONE } from '@/app/lib/tokens'
 import { useAuthContext } from '@/app/context/AuthContext'
@@ -116,9 +116,10 @@ function markdownToHtml(md: string): string {
 }
 
 function inlineMarkdown(text: string): string {
+  // 이미지를 먼저 바꿔야 한다 — 링크 규칙이 먼저 돌면 ![a](b) 의 [a](b) 부분을 링크로 먹어버린다
   return text
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" />')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/__(.+?)__/g, '<strong>$1</strong>')
@@ -133,53 +134,116 @@ function looksLikeMarkdown(text: string): boolean {
   return /^#{1,6}\s|^\*{1,2}[^*]|^-\s|^>\s|\*\*.+\*\*|\[.+\]\(.+\)|^```/.test(text)
 }
 
+/** 커서 색. 글자색이 어두운 남색이라 밝은 색만 쓴다. */
+const CURSOR_COLORS = [
+  '#FF6B6B', '#4ECDC4', '#FFD93D', '#A29BFE', '#74FF89', '#FF9F43', '#54A0FF', '#FF6EB4',
+  '#7EE8FA', '#C7F464', '#F8A5C2', '#B8A9FF', '#5EEAD4', '#FCD34D', '#FDA4AF', '#93C5FD',
+]
+
+/** id % n 은 가입 순서가 가까운 사람끼리 색이 겹치기 쉬워 정수 해시로 섞는다 */
+function colorForUser(id: number): string {
+  let h = Math.imul((id | 0) ^ 0x9e3779b9, 0x85ebca6b)
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35)
+  h ^= h >>> 16
+  return CURSOR_COLORS[(h >>> 0) % CURSOR_COLORS.length]
+}
+
+const SAFE_COLOR = /^#[0-9a-f]{6}$/i
+
+function safeImageUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null
+  } catch {
+    return null
+  }
+}
+
+interface CursorInfo {
+  name: string
+  color: string
+  imageUrl: string | null
+}
+
+/**
+ * 커서에 그릴 이름·색·사진.
+ * 서버가 알려준 신원이 있으면 그것만 쓰고, awareness 에 적힌 값은 신원이 없을 때만 검증해서 쓴다
+ * (상대가 아무 이름이나 CSS 를 끼운 색을 보낼 수 있다).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function resolveCursorInfo(user: Record<string, any> | undefined, identity: PeerIdentity | undefined): CursorInfo {
+  if (identity) {
+    return {
+      name: identity.name.trim() || '익명',
+      color: colorForUser(identity.userId),
+      imageUrl: safeImageUrl(identity.profileImageUrl),
+    }
+  }
+  const name = (typeof user?.name === 'string' ? user.name : '').trim().slice(0, 30) || '익명'
+  const color = typeof user?.color === 'string' && SAFE_COLOR.test(user.color) ? user.color : '#54A0FF'
+  return { name, color, imageUrl: null }
+}
+
+/** 캐럿 안에 이름표(사진 또는 첫 글자 + 이름)를 그린다. 신원이 늦게 도착하면 다시 호출된다. */
+function fillCursorLabel(caret: HTMLElement, info: CursorInfo) {
+  const initial = info.name.charAt(0).toUpperCase()
+  caret.style.borderLeftColor = info.color
+  caret.replaceChildren()
+
+  const label = document.createElement('span')
+  label.className = 'collaboration-cursor__label'
+  label.style.background = info.color
+
+  const avatar = document.createElement('span')
+  avatar.className = 'collaboration-cursor__avatar'
+  if (info.imageUrl) {
+    const img = document.createElement('img')
+    img.alt = ''
+    img.referrerPolicy = 'no-referrer'
+    img.onerror = () => {
+      img.remove()
+      avatar.textContent = initial
+    }
+    img.src = info.imageUrl
+    avatar.appendChild(img)
+  } else {
+    avatar.textContent = initial
+  }
+
+  const name = document.createElement('span')
+  name.className = 'collaboration-cursor__name'
+  name.textContent = info.name
+
+  label.append(avatar, name)
+  caret.appendChild(label)
+}
+
 /**
  * 원격 편집자의 커서 표시.
  *
- * 기본 스타일은 이름이 적힌 사각 라벨인데, 마이페이지 프로필과 같은
- * "원형 + 이름 첫 글자" 배지로 바꾼다.
+ * 기본 스타일 대신 프로필 사진(없으면 첫 글자) + 이름 이름표를 붙인다.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function renderRemoteCursor(user: Record<string, any>): HTMLElement {
-  const color: string = typeof user?.color === 'string' ? user.color : '#54A0FF'
-  const name: string = (typeof user?.name === 'string' ? user.name : '').trim() || '익명'
-  const initial = name.charAt(0).toUpperCase()
-
-  const caret = document.createElement('span')
-  caret.className = 'collaboration-cursor__caret'
-  caret.setAttribute('style', [
-    'position: relative',
-    'margin-left: -1px',
-    'margin-right: -1px',
-    `border-left: 2px solid ${color}`,
-    'pointer-events: none',
-    'word-break: normal',
-  ].join('; '))
-
-  const badge = document.createElement('span')
-  badge.setAttribute('title', name)
-  badge.setAttribute('style', [
-    'position: absolute',
-    'top: -1.7em',
-    'left: -3px',
-    'width: 20px',
-    'height: 20px',
-    'border-radius: 50%',
-    `background: ${color}`,
-    'color: #04122b',
-    'font-size: 11px',
-    'font-weight: 700',
-    'line-height: 20px',
-    'text-align: center',
-    'user-select: none',
-    'pointer-events: none',
-    'box-shadow: 0 2px 6px rgba(0,0,0,0.45)',
-    'white-space: nowrap',
-  ].join('; '))
-  badge.textContent = initial
-  caret.appendChild(badge)
-
-  return caret
+function createCursorRenderers(getIdentity: (clientId: number) => PeerIdentity | undefined) {
+  return {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    render: (user: Record<string, any>, clientId?: number): HTMLElement => {
+      const caret = document.createElement('span')
+      caret.className = 'collaboration-cursor__caret'
+      if (typeof clientId === 'number') caret.dataset.collabClient = String(clientId)
+      fillCursorLabel(caret, resolveCursorInfo(user, typeof clientId === 'number' ? getIdentity(clientId) : undefined))
+      return caret
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    selectionRender: (user: Record<string, any>, clientId?: number) => {
+      const { color } = resolveCursorInfo(user, typeof clientId === 'number' ? getIdentity(clientId) : undefined)
+      return {
+        nodeName: 'span',
+        class: 'collaboration-cursor__selection',
+        style: `background-color: ${color}40`,
+      }
+    },
+  }
 }
 
 // [text](url) → link input rule
@@ -230,6 +294,11 @@ interface DocCollabEditorProps {
   onFileUploaded?: () => void
   /** 에디터 아래, 저장 버튼 위에 넣을 내용 (첨부파일 등) */
   footerSlot?: React.ReactNode
+  /**
+   * 지금 화면의 본문을 바로 저장하는 함수를 넣어준다 (제출·제출 취소 직전에 호출).
+   * 저장했거나 저장할 것이 없으면 true, 최신 상태를 저장할 수 없으면 false.
+   */
+  flushRef?: React.RefObject<(() => Promise<boolean>) | null>
 }
 
 export default function DocCollabEditor({
@@ -245,6 +314,7 @@ export default function DocCollabEditor({
   metaSlot,
   footerSlot,
   onFileUploaded,
+  flushRef,
 }: DocCollabEditorProps) {
   const collaborative = mode === 'collaborative'
   const { user } = useAuthContext()
@@ -289,6 +359,32 @@ export default function DocCollabEditor({
     awarenessRef.current = new awarenessProtocol.Awareness(ydocRef.current)
   }
 
+  /**
+   * 언마운트 때 Y.Doc 과 Awareness(3초 주기 타이머)를 정리한다.
+   * 바로 지우지 않고 한 틱 미루는 이유: StrictMode 는 정리 직후 같은 ref 로 다시 마운트하는데,
+   * 그때 이미 destroy 된 awareness 를 쓰게 된다. 다시 마운트되면 예약을 취소한다.
+   */
+  const disposeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (disposeTimerRef.current) {
+      clearTimeout(disposeTimerRef.current)
+      disposeTimerRef.current = null
+    }
+    return () => {
+      disposeTimerRef.current = setTimeout(() => {
+        awarenessRef.current?.destroy()
+        ydocRef.current?.destroy()
+      }, 0)
+    }
+  }, [])
+
+  /** clientID → 서버가 확인한 편집자 신원 (커서 이름표용) */
+  const identitiesRef = useRef(new Map<number, PeerIdentity>())
+  const cursorRenderersRef = useRef<ReturnType<typeof createCursorRenderers> | null>(null)
+  if (!cursorRenderersRef.current) {
+    cursorRenderersRef.current = createCursorRenderers(id => identitiesRef.current.get(id))
+  }
+
   /** 제목도 공동 편집 대상이다. 본문과 같은 Y.Doc 안의 Y.Text로 관리한다. */
   const titleTextRef = useRef<Y.Text | null>(null)
   if (!titleTextRef.current && ydocRef.current) {
@@ -300,8 +396,7 @@ export default function DocCollabEditor({
   /** 원격 변경 후 복원할 캐럿 위치 */
   const caretRef = useRef<number | null>(null)
 
-  const CURSOR_COLORS = ['#FF6B6B', '#4ECDC4', '#FFD93D', '#A29BFE', '#74FF89', '#FF9F43', '#54A0FF', '#FF6EB4']
-  const cursorColor = CURSOR_COLORS[(user?.id ?? 0) % CURSOR_COLORS.length]
+  const cursorColor = colorForUser(user?.id ?? 0)
 
   useEffect(() => {
     if (!awarenessRef.current || !user) return
@@ -388,7 +483,8 @@ export default function DocCollabEditor({
                 name: user?.nickname ?? user?.name ?? '익명',
                 color: cursorColor,
               },
-              render: renderRemoteCursor,
+              render: cursorRenderersRef.current.render,
+              selectionRender: cursorRenderersRef.current.selectionRender,
             }),
           ]
         : []),
@@ -573,25 +669,40 @@ export default function DocCollabEditor({
       onSeedRequest: () => setSeedRequested(true),
       onSynced: () => {
         syncedRef.current = true
+        setOfflineMode(false)
         setReady(true)
       },
       onSessionEnded: () => {
         syncedRef.current = true
+        sessionEndedRef.current = true
         onSessionEndedRef.current?.()
+      },
+      onIdentity: (clientId, identity) => {
+        if (!identity) {
+          identitiesRef.current.delete(clientId)
+          return
+        }
+        identitiesRef.current.set(clientId, identity)
+        // 이미 그려진 커서는 다시 만들어지지 않으므로(같은 key) 이름표만 바꿔 끼운다
+        try {
+          const root = editorRef.current?.view.dom
+          const user = awareness.getStates().get(clientId)?.user
+          root?.querySelectorAll<HTMLElement>(`[data-collab-client="${clientId}"]`).forEach(caret => {
+            fillCursorLabel(caret, resolveCursorInfo(user, identity))
+          })
+        } catch {
+          // 에디터가 아직 마운트되지 않았다 — 처음 그릴 때 신원을 반영한다
+        }
       },
     })
     providerRef.current = provider
 
-    // 서버에 붙지 못해도 문서를 못 여는 상황은 피한다.
-    // 다만 나중에 뒤늦게 붙어서 로컬 시딩분과 서버 로그가 겹치는 일이 없도록,
-    // 이 세션은 실시간 공유를 완전히 포기하고 HTTP 저장만 쓰는 오프라인 모드로 전환한다.
+    // 서버에 붙지 못하면 읽기 전용으로 둔다. 일부만 재생된 문서를 편집·저장하면
+    // 그 불완전한 내용이 본문(body_json)을 덮어쓰기 때문이다.
+    // 프로바이더는 계속 재연결을 시도하고, 붙어서 재생이 끝나면 자동으로 편집이 풀린다.
     const fallback = setTimeout(() => {
       if (syncedRef.current) return
-      provider.destroy()
-      providerRef.current = null
       setOfflineMode(true)
-      setSeedRequested(true)
-      setReady(true)
     }, 8000)
 
     return () => {
@@ -617,17 +728,37 @@ export default function DocCollabEditor({
     return () => ydoc.off('update', onUpdate)
   }, [])
 
-  const saveDoc = useCallback(async (silent = false) => {
-    if (!editor) return
+  // 타이머·언마운트 저장이 최신 값을 보도록 ref 로 들고 있는다 (제목이 바뀔 때마다 타이머가 리셋되지 않게)
+  const titleRef = useRef(title)
+  titleRef.current = title
+  const readyRef = useRef(ready)
+  readyRef.current = ready
+  const readOnlyRef = useRef(readOnly)
+  readOnlyRef.current = readOnly
+  const statusRef = useRef(status)
+  statusRef.current = status
+  /** 서버가 편집 세션을 끝냈다 (제출됨) — 이후 공동 편집 저장은 서버가 거절한다 */
+  const sessionEndedRef = useRef(false)
+
+  const docUrl = `${API_URL}/v1/contents/${contentId}/docs/${docId}`
+  const saveMode = collaborative ? 'collab' : 'solo'
+
+  const saveDoc = useCallback(async (silent = false): Promise<boolean> => {
+    if (!editor) return false
+    // 서버 로그 재생이 끝나기 전 본문은 불완전하다 — 저장하면 본문을 덮어쓴다
+    if (collaborative && !readyRef.current) return false
     if (!silent) setSaving(true)
     setError(null)
+    // 본문을 뜬 시점에 dirty 를 내린다. 요청 중에 고친 내용은 다시 dirty 가 되어 다음 저장에 실린다.
+    const wasDirty = dirtyRef.current
+    dirtyRef.current = false
     try {
       const html = editor.getHTML()
       const bodyJson = encodeBodyJson(html)
-      const res = await fetchWithAuth(`${API_URL}/v1/contents/${contentId}/docs/${docId}`, {
+      const res = await fetchWithAuth(docUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), bodyJson }),
+        body: JSON.stringify({ title: titleRef.current.trim(), bodyJson, mode: saveMode }),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
@@ -635,30 +766,84 @@ export default function DocCollabEditor({
       }
       setLastSaved(new Date())
       setAutoSaveFailed(false)
-      dirtyRef.current = false
       if (!silent) {
         setSaveSuccess(true)
         setTimeout(() => setSaveSuccess(false), 2500)
         onSavedRef.current?.()
       }
+      return true
     } catch (err) {
+      if (wasDirty) dirtyRef.current = true
       // 자동 저장 실패를 조용히 삼키면 본문이 저장되고 있다고 착각하게 된다
       if (silent) setAutoSaveFailed(true)
       else setError(err instanceof Error ? err.message : '저장 오류')
+      return false
     } finally {
       if (!silent) setSaving(false)
     }
-  }, [editor, contentId, docId, title])
+  }, [editor, docUrl, saveMode, collaborative])
+
+  const saveDocRef = useRef(saveDoc)
+  saveDocRef.current = saveDoc
 
   useEffect(() => {
     const interval = setInterval(() => {
       // 내가 고친 게 있을 때만 저장한다
-      if (ready && !readOnly && dirtyRef.current && editor) {
-        saveDoc(true)
+      if (ready && !readOnly && dirtyRef.current && !sessionEndedRef.current) {
+        void saveDocRef.current(true)
       }
     }, 30000)
     return () => clearInterval(interval)
-  }, [ready, readOnly, editor, saveDoc])
+  }, [ready, readOnly])
+
+  /**
+   * 페이지를 떠날 때(탭 닫기·이동·언마운트) 30초 주기를 기다리지 않고 남은 편집을 저장한다.
+   * keepalive 는 본문 64KB 제한이 있어 큰 문서는 일반 요청으로 보낸다 (탭을 닫는 경우엔 유실될 수 있다).
+   */
+  useEffect(() => {
+    if (!editor) return
+    const saveOnExit = () => {
+      if (!readyRef.current || readOnlyRef.current || !dirtyRef.current || sessionEndedRef.current) return
+      let html: string
+      try {
+        html = editor.getHTML()
+      } catch {
+        return
+      }
+      dirtyRef.current = false
+      const body = JSON.stringify({ title: titleRef.current.trim(), bodyJson: encodeBodyJson(html), mode: saveMode })
+      void fetchWithAuth(docUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: body.length < 60_000,
+      }).catch(() => {})
+    }
+    window.addEventListener('pagehide', saveOnExit)
+    return () => {
+      window.removeEventListener('pagehide', saveOnExit)
+      saveOnExit()
+    }
+  }, [editor, docUrl, saveMode])
+
+  // 제출·제출 취소 직전에 부모가 호출한다
+  useEffect(() => {
+    if (!flushRef) return
+    const flush = async (): Promise<boolean> => {
+      if (readOnlyRef.current) return true
+      if (!collaborative) {
+        return dirtyRef.current ? saveDocRef.current(true) : true
+      }
+      // 공동 편집은 내가 안 고쳤어도 남의 편집이 아직 본문에 안 들어갔을 수 있어 무조건 저장한다.
+      // 다만 동기화가 안 된 상태의 본문은 불완전하므로 저장하지 않고 실패로 알린다.
+      if (!readyRef.current || statusRef.current !== 'connected') return false
+      return saveDocRef.current(true)
+    }
+    flushRef.current = flush
+    return () => {
+      if (flushRef.current === flush) flushRef.current = null
+    }
+  }, [flushRef, collaborative])
 
   const applyLink = () => {
     if (!editor) return
@@ -675,7 +860,7 @@ export default function DocCollabEditor({
   const statusStyle: { label: string; fg: string; dot: string; glow: boolean } = !collaborative
     ? { label: '제출됨 — 실시간 동기화 없음', fg: FG.subtle, dot: FG.faint, glow: false }
     : offlineMode
-    ? { label: '오프라인 편집 — 실시간 공유되지 않습니다', fg: TONE.yellow, dot: TONE.yellow, glow: true }
+    ? { label: '서버에 연결하지 못했습니다 — 읽기 전용 (연결되면 자동으로 편집할 수 있습니다)', fg: TONE.yellow, dot: TONE.yellow, glow: true }
     : !ready
       ? { label: '동기화 중...', fg: FG.subtle, dot: FG.faint, glow: false }
       : status === 'connected'
@@ -771,13 +956,13 @@ export default function DocCollabEditor({
       {metaSlot ?? (
         <div style={rowStyle}>
           <span style={labelStyle}>편집 모드</span>
-          <span style={{ width: '1px', height: '12px', background: '${LINE_STRONG}', flexShrink: 0 }} />
+          <span style={{ width: '1px', height: '12px', background: LINE_STRONG, flexShrink: 0 }} />
           <span style={{ color: FG.muted, fontSize: '14px' }}>공동 편집</span>
         </div>
       )}
 
       {/* 구분선 */}
-      <div style={{ width: '100%', height: '1px', background: '${LINE}', margin: '16px 0' }} />
+      <div style={{ width: '100%', height: '1px', background: LINE, margin: '16px 0' }} />
 
       {/* Tiptap 에디터 */}
       <div style={{ marginTop: '20px', minHeight: '320px', padding: '20px 0', position: 'relative' }}>
@@ -870,8 +1055,8 @@ export default function DocCollabEditor({
         {!readOnly && (
         <button
           onClick={() => saveDoc(false)}
-          disabled={saving}
-          style={{ padding: '10px 28px', borderRadius: '8px', border: 'none', background: BRAND, color: '#fff', fontSize: '14px', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+          disabled={saving || !ready}
+          style={{ padding: '10px 28px', borderRadius: '8px', border: 'none', background: BRAND, color: '#fff', fontSize: '14px', fontWeight: 600, cursor: saving || !ready ? 'not-allowed' : 'pointer', opacity: saving || !ready ? 0.6 : 1 }}
         >
           {saving ? '저장 중...' : '저장하기'}
         </button>

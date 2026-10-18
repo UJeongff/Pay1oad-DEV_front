@@ -97,8 +97,11 @@ export default function ForgotPasswordPage() {
                 <div className="text-center">
                   <h1 className="text-white text-2xl font-bold mb-2">이메일을 확인해주세요</h1>
                   <p className="text-white/50 text-sm leading-relaxed">
-                    <span className="text-white/70 font-medium">{email}</span>로<br />
+                    <span className="text-white/70 font-medium">{email}</span>이(가) 가입된 이메일이라면<br />
                     비밀번호 재설정 링크를 보내드렸습니다.
+                  </p>
+                  <p className="text-white/40 text-xs leading-relaxed mt-2">
+                    Google 계정으로 가입했다면 Google 로그인을 이용해주세요.
                   </p>
                 </div>
                 <button
