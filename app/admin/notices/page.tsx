@@ -23,7 +23,29 @@ interface ContentNotice {
   createdAt: string
 }
 
+/** 전체 부원 공지 보낸 기록 */
+interface BroadcastNotice {
+  id: number
+  title: string
+  content: string
+  /** 보낸 관리자가 탈퇴하면 null */
+  senderNickname: string | null
+  recipientCount: number
+  createdAt: string
+}
+
+interface BroadcastPage {
+  content: BroadcastNotice[]
+  totalElements: number
+  totalPages: number
+  number: number
+}
+
 type Target = 'CONTENT' | 'ALL'
+
+/** FilterTabs 의 "전체 공지" 탭 — 나머지 탭 key 는 콘텐츠 id */
+const ALL_TAB = 'all'
+const BROADCAST_PAGE_SIZE = 20
 
 /** 전체 부원 공지는 알림 한 건으로 가므로 서버(BroadcastNoticeRequest)와 같은 길이 제한 */
 const BROADCAST_TITLE_MAX = 100
@@ -61,10 +83,10 @@ export default function AdminNoticesPage() {
   const contentsQuery = useAdminQuery<unknown>('/v1/contents')
   const contents = asList<ContentSummary>(contentsQuery.data)
 
-  const [pickedId, setPickedId] = useState<number | null>(null)
-  // 고른 콘텐츠가 없으면(처음 · 삭제됨) 첫 콘텐츠를 보여준다
-  const contentId = contents.some((c) => c.id === pickedId) ? pickedId : (contents[0]?.id ?? null)
-  const current = contents.find((c) => c.id === contentId) ?? null
+  // 처음엔 "전체 공지" 탭. 고른 콘텐츠가 없어지면(삭제됨) 다시 전체 공지로 돌아간다
+  const [tab, setTab] = useState<string>(ALL_TAB)
+  const current = tab === ALL_TAB ? null : (contents.find((c) => String(c.id) === tab) ?? null)
+  const activeTab = current ? tab : ALL_TAB
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [creating, setCreating] = useState(false)
@@ -73,8 +95,8 @@ export default function AdminNoticesPage() {
 
   const panelOpen = creating || selectedId !== null
 
-  function pickContent(id: number) {
-    setPickedId(id)
+  function pickTab(key: string) {
+    setTab(key)
     setSelectedId(null)
   }
 
@@ -92,57 +114,64 @@ export default function AdminNoticesPage() {
         actions={<Button onClick={openCreate}>+ 공지 작성</Button>}
       />
 
-      {contentsQuery.error && !contentsQuery.data ? (
-        <ErrorState command="fetch contents" error={contentsQuery.error} onRetry={contentsQuery.reload} />
-      ) : contentsQuery.loading && !contentsQuery.data ? (
-        <LoadingState command="fetch contents" rows={2} />
-      ) : contents.length === 0 ? (
-        <EmptyState
-          command="ls contents/"
-          text="스터디·프로젝트가 없어요. 전체 부원 공지는 위의 '+ 공지 작성'에서 보낼 수 있어요"
+      {/* 콘텐츠 목록을 못 불러와도 전체 공지 탭은 쓸 수 있다 */}
+      {contentsQuery.error && (
+        <p role="alert" className="mb-3 text-xs text-danger">
+          스터디·프로젝트 목록을 불러오지 못했어요: {contentsQuery.error}{' '}
+          <button type="button" onClick={contentsQuery.reload} className="cursor-pointer underline">다시 시도</button>
+        </p>
+      )}
+      <FilterTabs
+        label="공지 종류 선택"
+        items={[
+          { key: ALL_TAB, label: '전체 공지' },
+          ...contents.map((c) => ({ key: String(c.id), label: c.title })),
+        ]}
+        value={activeTab}
+        onChange={pickTab}
+      />
+      {contentsQuery.loading && !contentsQuery.data && (
+        <p className="mb-3 font-mono text-[11px] text-fg-faint">스터디·프로젝트 목록을 불러오는 중…</p>
+      )}
+
+      {/* 탭이 바뀌거나 새 공지를 올리면 목록 상태를 통째로 새로 시작한다 — 이전 목록이나 오류가 남지 않는다 */}
+      {current ? (
+        <NoticeList
+          key={`${current.id}:${version}`}
+          content={current}
+          selectedId={selectedId}
+          onSelect={(id) => { setCreating(false); setSelectedId(id) }}
+          onClose={() => setSelectedId(null)}
+          show={show}
         />
       ) : (
-        <>
-          {contentsQuery.error && (
-            <p role="alert" className="mb-3 text-xs text-danger">
-              콘텐츠 목록을 새로 불러오지 못했어요: {contentsQuery.error}{' '}
-              <button type="button" onClick={contentsQuery.reload} className="cursor-pointer underline">다시 시도</button>
-            </p>
-          )}
-          <FilterTabs
-            label="스터디·프로젝트 선택"
-            items={contents.map((c) => ({ key: String(c.id), label: c.title }))}
-            value={String(contentId ?? '')}
-            onChange={(k) => pickContent(Number(k))}
-          />
-          {current && (
-            // 콘텐츠가 바뀌면 목록 상태를 통째로 새로 시작한다 — 이전 콘텐츠의 목록이나 오류가 남지 않는다
-            <NoticeList
-              key={`${current.id}:${version}`}
-              content={current}
-              selectedId={selectedId}
-              onSelect={(id) => { setCreating(false); setSelectedId(id) }}
-              onClose={() => setSelectedId(null)}
-              show={show}
-            />
-          )}
-        </>
+        <BroadcastList
+          key={`${ALL_TAB}:${version}`}
+          selectedId={selectedId}
+          onSelect={(id) => { setCreating(false); setSelectedId(id) }}
+          onClose={() => setSelectedId(null)}
+          show={show}
+        />
       )}
 
       {creating && (
         <CreatePanel
           contents={contents}
-          defaultContentId={contentId}
+          defaultTarget={current ? 'CONTENT' : 'ALL'}
+          defaultContentId={current?.id ?? contents[0]?.id ?? null}
           onClose={() => setCreating(false)}
           onCreated={(cid, notice) => {
             setCreating(false)
-            setPickedId(cid)
+            setTab(String(cid))
             setVersion((v) => v + 1)
             setSelectedId(notice.id)
             show('공지를 등록했어요. 팀원에게 알림이 갔어요.')
           }}
           onBroadcast={(count) => {
             setCreating(false)
+            setTab(ALL_TAB)
+            setSelectedId(null)
+            setVersion((v) => v + 1)
             show(`${count}명에게 보냈어요.`)
           }}
         />
@@ -307,15 +336,16 @@ function NoticeFields({
 // ─────────────────────────────────────────────────────────────
 
 function CreatePanel({
-  contents, defaultContentId, onClose, onCreated, onBroadcast,
+  contents, defaultTarget, defaultContentId, onClose, onCreated, onBroadcast,
 }: {
   contents: ContentSummary[]
+  defaultTarget: Target
   defaultContentId: number | null
   onClose: () => void
   onCreated: (contentId: number, notice: ContentNotice) => void
   onBroadcast: (recipientCount: number) => void
 }) {
-  const [target, setTarget] = useState<Target>(contents.length > 0 ? 'CONTENT' : 'ALL')
+  const [target, setTarget] = useState<Target>(contents.length > 0 ? defaultTarget : 'ALL')
   const [targetId, setTargetId] = useState<number | null>(defaultContentId)
   const [form, setForm] = useState<NoticeForm>({ title: '', content: '', startAt: today(), endAt: '' })
   const [saving, setSaving] = useState(false)
@@ -398,7 +428,7 @@ function CreatePanel({
 
       {target === 'ALL' ? (
         <p className="mb-5 mt-3 rounded-lg border border-line bg-surface px-3 py-2.5 font-mono text-[11px] leading-relaxed text-fg-subtle">
-          <span className="text-brand-soft">#</span> 승인된 활동 부원 모두에게 알림으로 보내요. 공지 목록에는 남지 않고, 알림 종에는 앞부분만 보여요.
+          <span className="text-brand-soft">#</span> 승인된 활동 부원 모두에게 알림으로 보내요. 보낸 기록은 “전체 공지” 탭에 남고, 알림 종에는 앞부분만 보여요.
         </p>
       ) : (
         <div className="mb-5 mt-4">
@@ -522,6 +552,182 @@ function EditPanel({
         onClose={() => setConfirmOpen(false)}
       >
         <b className="text-white">{content.title}</b>의 공지 <b className="text-white">{n.title}</b>이(가) 삭제됩니다. 되돌릴 수 없어요.
+      </ConfirmDialog>
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// 전체 부원 공지 보낸 기록 + 상세 패널
+// ─────────────────────────────────────────────────────────────
+
+function BroadcastList({
+  selectedId, onSelect, onClose, show,
+}: {
+  selectedId: number | null
+  onSelect: (id: number) => void
+  onClose: () => void
+  show: (text: string, tone?: Tone) => void
+}) {
+  // 첫 페이지는 useAdminQuery 로, 그 뒤 페이지는 "더 보기"를 누를 때 직접 불러와 이어 붙인다
+  const { data, error, loading, reload } = useAdminQuery<BroadcastPage>(`/v1/admin/notices?page=0&size=${BROADCAST_PAGE_SIZE}`)
+  const [extra, setExtra] = useState<BroadcastNotice[]>([])
+  const [removed, setRemoved] = useState<number[]>([])
+  const [latestTotal, setLatestTotal] = useState<number | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [moreError, setMoreError] = useState('')
+
+  const seen = new Set<number>()
+  const items = [...(data?.content ?? []), ...extra].filter((n) => {
+    if (seen.has(n.id) || removed.includes(n.id)) return false
+    seen.add(n.id)
+    return true
+  })
+  const total = latestTotal ?? data?.totalElements ?? 0
+  const hasMore = items.length < total
+  const selected = items.find((n) => n.id === selectedId) ?? null
+  const panelOpen = !!selected
+  const command = 'fetch admin/notices'
+
+  async function loadMore() {
+    // 지운 기록은 서버 목록에서도 빠지므로 "지금 보이는 수" 기준으로 페이지를 고르고, 겹치는 건 id 로 걸러낸다
+    const page = Math.floor(items.length / BROADCAST_PAGE_SIZE)
+    setLoadingMore(true)
+    setMoreError('')
+    const r = await adminFetch<BroadcastPage>(`/v1/admin/notices?page=${page}&size=${BROADCAST_PAGE_SIZE}`)
+    setLoadingMore(false)
+    if (!r.ok) { setMoreError(r.error); return }
+    setExtra((prev) => [...prev, ...asList<BroadcastNotice>(r.data)])
+    setLatestTotal(r.data?.totalElements ?? null)
+  }
+
+  return (
+    <>
+      {error && !data ? (
+        <ErrorState command={command} error={error} onRetry={reload} />
+      ) : loading && !data ? (
+        <LoadingState command={command} />
+      ) : items.length === 0 ? (
+        <EmptyState command="ls admin/notices/" text="보낸 전체 공지가 없어요. 위의 '+ 공지 작성'에서 전체 부원에게 보낼 수 있어요" />
+      ) : (
+        <>
+          {error && <p role="alert" className="mb-3 text-xs text-danger">새로 불러오지 못했어요: {error} <button type="button" onClick={reload} className="cursor-pointer underline">다시 시도</button></p>}
+          <p className="mb-2 text-xs text-fg-subtle">
+            전체 부원에게 보낸 공지 <span className="font-mono text-white">{total}</span>건
+          </p>
+          <div className={loading ? 'opacity-60 transition-opacity' : ''}>
+            <Table label="전체 공지 보낸 기록">
+              <thead>
+                <tr>
+                  <Th>Title</Th>
+                  <Th>Recipients</Th>
+                  <Th className="hidden sm:table-cell">Sender</Th>
+                  <Th className={panelOpen ? 'hidden' : 'hidden lg:table-cell'}>Sent</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((n) => (
+                  <SelectableRow key={n.id} selected={n.id === selectedId} onSelect={() => onSelect(n.id)} label={`${n.title} 전체 공지 열기`}>
+                    <Td className="font-semibold text-white">
+                      <span className="line-clamp-2 break-all">{n.title}</span>
+                      <span className="mt-1 block font-mono text-[11px] font-normal text-fg-faint lg:hidden">{formatDateTime(n.createdAt)}</span>
+                    </Td>
+                    <Td className="whitespace-nowrap font-mono text-fg-subtle">{n.recipientCount}명</Td>
+                    <Td className="hidden whitespace-nowrap text-fg-subtle sm:table-cell">{n.senderNickname ?? '—'}</Td>
+                    <Td className={`whitespace-nowrap font-mono text-fg-faint ${panelOpen ? 'hidden' : 'hidden lg:table-cell'}`}>{formatDateTime(n.createdAt)}</Td>
+                  </SelectableRow>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+          {(hasMore || moreError) && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button variant="ghost" size="sm" loading={loadingMore} onClick={loadMore}>
+                더 보기 <span className="font-mono text-fg-faint">{Math.max(0, total - items.length)}</span>
+              </Button>
+              {moreError && <p role="alert" className="text-xs text-danger">더 불러오지 못했어요: {moreError}</p>}
+            </div>
+          )}
+          <p className="mt-4 hidden font-mono text-[11px] text-fg-faint md:block">↑↓ 이동 · enter 열기 · esc 닫기</p>
+        </>
+      )}
+
+      {selected && (
+        <BroadcastPanel
+          key={selected.id}
+          notice={selected}
+          onClose={onClose}
+          onDeleted={() => {
+            onClose()
+            setRemoved((r) => [...r, selected.id])
+            setLatestTotal(Math.max(0, total - 1))
+            show('기록을 삭제했어요.')
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+function BroadcastPanel({
+  notice: n, onClose, onDeleted,
+}: {
+  notice: BroadcastNotice
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  async function remove() {
+    setDeleting(true)
+    setDeleteError('')
+    const r = await adminFetch(`/v1/admin/notices/${n.id}`, { method: 'DELETE' })
+    setDeleting(false)
+    if (!r.ok) { setDeleteError(r.error); return }
+    setConfirmOpen(false)
+    onDeleted()
+  }
+
+  return (
+    <>
+      <DetailPanel
+        open
+        onClose={onClose}
+        path={`notices/all/${n.id}`}
+        label={`${n.title} 전체 공지 상세`}
+        busy={deleting}
+        footer={
+          <>
+            <Button variant="dangerText" onClick={() => { setDeleteError(''); setConfirmOpen(true) }}>기록 삭제…</Button>
+            <Button variant="ghost" onClick={onClose}>닫기</Button>
+          </>
+        }
+      >
+        <h2 className="break-all text-2xl font-bold text-white">{n.title}</h2>
+        <p className="mb-5 mt-1 font-mono text-xs text-fg-faint">{formatDateTime(n.createdAt)}</p>
+        <InfoGrid rows={[
+          ['sender', n.senderNickname ?? '—'],
+          ['recipients', `${n.recipientCount}명`],
+          ['sent', formatDateTime(n.createdAt)],
+          ['id', String(n.id)],
+        ]} />
+
+        <p className="mb-2 text-xs text-fg-subtle">내용</p>
+        <p className="whitespace-pre-wrap break-all rounded-lg border border-line bg-surface px-3 py-2.5 text-sm leading-relaxed text-white">{n.content}</p>
+      </DetailPanel>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="전체 공지 기록 삭제"
+        confirmLabel="삭제"
+        busy={deleting}
+        error={deleteError}
+        onConfirm={remove}
+        onClose={() => setConfirmOpen(false)}
+      >
+        전체 공지 <b className="text-white">{n.title}</b>의 기록이 이 목록에서 삭제됩니다. 이미 부원들에게 간 알림은 회수되지 않아요.
       </ConfirmDialog>
     </>
   )
