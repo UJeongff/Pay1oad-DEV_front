@@ -99,13 +99,10 @@ export default function RegisterPage() {
   const [inviteState, setInviteState] = useState<'unchecked' | 'valid' | 'invalid' | 'error'>('unchecked')
   const [inviteRetry, setInviteRetry] = useState(0)
 
-  // URL에서 invite 코드 추출 + 유효성 사전 검증
+  // invite 코드 유효성 사전 검증 (코드는 마운트 시 URL → 저장값 순으로 정해진다)
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const params = new URLSearchParams(window.location.search)
-    const code = params.get('invite')?.trim()
+    const code = inviteCode
     if (!code) return
-    setInviteCode(code)
 
     // 응답이 안 오면 배너가 "확인 중..."에 영영 갇힌다. 8초면 끊는다.
     const ctrl = new AbortController()
@@ -131,7 +128,7 @@ export default function RegisterPage() {
       .finally(() => { clearTimeout(timer); if (!done && !cancelled) setInviteState('error') })
 
     return () => { cancelled = true; clearTimeout(timer); ctrl.abort() }
-  }, [inviteRetry])
+  }, [inviteCode, inviteRetry])
 
   function clearField(key: keyof FieldErrors) {
     setFieldErrors((p) => ({ ...p, [key]: '' }))
@@ -142,14 +139,22 @@ export default function RegisterPage() {
   // 복원 전에 저장 effect 가 빈 값으로 덮어쓰지 않도록 복원이 끝났는지 표시한다.
   const [draftLoaded, setDraftLoaded] = useState(false)
   useEffect(() => {
+    // URL 의 초대 코드가 우선. 없을 때만 저장해 둔 코드를 쓴다 (정책 페이지 다녀오며 쿼리가 빠진 경우)
+    const urlInvite = new URLSearchParams(window.location.search).get('invite')?.trim() || null
+    let restoredInvite = urlInvite
     try {
       // 인증 코드를 보낸 뒤 새로고침했다면 인증 화면으로 돌아간다
       const pending = sessionStorage.getItem(SIGNUP_PENDING_KEY)
       if (pending) {
         const p = JSON.parse(pending)
-        if (p?.email) {
+        const pendingInvite: string | null = p?.inviteCode ?? null
+        if (urlInvite && pendingInvite !== urlInvite) {
+          // 다른(또는 초대 없는) 이전 가입 시도의 인증 화면 — 서버 pending 에 이 초대 코드가 없으므로 버리고 입력 화면부터
+          sessionStorage.removeItem(SIGNUP_PENDING_KEY)
+        } else if (p?.email) {
           setEmail(p.email)
           setSignupDone(true)
+          if (!restoredInvite && pendingInvite) restoredInvite = pendingInvite
         }
       }
     } catch { /* 손상된 데이터 무시 */ }
@@ -157,6 +162,7 @@ export default function RegisterPage() {
       const saved = sessionStorage.getItem(DRAFT_KEY)
       if (!saved) return
       const d = JSON.parse(saved)
+      if (!restoredInvite && typeof d.inviteCode === 'string' && d.inviteCode) restoredInvite = d.inviteCode
       if (d.name)       setName(d.name)
       if (d.email)      setEmail(d.email)
       if (d.nickname)   setNickname(d.nickname)
@@ -169,6 +175,7 @@ export default function RegisterPage() {
         setNicknameAvailable(d.nicknameAvailable ?? null)
       }
     } catch { /* 손상된 데이터 무시 */ } finally {
+      if (restoredInvite) setInviteCode(restoredInvite)
       setDraftLoaded(true)
     }
   }, [])
@@ -179,10 +186,10 @@ export default function RegisterPage() {
     try {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
         name, email, nickname, department, studentId, joinYear, agreed,
-        checkedNickname, nicknameAvailable,
+        checkedNickname, nicknameAvailable, inviteCode,
       }))
     } catch { /* 저장 실패 무시 */ }
-  }, [name, email, nickname, department, studentId, joinYear, agreed, checkedNickname, nicknameAvailable, signupDone, draftLoaded])
+  }, [name, email, nickname, department, studentId, joinYear, agreed, checkedNickname, nicknameAvailable, inviteCode, signupDone, draftLoaded])
 
   // 인증 화면 → 입력 화면. 서버의 가입 대기 정보는 남아 있으므로 다시 가입하면 새 코드가 발송된다.
   const backToForm = useCallback(() => {
@@ -256,7 +263,9 @@ export default function RegisterPage() {
     setEmailMsg(null)
     try {
       const res = await fetch(
-        `${API_URL}/v1/auth/email/verify?email=${encodeURIComponent(email)}&code=${encodeURIComponent(emailCode)}`,
+        // 초대 코드도 함께 보낸다 — 서버 pending 에 코드가 빠져 있을 때의 보조 수단
+        `${API_URL}/v1/auth/email/verify?email=${encodeURIComponent(email)}&code=${encodeURIComponent(emailCode)}`
+          + (inviteCode ? `&inviteCode=${encodeURIComponent(inviteCode)}` : ''),
         { method: 'POST' },
       )
       const data = await res.json().catch(() => null)
@@ -392,7 +401,8 @@ export default function RegisterPage() {
 
       // 인증 코드가 이메일로 발송됨 → 인증 화면으로 전환
       // 입력값은 인증이 끝날 때까지 남겨두고, 새로고침해도 인증 화면이 이어지도록 표시해 둔다
-      try { sessionStorage.setItem(SIGNUP_PENDING_KEY, JSON.stringify({ email })) } catch { /* 무시 */ }
+      // 초대 코드도 같이 둔다 — 나중에 다른 초대 링크로 들어오면 이 인증 화면을 복원하지 않기 위해
+      try { sessionStorage.setItem(SIGNUP_PENDING_KEY, JSON.stringify({ email, inviteCode })) } catch { /* 무시 */ }
       setSignupDone(true)
     } catch {
       setApiError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.')
