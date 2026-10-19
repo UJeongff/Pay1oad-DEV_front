@@ -4,6 +4,7 @@ import HistorySection from '@/app/components/HistorySection'
 import ContactCards from '@/app/components/ContactCards'
 import RulesSection from '@/app/components/RulesSection'
 import HomeFooter from '@/app/components/HomeFooter'
+import { parseKst } from '@/app/lib/parseKst'
 import AboutIntro from '@/app/components/AboutIntro'
 import { RevealToggle } from '@/app/components/Reveal'
 import WipeHeading from '@/app/components/WipeHeading'
@@ -30,7 +31,7 @@ async function getActiveRecruitment(): Promise<Recruitment | null> {
     const now = new Date()
     return list.find((r) =>
       (r.status === 'RECRUITING' || (!r.status && r.isActive)) &&
-      new Date(r.startAt) <= now && now <= new Date(r.endAt)
+      parseKst(r.startAt) <= now && now <= parseKst(r.endAt)
     ) ?? null
   } catch {
     return null

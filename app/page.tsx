@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { isHttpUrl } from '@/app/lib/isHttpUrl'
+import { parseKst } from '@/app/lib/parseKst'
 import ScrollArrow from '@/app/components/ScrollArrow'
 import HomePosts from '@/app/components/HomePosts'
 import HomeFaq from '@/app/components/HomeFaq'
@@ -32,7 +33,7 @@ async function getActiveRecruitment(): Promise<Recruitment | null> {
     const now = new Date()
     return list.find((r) =>
       (r.status === 'RECRUITING' || (!r.status && r.isActive)) &&
-      new Date(r.startAt) <= now && now <= new Date(r.endAt)
+      parseKst(r.startAt) <= now && now <= parseKst(r.endAt)
     ) ?? null
   } catch {
     return null

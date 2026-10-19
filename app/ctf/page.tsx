@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect, useId, useSyncExternalStore }
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import HomeFooter from '@/app/components/HomeFooter'
+import { parseKst } from '@/app/lib/parseKst'
 import ToastMessage, { useToast } from '@/app/components/ToastMessage'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
@@ -117,7 +118,7 @@ function kstDayDiff(fromMs: number, toIso: string) {
 // 진행중: 마감까지 남은 시간 / 진행예정: D-n (오늘 시작하면 시작 시각)
 function remainingLabel(event: CtfEvent, now: number) {
   if (event.status === 'ongoing') {
-    const left = new Date(event.endAt).getTime() - now
+    const left = parseKst(event.endAt).getTime() - now
     if (left <= 0) return '곧 종료'
     const d = Math.floor(left / DAY)
     const h = Math.floor((left % DAY) / HOUR)

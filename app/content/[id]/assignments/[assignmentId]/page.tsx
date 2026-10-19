@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import HomeFooter from '@/app/components/HomeFooter'
+import { parseKst } from '@/app/lib/parseKst'
 import { useAuthContext } from '@/app/context/AuthContext'
 import { fetchWithAuth } from '@/app/lib/fetchWithAuth'
 import SubmissionModal from './SubmissionModal'
@@ -193,7 +194,7 @@ export default function AssignmentDetailPage() {
               <div style={{ marginTop: '12px', display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>
                 <span>작성자 | {assignment.authorName}</span>
                 <span>작성일 | {formatDate(assignment.createdAt)}</span>
-                {assignment.dueAt && <span style={{ color: new Date(assignment.dueAt) < new Date() ? '#ff9a9a' : 'rgba(255,255,255,0.4)' }}>마감 | {formatDate(assignment.dueAt)}</span>}
+                {assignment.dueAt && <span style={{ color: parseKst(assignment.dueAt) < new Date() ? '#ff9a9a' : 'rgba(255,255,255,0.4)' }}>마감 | {formatDate(assignment.dueAt)}</span>}
               </div>
             </div>
             {(isLeaderOrAdmin || isOwnAssignment) && (
