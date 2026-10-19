@@ -5,6 +5,7 @@ import './globals.css'
 import Navbar from '@/app/components/Navbar'
 import GoogleLinkedToast from '@/app/components/GoogleLinkedToast'
 import { AuthProvider } from '@/app/context/AuthContext'
+import { Analytics } from '@vercel/analytics/next'
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -51,6 +52,7 @@ export default function RootLayout({
             <GoogleLinkedToast />
           </Suspense>
         </AuthProvider>
+        <Analytics />
       </body>
     </html>
   )
