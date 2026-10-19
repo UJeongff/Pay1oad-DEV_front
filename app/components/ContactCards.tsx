@@ -40,11 +40,11 @@ export default function ContactCards() {
         <ExternalIcon />
       </Link>
 
-      {/* 블로그 — 아직 블로그가 없어 링크를 걸지 않는다 */}
-      <div className={`${cardClass} cursor-default`} style={neon('34 197 94')}>
+      {/* 블로그 — 사이트 내부 페이지라 같은 탭에서 연다 */}
+      <Link href="/blog" className={cardClass} style={neon('34 197 94')}>
         <Image src="/aboutus_blog.svg" alt="" width={40} height={40} className="flex-shrink-0" />
-        <CardText name="블로그" />
-      </div>
+        <CardText name="블로그" handle="pay1oad.com/blog" />
+      </Link>
 
       {/* 인스타그램 */}
       <Link
