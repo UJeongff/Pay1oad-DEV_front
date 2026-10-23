@@ -308,13 +308,15 @@ function UserPanel({
       <ConfirmDialog
         open={confirmOpen}
         title="회원 삭제"
-        confirmLabel="영구 삭제"
+        confirmLabel="삭제"
         busy={deleting}
         error={deleteError}
         onConfirm={remove}
         onClose={() => setConfirmOpen(false)}
       >
-        <b className="text-white">{user.name}</b> ({user.email}) 님의 계정이 영구 삭제됩니다. 되돌릴 수 없어요.
+        <b className="text-white">{user.name}</b> ({user.email}) 님의 계정을 삭제합니다.
+        이름·이메일 같은 개인정보는 지워지고 더는 로그인할 수 없어요.
+        작성한 글과 댓글은 남고, 작성자는 &lsquo;탈퇴한 사용자&rsquo;로 표시돼요. 되돌릴 수 없어요.
       </ConfirmDialog>
     </>
   )
